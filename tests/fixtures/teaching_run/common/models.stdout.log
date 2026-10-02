@@ -1,0 +1,118 @@
+=========================================
+Optional Lab A: 多模型对比
+=========================================
+  基线模型(Phase 4): us.amazon.nova-2-lite-v1:0
+  对比模型(本次):     global.anthropic.claude-haiku-4-5-20251001-v1:0
+
+  本脚本会：在 harness.json 里把模型换成对比模型 → 重新部署 → 重跑全部 7 个 practice
+  问题并评估 → 算成本/延迟 → 自动还原回基线模型。约 10-15 分钟（不删评估器）。
+
+[… 2026-09-13 live output elided; the tail below is the step's recorded stdoutTail …]
+uld be in your corporate mailbox.
+
+---
+
+## **Why this matters:**
+
+Your password gives attackers access to:
+- Corporate systems and data
+- Email and files
+- VPN and network resources
+- Connected accounts
+
+**Do not delay** — the first minutes after credential exposure are critical.
+
+**Do you need help with anything else related to this incident, such as reporting the phishing email details?**
+
+Session: session-775041d4-193c-472e-98de-6c85bc63b325-1789282001
+To resume: agentcore invoke --session-id session-775041d4-193c-472e-98de-6c85bc63b325-1789282001
+Log: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-itassistant-20260913-064645.log
+
+
+⏳ 轮询 aws/spans，等待 5 条含检索 trace 落库并索引（最多 150s）...
+    [10 s] 已索引含检索 trace: 2/5
+    [20 s] 已索引含检索 trace: 2/5
+    [30 s] 已索引含检索 trace: 2/5
+    [40 s] 已索引含检索 trace: 2/5
+    [50 s] 已索引含检索 trace: 2/5
+    [60 s] 已索引含检索 trace: 2/5
+    [70 s] 已索引含检索 trace: 2/5
+    [80 s] 已索引含检索 trace: 2/5
+    [90 s] 已索引含检索 trace: 2/5
+    [100 s] 已索引含检索 trace: 2/5
+    [110 s] 已索引含检索 trace: 2/5
+    [120 s] 已索引含检索 trace: 2/5
+    [130 s] 已索引含检索 trace: 2/5
+    [140 s] 已索引含检索 trace: 2/5
+    [150 s] 已索引含检索 trace: 2/5
+  ⚠️  超时（仅 2/5 条就绪），继续评估已就绪的部分。
+
+🔎 取最近 5 条含检索的 trace...
+    - 6aa646bc5dd07477252467ae4e6f4085|session-6dd89447-7bba-45d2-b148-4c85f37d68b1-1789281976
+    - 6aa646a93c511f7b291656480518c71a|session-fedd9db9-17f0-4f9d-a990-b18a242a7d26-1789281955
+
+═══ THELMA (RAG quality) — 5 条 trace ═══
+
+🔬 THELMA — trace #1 6aa646bc5dd07477
+  Score:    trace=6aa646bc5dd07477 value=0.6 [Fail]
+     THELMA 7 维 (query: VPN access personal devices iPad BYOD): GR(接地/防幻觉)=0.6 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.83 | SQC(源覆盖)=0.33 | RP(响应精度)=1.00 | RQC(响应覆盖)=0.67 | SD(去重)=0.61. 诊断: 无
+
+🔬 THELMA — trace #2 6aa646a93c511f7b
+  Score:    trace=6aa646a93c511f7b value=0.375 [Fail]
+     THELMA 7 维 (query: P2 priority SLA response time acknowledg): GR(接地/防幻觉)=0.375 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.10 | SQC(源覆盖)=1.00 | RP(响应精度)=0.25 | RQC(响应覆盖)=1.00 | SD(去重)=0.76. 诊断: RP↓ SP1↑->Prompt or Source chunking
+
+═══ Mind the Goal (GSR) — 对应 session（去重）═══
+
+🔬 Mind the Goal — session #1 session-6dd89447-7bba-45
+  Score:    trace=? value=1 [Pass]
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #2 session-fedd9db9-17f0-4f
+  Score:    trace=? value=1 [Pass]
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+✅ Evaluation complete
+
+💰 Step 3: 对比模型的成本与延迟...
+   （注意：11 默认用 Nova 2 Lite 单价；对比模型单价不同，可用 PRICE_IN/PRICE_OUT 覆盖）
+=========================================
+Phase 6: 成本与延迟（运营指标）
+=========================================
+  模型: global.anthropic.claude-haiku-4-5-20251001-v1:0
+  单价: 输入 $1 / 1M  |  输出 $5 / 1M  （$/1M tokens，请核对官网）
+
+🔎 取最近 3 条含检索的 trace...
+
+  Trace                   延迟(s)      输入token      输出token      成本(USD)
+  --------------------------------------------------------------------
+  6aa646bc5dd07477         7.81        13911          981     0.018816
+  6aa646a93c511f7b        13.38        23178         2121     0.033783
+  --------------------------------------------------------------------
+  均值/合计                   10.60        18544         1551     0.052599
+
+  ▸ 平均每次回答：延迟 10.60s，成本 $0.026299
+  ▸ 2 次合计成本：$0.052599
+
+✅ 成本与延迟统计完成
+
+ℹ️  若 token 列全是 0：说明你这套 span 的 token 字段键名与脚本候选不符。
+    跑一下下面这条看真实字段名，再按需调整脚本里的候选键：
+    aws logs filter-log-events --region us-west-2 --log-group-name aws/spans \
+      --start-time $(( ($(date +%s) - 3600) * 1000 )) \
+      --filter-pattern '"gen_ai"' --query 'events[0].message' --output text | jq .
+
+=========================================
+✅ 对比数据已产出（退出时模型自动还原为基线）
+=========================================
+
+怎么读：把上面对比模型的 THELMA 分数 / 延迟 / 成本，与 Phase 4 基线
+（content 063 的表，us.amazon.nova-2-lite-v1:0）并排比：
+  - 质量分掉了多少？（GR / Pass 率）   - 省了多少钱、快了多少？
+质量基本不掉而成本下降 → 换便宜模型划算；质量明显下滑 → 贵模型的钱花得值。
+这就是用数据做模型选型，而非拍脑袋。
+
+♻️  还原模型回 us.amazon.nova-2-lite-v1:0 并重新部署...
+Next: agentcore invoke | agentcore status
+
+Log: agentcore/.cli/logs/deploy/deploy-20260913-065052.log
+  ✅ 已还原为基线模型

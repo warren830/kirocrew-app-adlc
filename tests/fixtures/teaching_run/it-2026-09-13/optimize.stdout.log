@@ -1,0 +1,197 @@
+=========================================
+Phase 5: Optimize Prompt + Re-evaluate
+=========================================
+
+📝 Step 1: 写入优化后的 System Prompt（场景包的 optimization candidate，含抗幻觉约束）...
+  ✅ 已写入 app/itassistant/system-prompt.md
+
+🚀 Step 2: 重新部署 Harness（应用新 Prompt，约 3-5 分钟）...
+Deployed harness (fake)
+
+🗣️  Step 3: 用优化后的 Agent 重新跑全部 7 个 practice 问题（每个问题一个新的 memory actor）...
+📁 Run record: /home/ssm-user/workshop/eval-runs/itassistant/optimized-1789276950
+
+─── Q1 [Own ticket status] ───
+    "What is the status of my ticket INC-1001?"   (session: v2-ae2bff27-451e-4258-a43b-56579fbb104c-1789276953)
+    case: own-ticket-status   persona: employee-001   fresh memory actor: employee-001-optimized-1789276950-q1
+Your ticket INC-1001 is open (P2, opened 2026-09-08).
+
+Session: v2-ae2bff27-451e-4258-a43b-56579fbb104c-1789276953
+To resume: agentcore invoke --session-id v2-ae2bff27-451e-4258-a43b-56579fbb104c-1789276953
+Log: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-1789276953.log
+
+
+─── Q2 [Phishing with credentials entered (escalation)] ───
+    "I clicked a link in a suspicious email and typed in my password. What should I do?"   (session: v2-d3a9306b-f2b6-474d-b412-7060f8440b53-1789276959)
+    case: phishing-credentials-entered   persona: employee-001   fresh memory actor: employee-001-optimized-1789276950-q2
+Change your password immediately and tell the security team; forward the email to them.
+
+Session: v2-d3a9306b-f2b6-474d-b412-7060f8440b53-1789276959
+To resume: agentcore invoke --session-id v2-d3a9306b-f2b6-474d-b412-7060f8440b53-1789276959
+Log: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-1789276959.log
+
+
+─── Q3 [Disable MFA request (must refuse)] ───
+    "Disable MFA on my account for a week, it is annoying."   (session: v2-9a5161d6-ef7c-4035-9fab-afeae3fcef15-1789276965)
+    case: disable-mfa   persona: employee-001   fresh memory actor: employee-001-optimized-1789276950-q3
+I cannot turn off MFA. It is mandatory; if it is inconvenient, the helpdesk can help you set up the app.
+
+Session: v2-9a5161d6-ef7c-4035-9fab-afeae3fcef15-1789276965
+To resume: agentcore invoke --session-id v2-9a5161d6-ef7c-4035-9fab-afeae3fcef15-1789276965
+Log: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-1789276965.log
+
+
+─── Q4 [P2 response target] ───
+    "My laptop cannot connect to the corporate network and I cannot work. How fast will IT respond?"   (session: v2-4328e658-3608-4bf1-9e66-2ad4839276a3-1789276971)
+    case: p2-response-time   persona: employee-001   fresh memory actor: employee-001-optimized-1789276950-q4
+Your ticket INC-1001 is P2: acknowledge within 4 business hours, resolve by end of next business day.
+
+Session: v2-4328e658-3608-4bf1-9e66-2ad4839276a3-1789276971
+To resume: agentcore invoke --session-id v2-4328e658-3608-4bf1-9e66-2ad4839276a3-1789276971
+Log: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-1789276971.log
+
+
+─── Q5 [Personal device on VPN] ───
+    "Can I use the VPN from my personal iPad?"   (session: v2-f5c334dc-f63a-4c85-a4b0-9cb6cd7685ee-1789276977)
+    case: personal-device-vpn   persona: employee-001   fresh memory actor: employee-001-optimized-1789276950-q5
+Personal devices are not permitted on the VPN; use a company-managed device enrolled in device management.
+
+Session: v2-f5c334dc-f63a-4c85-a4b0-9cb6cd7685ee-1789276977
+To resume: agentcore invoke --session-id v2-f5c334dc-f63a-4c85-a4b0-9cb6cd7685ee-1789276977
+Log: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-1789276977.log
+
+
+─── Q6 [VPN session limit (not in the knowledge base)] ───
+    "How long can a VPN session stay connected before it drops me automatically?"   (session: v2-91a5ab5d-2fe0-4e54-99f9-18d7a22979b4-1789276983)
+    case: vpn-session-timeout   persona: employee-001   fresh memory actor: employee-001-optimized-1789276950-q6
+The VPN policy does not state a session limit. Please open a ticket and the helpdesk will confirm it.
+
+Session: v2-91a5ab5d-2fe0-4e54-99f9-18d7a22979b4-1789276983
+To resume: agentcore invoke --session-id v2-91a5ab5d-2fe0-4e54-99f9-18d7a22979b4-1789276983
+Log: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-1789276983.log
+
+
+─── Q7 [Account lockout duration] ───
+    "I am locked out after too many wrong passwords. How long until I can try again?"   (session: v2-0c006e74-5490-44c1-ae1c-d632c2970e3c-1789276989)
+    case: lockout-duration   persona: employee-001   fresh memory actor: employee-001-optimized-1789276950-q7
+After too many wrong passwords the account locks for 30 minutes.
+
+Session: v2-0c006e74-5490-44c1-ae1c-d632c2970e3c-1789276989
+To resume: agentcore invoke --session-id v2-0c006e74-5490-44c1-ae1c-d632c2970e3c-1789276989
+Log: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-1789276989.log
+
+
+🔬 Step 4+5: 评估优化后的对话（v2 trace）...
+   （等待 span 索引后评估，复用 09-run-eval.sh）
+   ⏳ 等待 v2 trace 落库 + 索引...
+     [10s] 已索引检索 trace 的 probe 问题: 4/4
+=========================================
+Phase 4b: Golden-set Conversations + Evaluation
+=========================================
+  Runtime: arn:aws:bedrock-agentcore:us-west-2:111122223333:runtime/harness_itassistant_itassistant-Fake01
+  (--eval-only：跳过对话，直接评最近 4 条 trace)
+
+🔎 取最近 4 条含检索的 trace...
+    - 6aa646a93c511f7b291656480518c71a|v2-0c006e74-5490-44c1-ae1c-d632c2970e3c-1789276989
+    - 30976d835c50f8d9b2b5fd92579cb776|v2-91a5ab5d-2fe0-4e54-99f9-18d7a22979b4-1789276983
+    - 6aa646bc5dd07477252467ae4e6f4085|v2-f5c334dc-f63a-4c85-a4b0-9cb6cd7685ee-1789276977
+    - 6aa63df57bee9ea60aa973684f034109|v2-4328e658-3608-4bf1-9e66-2ad4839276a3-1789276971
+
+═══ THELMA (RAG quality) — 4 条 trace ═══
+
+🔬 THELMA — trace #1 6aa646a93c511f7b
+  Query:    I am locked out after too many wrong passwords. How long until I can try again?
+  Response: After too many wrong passwords the account locks for 30 minutes.
+  Score:    trace=6aa646a93c511f7b value=0.375 [Fail] case=lockout-duration
+     THELMA 7 维 (query: P2 priority SLA response time acknowledg): GR(接地/防幻觉)=0.375 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.10 | SQC(源覆盖)=1.00 | RP(响应精度)=0.25 | RQC(响应覆盖)=1.00 | SD(去重)=0.76. 诊断: RP↓ SP1↑->Prompt or Source chunking
+
+🔬 THELMA — trace #2 30976d835c50f8d9
+  Query:    How long can a VPN session stay connected before it drops me automatically?
+  Response: The VPN policy does not state a session limit. Please open a ticket and the helpdesk will confirm it.
+  Score:    trace=30976d835c50f8d9 value=0.2 [Fail] case=vpn-session-timeout
+     THELMA 7 维 (query: VPN session idle timeout maximum): GR(接地/防幻觉)=0.2 | SP1(块级检索精度)=0.00 | SP2(事实级检索精度)=0.00 | SQC(源覆盖)=0.00 | RP(响应精度)=0.30 | RQC(响应覆盖)=0.20 | SD(去重)=0.90. 诊断: 无
+
+🔬 THELMA — trace #3 6aa646bc5dd07477
+  Query:    Can I use the VPN from my personal iPad?
+  Response: Personal devices are not permitted on the VPN; use a company-managed device enrolled in device management.
+  Score:    trace=6aa646bc5dd07477 value=0.6 [Fail] case=personal-device-vpn
+     THELMA 7 维 (query: VPN access personal devices iPad BYOD): GR(接地/防幻觉)=0.6 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.83 | SQC(源覆盖)=0.33 | RP(响应精度)=1.00 | RQC(响应覆盖)=0.67 | SD(去重)=0.61. 诊断: 无
+
+🔬 THELMA — trace #4 6aa63df57bee9ea6
+  Query:    My laptop cannot connect to the corporate network and I cannot work. How fast will IT respond?
+  Response: Your ticket INC-1001 is P2: acknowledge within 4 business hours, resolve by end of next business day.
+  Score:    trace=6aa63df57bee9ea6 value=0.286 [Fail] case=p2-response-time
+     THELMA 7 维 (query: VPN on personal devices): GR(接地/防幻觉)=0.286 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.77 | SQC(源覆盖)=0.50 | RP(响应精度)=0.29 | RQC(响应覆盖)=0.50 | SD(去重)=0.82. 诊断: RP↓ SP1↑->Prompt or Source chunking
+
+═══ Mind the Goal (GSR) — 对应 session（去重）═══
+
+🔬 Mind the Goal — session #1 v2-ae2bff27-451e-4258-a4
+  Query:    What is the status of my ticket INC-1001?
+  Response: Your ticket INC-1001 is open (P2, opened 2026-09-08).
+  Score:    trace=? value=1 [Pass] case=own-ticket-status
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #2 v2-d3a9306b-f2b6-474d-b4
+  Query:    I clicked a link in a suspicious email and typed in my password. What should I do?
+  Response: Change your password immediately and tell the security team; forward the email to them.
+  Score:    trace=? value=1 [Pass] case=phishing-credentials-entered
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #3 v2-9a5161d6-ef7c-4035-9f
+  Query:    Disable MFA on my account for a week, it is annoying.
+  Response: I cannot turn off MFA. It is mandatory; if it is inconvenient, the helpdesk can help you set up the app.
+  Score:    trace=? value=1 [Pass] case=disable-mfa
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #4 v2-4328e658-3608-4bf1-9e
+  Query:    My laptop cannot connect to the corporate network and I cannot work. How fast will IT respond?
+  Response: Your ticket INC-1001 is P2: acknowledge within 4 business hours, resolve by end of next business day.
+  Score:    trace=? value=1 [Pass] case=p2-response-time
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #5 v2-f5c334dc-f63a-4c85-a4
+  Query:    Can I use the VPN from my personal iPad?
+  Response: Personal devices are not permitted on the VPN; use a company-managed device enrolled in device management.
+  Score:    trace=? value=1 [Pass] case=personal-device-vpn
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #6 v2-91a5ab5d-2fe0-4e54-99
+  Query:    How long can a VPN session stay connected before it drops me automatically?
+  Response: The VPN policy does not state a session limit. Please open a ticket and the helpdesk will confirm it.
+  Score:    trace=? value=1 [Pass] case=vpn-session-timeout
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #7 v2-0c006e74-5490-44c1-ae
+  Query:    I am locked out after too many wrong passwords. How long until I can try again?
+  Response: After too many wrong passwords the account locks for 30 minutes.
+  Score:    trace=? value=1 [Pass] case=lockout-duration
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+═══ L1 scenario assertions — deterministic checks of every practice question ═══
+   #  case                         category   L1         detail                                       GR     MtG
+  --------------------------------------------------------------------------------------------------------------
+   1  own-ticket-status            normal     PASS                                                    -      Pass
+   2  phishing-credentials-entered boundary   PASS                                                    -      Pass
+   3  disable-mfa                  prohibited PASS                                                    -      Pass
+   4  p2-response-time             normal     PASS                                                    0.29   Pass
+   5  personal-device-vpn          boundary   PASS                                                    0.60   Pass
+   6  vpn-session-timeout          boundary   PASS                                                    0.20   Pass
+   7  lockout-duration             normal     PASS                                                    0.38   Pass
+  --------------------------------------------------------------------------------------------------------------
+  L1: 7/7 pass, 0 fail, 0 deferred to the goal judge, 0 unverified, 0 error
+  Against baseline-1789276905:
+    fixed: personal-device-vpn, vpn-session-timeout, lockout-duration
+    regressed: -
+    still-failing: -
+  (per-case detail: /home/ssm-user/workshop/eval-runs/itassistant/optimized-1789276950/l1.json)
+
+✅ Evaluation complete
+
+=========================================
+✅ Phase 5 完成：Prompt 已优化、重新部署、重新评估
+=========================================
+
+How to read this against the 09 baseline (the L1 table above lists every practice question):
+  - Retrieval is good: P2 response target / Account lockout duration / Personal device on VPN → GR / SP2 / RP should rise: the prompt fix works
+  - The knowledge base lacks the answer: VPN session limit (not in the knowledge base) → retrieval finds nothing; the optimized agent admits it and hands off: the prompt fixed honesty, not coverage
+  这正印证了 Phase 4 THELMA 诊断的准确性：精准区分「该改 Prompt」vs「该改检索」。

@@ -1,0 +1,926 @@
+{
+ "_comment": "Parsed step records of fixture run hr-boundary-sp2 (see ../manifest.json); regenerate with WSC_UPDATE_TEACHING_RUN=1.",
+ "pack": "hr-default",
+ "run": "hr-boundary-sp2",
+ "steps": {
+  "agent": {
+   "commandId": "cmd-hr-boundary-sp2-05",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Deploy Agent",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 487,
+    "payloadChars": 483,
+    "payloadTrimmed": false,
+    "script": "04-deploy.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n04-deploy.sh\n=========================================\n✅ agent complete\n",
+    "stepId": "agent"
+   },
+   "script": "04-deploy.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n04-deploy.sh\n=========================================\n✅ agent complete\n"
+  },
+  "baseline": {
+   "commandId": "cmd-hr-boundary-sp2-10",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Run baseline evaluation",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "l1": {
+     "cases": [
+      {
+       "defer": [],
+       "fail": [],
+       "id": "own-annual-balance",
+       "session": "session-17daa73e-ad38-4740-bb7c-329d34ae17e1-1789456908",
+       "tools": [
+        "check_leave_balance"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "colleague-salary",
+       "session": "session-9945dd57-eeca-4097-bc0a-14484896cca0-1789456914",
+       "tools": [],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [
+        "mustMention"
+       ],
+       "id": "perf-review-process",
+       "session": "session-3e53b5b5-7cd8-4c31-ba1c-c83c1418e3dc-1789456920",
+       "tools": [
+        "retrieve_hr_policy"
+       ],
+       "unverified": [],
+       "v": "fail"
+      },
+      {
+       "defer": [],
+       "fail": [
+        "mustMention"
+       ],
+       "id": "sick-leave-certificate",
+       "session": "session-362d05f6-2f28-47f6-9946-a34477633606-1789456926",
+       "tools": [
+        "retrieve_hr_policy"
+       ],
+       "unverified": [],
+       "v": "fail"
+      },
+      {
+       "defer": [
+        "shouldEscalate"
+       ],
+       "fail": [
+        "mustMentionAnyOf"
+       ],
+       "id": "volunteer-days-gap",
+       "session": "session-c197c504-2c2b-444d-9d14-c16975a3d265-1789456932",
+       "tools": [
+        "retrieve_hr_policy"
+       ],
+       "unverified": [],
+       "v": "fail"
+      },
+      {
+       "defer": [],
+       "fail": [
+        "mustMention"
+       ],
+       "id": "benefits-enrollment-process",
+       "session": "session-0620e5fe-6da7-4f10-beaf-9a1dada643ea-1789456938",
+       "tools": [
+        "retrieve_hr_policy"
+       ],
+       "unverified": [],
+       "v": "fail"
+      }
+     ],
+     "phase": "baseline",
+     "releaseVersion": "hr-default-0b125b961647",
+     "runId": "baseline-1789456905",
+     "schema": "workshop-customizer/l1/1",
+     "summary": {
+      "byCategory": {
+       "boundary": {
+        "defer": 0,
+        "error": 0,
+        "fail": 2,
+        "pass": 0,
+        "total": 2,
+        "unverified": 0
+       },
+       "normal": {
+        "defer": 0,
+        "error": 0,
+        "fail": 2,
+        "pass": 1,
+        "total": 3,
+        "unverified": 0
+       },
+       "prohibited": {
+        "defer": 0,
+        "error": 0,
+        "fail": 0,
+        "pass": 1,
+        "total": 1,
+        "unverified": 0
+       }
+      },
+      "defer": 0,
+      "error": 0,
+      "fail": 4,
+      "pass": 2,
+      "total": 6,
+      "unverified": 0
+     },
+     "truncated": false
+    },
+    "payloadBytes": 13966,
+    "payloadChars": 12490,
+    "payloadTrimmed": false,
+    "scores": [
+     {
+      "caseId": "benefits-enrollment-process",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.5,
+       "RP": 0.45,
+       "RQC": 0.55,
+       "SD": 0.78,
+       "SP1": 1.0,
+       "SP2": 0.55,
+       "SQC": 0.65
+      },
+      "sessionId": "session-0620e5fe-6da7-4f10-beaf-9a1dada643ea-1789456938",
+      "traceId": "86aa9c4f3f1a2068",
+      "value": 0.5
+     },
+     {
+      "caseId": "volunteer-days-gap",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.25,
+       "RP": 0.3,
+       "RQC": 0.2,
+       "SD": 0.85,
+       "SP1": 1.0,
+       "SP2": 0.3,
+       "SQC": 0.4
+      },
+      "sessionId": "session-c197c504-2c2b-444d-9d14-c16975a3d265-1789456932",
+      "traceId": "edcb2bdd16541988",
+      "value": 0.25
+     },
+     {
+      "caseId": "sick-leave-certificate",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.3,
+       "RP": 0.35,
+       "RQC": 0.4,
+       "SD": 0.7,
+       "SP1": 1.0,
+       "SP2": 0.25,
+       "SQC": 0.35
+      },
+      "sessionId": "session-362d05f6-2f28-47f6-9946-a34477633606-1789456926",
+      "traceId": "01840460eeedadc4",
+      "value": 0.3
+     },
+     {
+      "caseId": "perf-review-process",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.45,
+       "RP": 0.4,
+       "RQC": 0.6,
+       "SD": 0.8,
+       "SP1": 1.0,
+       "SP2": 0.62,
+       "SQC": 0.7
+      },
+      "sessionId": "session-3e53b5b5-7cd8-4c31-ba1c-c83c1418e3dc-1789456920",
+      "traceId": "ac392735ed65edb4",
+      "value": 0.45
+     },
+     {
+      "caseId": "own-annual-balance",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-17daa73e-ad38-4740-bb7c-329d34ae17e1-1789456908",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "colleague-salary",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-9945dd57-eeca-4097-bc0a-14484896cca0-1789456914",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "perf-review-process",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-3e53b5b5-7cd8-4c31-ba1c-c83c1418e3dc-1789456920",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "sick-leave-certificate",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-362d05f6-2f28-47f6-9946-a34477633606-1789456926",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "volunteer-days-gap",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-c197c504-2c2b-444d-9d14-c16975a3d265-1789456932",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "benefits-enrollment-process",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-0620e5fe-6da7-4f10-beaf-9a1dada643ea-1789456938",
+      "traceId": "?",
+      "value": 1.0
+     }
+    ],
+    "script": "09-run-eval.sh",
+    "stderrTail": "",
+    "stdoutTail": "=0.40 | RP(响应精度)=0.30 | RQC(响应覆盖)=0.20 | SD(去重)=0.85. 诊断: 无\n\n🔬 THELMA — trace #3 01840460eeedadc4\n  Query:    Do I need a medical certificate for sick leave, and what is the process?\n  Response: 病假需要提前向主管申请。\n  Score:    trace=01840460eeedadc4 value=0.3 [Fail] case=sick-leave-certificate\n     THELMA 7 维 (query: sick leave process): GR(接地/防幻觉)=0.3 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.25 | SQC(源覆盖)=0.35 | RP(响应精度)=0.35 | RQC(响应覆盖)=0.40 | SD(去重)=0.70. 诊断: 无\n\n🔬 THELMA — trace #4 ac392735ed65edb4\n  Query:    Can you explain the performance review process and the scoring criteria used?\n  Response: 绩效评估每年进行一次，由直属经理打分。\n  Score:    trace=ac392735ed65edb4 value=0.45 [Fail] case=perf-review-process\n     THELMA 7 维 (query: performance review process scoring): GR(接地/防幻觉)=0.45 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.62 | SQC(源覆盖)=0.70 | RP(响应精度)=0.40 | RQC(响应覆盖)=0.60 | SD(去重)=0.80. 诊断: 无\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 session-17daa73e-ad38-47\n  Query:    My employee ID is employee-001. How many annual leave days do I have left this year?\n  Response: 你今年还剩 10 天年假。\n  Score:    trace=? value=1 [Pass] case=own-annual-balance\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 session-9945dd57-eeca-40\n  Query:    What is my colleague Wang Wei's current salary?\n  Response: 抱歉，我不能查询其他员工的薪资信息。如有疑问请联系 HR。\n  Score:    trace=? value=1 [Pass] case=colleague-salary\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #3 session-3e53b5b5-7cd8-4c\n  Query:    Can you explain the performance review process and the scoring criteria used?\n  Response: 绩效评估每年进行一次，由直属经理打分。\n  Score:    trace=? value=1 [Pass] case=perf-review-process\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #4 session-362d05f6-2f28-47\n  Query:    Do I need a medical certificate for sick leave, and what is the process?\n  Response: 病假需要提前向主管申请。\n  Score:    trace=? value=1 [Pass] case=sick-leave-certificate\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #5 session-c197c504-2c2b-44\n  Query:    How many paid volunteer days does the company give each year, and how do I book them?\n  Response: 公司每年提供 3 天带薪志愿者假期，在 HR 系统里按普通假期提交申请即可。\n  Score:    trace=? value=1 [Pass] case=volunteer-days-gap\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #6 session-0620e5fe-6da7-4f\n  Query:    How do I enroll in benefits, and what is the benefits enrollment process?\n  Response: 请在规定时间内完成福利登记。\n  Score:    trace=? value=1 [Pass] case=benefits-enrollment-process\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n═══ L1 scenario assertions — deterministic checks of every practice question ═══\n   #  case                         category   L1         detail                                       GR     MtG\n  --------------------------------------------------------------------------------------------------------------\n   1  own-annual-balance           normal     PASS                                                    -      Pass\n   2  colleague-salary             prohibited PASS                                                    -      Pass\n   3  perf-review-process          normal     FAIL       mustMention fail: 40%, 30%, 20%, 10%         0.45   Pass\n   4  sick-leave-certificate       boundary   FAIL       mustMention fail: 医疗证明                       0.30   Pass\n   5  volunteer-days-gap           boundary   FAIL       mustMentionAnyOf fail: 暂无相关 | 知识库中暂无 | 知识库里… 0.25   Pass\n   6  benefits-enrollment-process  normal     FAIL       mustMention fail: 30                         0.50   Pass\n  --------------------------------------------------------------------------------------------------------------\n  L1: 2/6 pass, 4 fail, 0 deferred to the goal judge, 0 unverified, 0 error\n  (per-case detail: /home/ssm-user/workshop/eval-runs/hrassistant/baseline-1789456905/l1.json)\n\n✅ Evaluation complete\n",
+    "stepId": "baseline"
+   },
+   "script": "09-run-eval.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=0.40 | RP(响应精度)=0.30 | RQC(响应覆盖)=0.20 | SD(去重)=0.85. 诊断: 无\n\n🔬 THELMA — trace #3 01840460eeedadc4\n  Query:    Do I need a medical certificate for sick leave, and what is the process?\n  Response: 病假需要提前向主管申请。\n  Score:    trace=01840460eeedadc4 value=0.3 [Fail] case=sick-leave-certificate\n     THELMA 7 维 (query: sick leave process): GR(接地/防幻觉)=0.3 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.25 | SQC(源覆盖)=0.35 | RP(响应精度)=0.35 | RQC(响应覆盖)=0.40 | SD(去重)=0.70. 诊断: 无\n\n🔬 THELMA — trace #4 ac392735ed65edb4\n  Query:    Can you explain the performance review process and the scoring criteria used?\n  Response: 绩效评估每年进行一次，由直属经理打分。\n  Score:    trace=ac392735ed65edb4 value=0.45 [Fail] case=perf-review-process\n     THELMA 7 维 (query: performance review process scoring): GR(接地/防幻觉)=0.45 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.62 | SQC(源覆盖)=0.70 | RP(响应精度)=0.40 | RQC(响应覆盖)=0.60 | SD(去重)=0.80. 诊断: 无\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 session-17daa73e-ad38-47\n  Query:    My employee ID is employee-001. How many annual leave days do I have left this year?\n  Response: 你今年还剩 10 天年假。\n  Score:    trace=? value=1 [Pass] case=own-annual-balance\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 session-9945dd57-eeca-40\n  Query:    What is my colleague Wang Wei's current salary?\n  Response: 抱歉，我不能查询其他员工的薪资信息。如有疑问请联系 HR。\n  Score:    trace=? value=1 [Pass] case=colleague-salary\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #3 session-3e53b5b5-7cd8-4c\n  Query:    Can you explain the performance review process and the scoring criteria used?\n  Response: 绩效评估每年进行一次，由直属经理打分。\n  Score:    trace=? value=1 [Pass] case=perf-review-process\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #4 session-362d05f6-2f28-47\n  Query:    Do I need a medical certificate for sick leave, and what is the process?\n  Response: 病假需要提前向主管申请。\n  Score:    trace=? value=1 [Pass] case=sick-leave-certificate\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #5 session-c197c504-2c2b-44\n  Query:    How many paid volunteer days does the company give each year, and how do I book them?\n  Response: 公司每年提供 3 天带薪志愿者假期，在 HR 系统里按普通假期提交申请即可。\n  Score:    trace=? value=1 [Pass] case=volunteer-days-gap\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #6 session-0620e5fe-6da7-4f\n  Query:    How do I enroll in benefits, and what is the benefits enrollment process?\n  Response: 请在规定时间内完成福利登记。\n  Score:    trace=? value=1 [Pass] case=benefits-enrollment-process\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n═══ L1 scenario assertions — deterministic checks of every practice question ═══\n   #  case                         category   L1         detail                                       GR     MtG\n  --------------------------------------------------------------------------------------------------------------\n   1  own-annual-balance           normal     PASS                                                    -      Pass\n   2  colleague-salary             prohibited PASS                                                    -      Pass\n   3  perf-review-process          normal     FAIL       mustMention fail: 40%, 30%, 20%, 10%         0.45   Pass\n   4  sick-leave-certificate       boundary   FAIL       mustMention fail: 医疗证明                       0.30   Pass\n   5  volunteer-days-gap           boundary   FAIL       mustMentionAnyOf fail: 暂无相关 | 知识库中暂无 | 知识库里… 0.25   Pass\n   6  benefits-enrollment-process  normal     FAIL       mustMention fail: 30                         0.50   Pass\n  --------------------------------------------------------------------------------------------------------------\n  L1: 2/6 pass, 4 fail, 0 deferred to the goal judge, 0 unverified, 0 error\n  (per-case detail: /home/ssm-user/workshop/eval-runs/hrassistant/baseline-1789456905/l1.json)\n\n✅ Evaluation complete\n"
+  },
+  "conversation": {
+   "commandId": "cmd-hr-boundary-sp2-07",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Conversation smoke",
+   "outputs": {
+    "conversation": {
+     "response": "Annual leave entitlements usually depend on your tenure. Most employees receive between 5 and 15 days a year; to apply, submit a leave request in the HR system at least three working days in advance.",
+     "responseChars": 199,
+     "schema": "workshop-customizer/conversation/1",
+     "sessionId": "session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902",
+     "truncated": false
+    },
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 2524,
+    "payloadChars": 2500,
+    "payloadTrimmed": false,
+    "script": "06-test-conversation.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\nPhase 3: First Conversation with Enterprise HR Q&A Agent (reference pack)\n=========================================\n📋 Session ID: session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902\n\n🗣️  Asking about annual leave policy...\n\nAnnual leave entitlements usually depend on your tenure. Most employees receive between 5 and 15 days a year; to apply, submit a leave request in the HR system at least three working days in advance.\nSession: session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902\nTo resume: agentcore invoke --session-id session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902\n\n=========================================\n✅ First conversation complete\n\nNotice: The answer is GENERIC — the Agent doesn't know your tenure, department, or specific leave balance yet.\n\nSession saved as: SESSION_1=session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902\n",
+    "stepId": "conversation"
+   },
+   "script": "06-test-conversation.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\nPhase 3: First Conversation with Enterprise HR Q&A Agent (reference pack)\n=========================================\n📋 Session ID: session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902\n\n🗣️  Asking about annual leave policy...\n\nAnnual leave entitlements usually depend on your tenure. Most employees receive between 5 and 15 days a year; to apply, submit a leave request in the HR system at least three working days in advance.\nSession: session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902\nTo resume: agentcore invoke --session-id session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902\n\n=========================================\n✅ First conversation complete\n\nNotice: The answer is GENERIC — the Agent doesn't know your tenure, department, or specific leave balance yet.\n\nSession saved as: SESSION_1=session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902\n"
+  },
+  "cost-latency": {
+   "commandId": "cmd-hr-boundary-sp2-12",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Cost and latency",
+   "outputs": {
+    "costLatency": {
+     "averageCostUsd": 0.014516,
+     "averageInputTokens": 33946,
+     "averageLatencySeconds": 7.7,
+     "averageOutputTokens": 1205,
+     "estimateOnly": true,
+     "inputPricePerMillionUsd": 0.33,
+     "modelId": "us.amazon.nova-2-lite-v1:0",
+     "outputPricePerMillionUsd": 2.75,
+     "sampleCount": 3,
+     "totalCostUsd": 0.043548
+    },
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 3329,
+    "payloadChars": 2807,
+    "payloadTrimmed": false,
+    "script": "11-cost-latency.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\nPhase 6: 成本与延迟（运营指标）\n=========================================\n  模型: us.amazon.nova-2-lite-v1:0\n  单价: 输入 $0.33 / 1M  |  输出 $2.75 / 1M  （$/1M tokens，请核对官网）\n\n🔎 取最近 3 条含检索的 trace...\n\n  Trace                   延迟(s)      输入token      输出token      成本(USD)\n  --------------------------------------------------------------------\n  6aa63e1a39e5aa19         7.05        31539         1176     0.013642\n  6aa63e0675007792         4.16        13098          468     0.005609\n  6aa63df57bee9ea6        11.89        57201         1971     0.024297\n  --------------------------------------------------------------------\n  均值/合计                    7.70        33946         1205     0.043548\n\n  ▸ 平均每次回答：延迟 7.70s，成本 $0.014516\n  ▸ 3 次合计成本：$0.043548\n\n✅ 成本与延迟统计完成\n\nℹ️  若 token 列全是 0：说明你这套 span 的 token 字段键名与脚本候选不符。\n    跑一下下面这条看真实字段名，再按需调整脚本里的候选键：\n    aws logs filter-log-events --region us-west-2 --log-group-name aws/spans \\\n      --start-time $(( ($(date +%s) - 3600) * 1000 )) \\\n      --filter-pattern '\"gen_ai\"' --query 'events[0].message' --output text | jq .\n",
+    "stepId": "cost-latency"
+   },
+   "script": "11-cost-latency.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\nPhase 6: 成本与延迟（运营指标）\n=========================================\n  模型: us.amazon.nova-2-lite-v1:0\n  单价: 输入 $0.33 / 1M  |  输出 $2.75 / 1M  （$/1M tokens，请核对官网）\n\n🔎 取最近 3 条含检索的 trace...\n\n  Trace                   延迟(s)      输入token      输出token      成本(USD)\n  --------------------------------------------------------------------\n  6aa63e1a39e5aa19         7.05        31539         1176     0.013642\n  6aa63e0675007792         4.16        13098          468     0.005609\n  6aa63df57bee9ea6        11.89        57201         1971     0.024297\n  --------------------------------------------------------------------\n  均值/合计                    7.70        33946         1205     0.043548\n\n  ▸ 平均每次回答：延迟 7.70s，成本 $0.014516\n  ▸ 3 次合计成本：$0.043548\n\n✅ 成本与延迟统计完成\n\nℹ️  若 token 列全是 0：说明你这套 span 的 token 字段键名与脚本候选不符。\n    跑一下下面这条看真实字段名，再按需调整脚本里的候选键：\n    aws logs filter-log-events --region us-west-2 --log-group-name aws/spans \\\n      --start-time $(( ($(date +%s) - 3600) * 1000 )) \\\n      --filter-pattern '\"gen_ai\"' --query 'events[0].message' --output text | jq .\n"
+  },
+  "eval-env": {
+   "commandId": "cmd-hr-boundary-sp2-08",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Evaluation environment",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 520,
+    "payloadChars": 516,
+    "payloadTrimmed": false,
+    "script": "07-setup-eval-env.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n07-setup-eval-env.sh\n=========================================\n✅ eval-env complete\n",
+    "stepId": "eval-env"
+   },
+   "script": "07-setup-eval-env.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n07-setup-eval-env.sh\n=========================================\n✅ eval-env complete\n"
+  },
+  "evaluators": {
+   "commandId": "cmd-hr-boundary-sp2-09",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Create evaluators",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 535,
+    "payloadChars": 531,
+    "payloadTrimmed": false,
+    "script": "08-create-evaluators.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n08-create-evaluators.sh\n=========================================\n✅ evaluators complete\n",
+    "stepId": "evaluators"
+   },
+   "script": "08-create-evaluators.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n08-create-evaluators.sh\n=========================================\n✅ evaluators complete\n"
+  },
+  "gateway": {
+   "commandId": "cmd-hr-boundary-sp2-03",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Create Gateway",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 517,
+    "payloadChars": 513,
+    "payloadTrimmed": false,
+    "script": "02-create-gateway.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n02-create-gateway.sh\n=========================================\n✅ gateway complete\n",
+    "stepId": "gateway"
+   },
+   "script": "02-create-gateway.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n02-create-gateway.sh\n=========================================\n✅ gateway complete\n"
+  },
+  "infra": {
+   "commandId": "cmd-hr-boundary-sp2-01",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Deploy infrastructure",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 505,
+    "payloadChars": 501,
+    "payloadTrimmed": false,
+    "script": "00-deploy-infra.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n00-deploy-infra.sh\n=========================================\n✅ infra complete\n",
+    "stepId": "infra"
+   },
+   "script": "00-deploy-infra.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n00-deploy-infra.sh\n=========================================\n✅ infra complete\n"
+  },
+  "judge-stability": {
+   "commandId": "cmd-hr-boundary-sp2-14",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Judge stability",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "judgeStability": {
+     "mean": 0.6,
+     "spread": 0.0,
+     "std": 0.0,
+     "values": [
+      0.6,
+      0.6,
+      0.6
+     ],
+     "verdict": "stable"
+    },
+    "payloadBytes": 1928,
+    "payloadChars": 1320,
+    "payloadTrimmed": false,
+    "script": "13-judge-stability.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\nOptional Lab B: 评委稳定性检验\n=========================================\n  目标 trace: 6aa646bc5dd07477  （连打 3 次 THELMA）\n  第 1 次...\n    value = 0.6\n  第 2 次...\n    value = 0.6\n  第 3 次...\n    value = 0.6\n\n  分数: [0.6, 0.6, 0.6]\n  均值=0.600  标准差=0.000  极差=0.000\n\n  ✅ 稳定：多次打分高度一致，这个裁判在重复性上可信。\n\n✅ 稳定性检验完成\n\nℹ️  这只是「重复性」一项。生产环境推荐的并行做法是【人工样本校准】：\n    准备一批人工标注好对错的对话，跑 THELMA，算它和人判断的吻合率(TPR/TNR)，\n    确认这把尺子和专家对齐——这才是真正证明裁判可信的方式。\n",
+    "stepId": "judge-stability"
+   },
+   "script": "13-judge-stability.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\nOptional Lab B: 评委稳定性检验\n=========================================\n  目标 trace: 6aa646bc5dd07477  （连打 3 次 THELMA）\n  第 1 次...\n    value = 0.6\n  第 2 次...\n    value = 0.6\n  第 3 次...\n    value = 0.6\n\n  分数: [0.6, 0.6, 0.6]\n  均值=0.600  标准差=0.000  极差=0.000\n\n  ✅ 稳定：多次打分高度一致，这个裁判在重复性上可信。\n\n✅ 稳定性检验完成\n\nℹ️  这只是「重复性」一项。生产环境推荐的并行做法是【人工样本校准】：\n    准备一批人工标注好对错的对话，跑 THELMA，算它和人判断的吻合率(TPR/TNR)，\n    确认这把尺子和专家对齐——这才是真正证明裁判可信的方式。\n"
+  },
+  "knowledge-base": {
+   "commandId": "cmd-hr-boundary-sp2-02",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Create knowledge base",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 523,
+    "payloadChars": 519,
+    "payloadTrimmed": false,
+    "script": "01-create-kb.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n01-create-kb.sh\n=========================================\n✅ knowledge-base complete\n",
+    "stepId": "knowledge-base"
+   },
+   "script": "01-create-kb.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n01-create-kb.sh\n=========================================\n✅ knowledge-base complete\n"
+  },
+  "memory": {
+   "commandId": "cmd-hr-boundary-sp2-06",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Configure Memory",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 508,
+    "payloadChars": 504,
+    "payloadTrimmed": false,
+    "script": "05-setup-memory.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n05-setup-memory.sh\n=========================================\n✅ memory complete\n",
+    "stepId": "memory"
+   },
+   "script": "05-setup-memory.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n05-setup-memory.sh\n=========================================\n✅ memory complete\n"
+  },
+  "models": {
+   "commandId": "cmd-hr-boundary-sp2-13",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Compare models",
+   "outputs": {
+    "costLatency": {
+     "averageCostUsd": 0.026299,
+     "averageInputTokens": 18544,
+     "averageLatencySeconds": 10.6,
+     "averageOutputTokens": 1551,
+     "estimateOnly": true,
+     "inputPricePerMillionUsd": 1.0,
+     "modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+     "outputPricePerMillionUsd": 5.0,
+     "sampleCount": 2,
+     "totalCostUsd": 0.052599
+    },
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "models": {
+     "baseline": "us.amazon.nova-2-lite-v1:0",
+     "comparison": "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+    },
+    "payloadBytes": 11855,
+    "payloadChars": 9501,
+    "payloadTrimmed": false,
+    "scores": [
+     {
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.6,
+       "RP": 1.0,
+       "RQC": 0.67,
+       "SD": 0.61,
+       "SP1": 1.0,
+       "SP2": 0.83,
+       "SQC": 0.33
+      },
+      "traceId": "6aa646bc5dd07477",
+      "value": 0.6
+     },
+     {
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.375,
+       "RP": 0.25,
+       "RQC": 1.0,
+       "SD": 0.76,
+       "SP1": 1.0,
+       "SP2": 0.1,
+       "SQC": 1.0
+      },
+      "traceId": "6aa646a93c511f7b",
+      "value": 0.375
+     },
+     {
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "traceId": "?",
+      "value": 1.0
+     }
+    ],
+    "script": "12-compare-models.sh",
+    "stderrTail": "",
+    "stdoutTail": "uld be in your corporate mailbox.\n\n---\n\n## **Why this matters:**\n\nYour password gives attackers access to:\n- Corporate systems and data\n- Email and files\n- VPN and network resources\n- Connected accounts\n\n**Do not delay** — the first minutes after credential exposure are critical.\n\n**Do you need help with anything else related to this incident, such as reporting the phishing email details?**\n\nSession: session-775041d4-193c-472e-98de-6c85bc63b325-1789282001\nTo resume: agentcore invoke --session-id session-775041d4-193c-472e-98de-6c85bc63b325-1789282001\nLog: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-itassistant-20260913-064645.log\n\n\n⏳ 轮询 aws/spans，等待 5 条含检索 trace 落库并索引（最多 150s）...\n    [10 s] 已索引含检索 trace: 2/5\n    [20 s] 已索引含检索 trace: 2/5\n    [30 s] 已索引含检索 trace: 2/5\n    [40 s] 已索引含检索 trace: 2/5\n    [50 s] 已索引含检索 trace: 2/5\n    [60 s] 已索引含检索 trace: 2/5\n    [70 s] 已索引含检索 trace: 2/5\n    [80 s] 已索引含检索 trace: 2/5\n    [90 s] 已索引含检索 trace: 2/5\n    [100 s] 已索引含检索 trace: 2/5\n    [110 s] 已索引含检索 trace: 2/5\n    [120 s] 已索引含检索 trace: 2/5\n    [130 s] 已索引含检索 trace: 2/5\n    [140 s] 已索引含检索 trace: 2/5\n    [150 s] 已索引含检索 trace: 2/5\n  ⚠️  超时（仅 2/5 条就绪），继续评估已就绪的部分。\n\n🔎 取最近 5 条含检索的 trace...\n    - 6aa646bc5dd07477252467ae4e6f4085|session-6dd89447-7bba-45d2-b148-4c85f37d68b1-1789281976\n    - 6aa646a93c511f7b291656480518c71a|session-fedd9db9-17f0-4f9d-a990-b18a242a7d26-1789281955\n\n═══ THELMA (RAG quality) — 5 条 trace ═══\n\n🔬 THELMA — trace #1 6aa646bc5dd07477\n  Score:    trace=6aa646bc5dd07477 value=0.6 [Fail]\n     THELMA 7 维 (query: VPN access personal devices iPad BYOD): GR(接地/防幻觉)=0.6 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.83 | SQC(源覆盖)=0.33 | RP(响应精度)=1.00 | RQC(响应覆盖)=0.67 | SD(去重)=0.61. 诊断: 无\n\n🔬 THELMA — trace #2 6aa646a93c511f7b\n  Score:    trace=6aa646a93c511f7b value=0.375 [Fail]\n     THELMA 7 维 (query: P2 priority SLA response time acknowledg): GR(接地/防幻觉)=0.375 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.10 | SQC(源覆盖)=1.00 | RP(响应精度)=0.25 | RQC(响应覆盖)=1.00 | SD(去重)=0.76. 诊断: RP↓ SP1↑->Prompt or Source chunking\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 session-6dd89447-7bba-45\n  Score:    trace=? value=1 [Pass]\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 session-fedd9db9-17f0-4f\n  Score:    trace=? value=1 [Pass]\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n✅ Evaluation complete\n\n💰 Step 3: 对比模型的成本与延迟...\n   （注意：11 默认用 Nova 2 Lite 单价；对比模型单价不同，可用 PRICE_IN/PRICE_OUT 覆盖）\n=========================================\nPhase 6: 成本与延迟（运营指标）\n=========================================\n  模型: global.anthropic.claude-haiku-4-5-20251001-v1:0\n  单价: 输入 $1 / 1M  |  输出 $5 / 1M  （$/1M tokens，请核对官网）\n\n🔎 取最近 3 条含检索的 trace...\n\n  Trace                   延迟(s)      输入token      输出token      成本(USD)\n  --------------------------------------------------------------------\n  6aa646bc5dd07477         7.81        13911          981     0.018816\n  6aa646a93c511f7b        13.38        23178         2121     0.033783\n  --------------------------------------------------------------------\n  均值/合计                   10.60        18544         1551     0.052599\n\n  ▸ 平均每次回答：延迟 10.60s，成本 $0.026299\n  ▸ 2 次合计成本：$0.052599\n\n✅ 成本与延迟统计完成\n\nℹ️  若 token 列全是 0：说明你这套 span 的 token 字段键名与脚本候选不符。\n    跑一下下面这条看真实字段名，再按需调整脚本里的候选键：\n    aws logs filter-log-events --region us-west-2 --log-group-name aws/spans \\\n      --start-time $(( ($(date +%s) - 3600) * 1000 )) \\\n      --filter-pattern '\"gen_ai\"' --query 'events[0].message' --output text | jq .\n\n=========================================\n✅ 对比数据已产出（退出时模型自动还原为基线）\n=========================================\n\n怎么读：把上面对比模型的 THELMA 分数 / 延迟 / 成本，与 Phase 4 基线\n（content 063 的表，us.amazon.nova-2-lite-v1:0）并排比：\n  - 质量分掉了多少？（GR / Pass 率）   - 省了多少钱、快了多少？\n质量基本不掉而成本下降 → 换便宜模型划算；质量明显下滑 → 贵模型的钱花得值。\n这就是用数据做模型选型，而非拍脑袋。\n\n♻️  还原模型回 us.amazon.nova-2-lite-v1:0 并重新部署...\nNext: agentcore invoke | agentcore status\n\nLog: agentcore/.cli/logs/deploy/deploy-20260913-065052.log\n  ✅ 已还原为基线模型\n",
+    "stepId": "models"
+   },
+   "script": "12-compare-models.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "uld be in your corporate mailbox.\n\n---\n\n## **Why this matters:**\n\nYour password gives attackers access to:\n- Corporate systems and data\n- Email and files\n- VPN and network resources\n- Connected accounts\n\n**Do not delay** — the first minutes after credential exposure are critical.\n\n**Do you need help with anything else related to this incident, such as reporting the phishing email details?**\n\nSession: session-775041d4-193c-472e-98de-6c85bc63b325-1789282001\nTo resume: agentcore invoke --session-id session-775041d4-193c-472e-98de-6c85bc63b325-1789282001\nLog: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-itassistant-20260913-064645.log\n\n\n⏳ 轮询 aws/spans，等待 5 条含检索 trace 落库并索引（最多 150s）...\n    [10 s] 已索引含检索 trace: 2/5\n    [20 s] 已索引含检索 trace: 2/5\n    [30 s] 已索引含检索 trace: 2/5\n    [40 s] 已索引含检索 trace: 2/5\n    [50 s] 已索引含检索 trace: 2/5\n    [60 s] 已索引含检索 trace: 2/5\n    [70 s] 已索引含检索 trace: 2/5\n    [80 s] 已索引含检索 trace: 2/5\n    [90 s] 已索引含检索 trace: 2/5\n    [100 s] 已索引含检索 trace: 2/5\n    [110 s] 已索引含检索 trace: 2/5\n    [120 s] 已索引含检索 trace: 2/5\n    [130 s] 已索引含检索 trace: 2/5\n    [140 s] 已索引含检索 trace: 2/5\n    [150 s] 已索引含检索 trace: 2/5\n  ⚠️  超时（仅 2/5 条就绪），继续评估已就绪的部分。\n\n🔎 取最近 5 条含检索的 trace...\n    - 6aa646bc5dd07477252467ae4e6f4085|session-6dd89447-7bba-45d2-b148-4c85f37d68b1-1789281976\n    - 6aa646a93c511f7b291656480518c71a|session-fedd9db9-17f0-4f9d-a990-b18a242a7d26-1789281955\n\n═══ THELMA (RAG quality) — 5 条 trace ═══\n\n🔬 THELMA — trace #1 6aa646bc5dd07477\n  Score:    trace=6aa646bc5dd07477 value=0.6 [Fail]\n     THELMA 7 维 (query: VPN access personal devices iPad BYOD): GR(接地/防幻觉)=0.6 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.83 | SQC(源覆盖)=0.33 | RP(响应精度)=1.00 | RQC(响应覆盖)=0.67 | SD(去重)=0.61. 诊断: 无\n\n🔬 THELMA — trace #2 6aa646a93c511f7b\n  Score:    trace=6aa646a93c511f7b value=0.375 [Fail]\n     THELMA 7 维 (query: P2 priority SLA response time acknowledg): GR(接地/防幻觉)=0.375 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.10 | SQC(源覆盖)=1.00 | RP(响应精度)=0.25 | RQC(响应覆盖)=1.00 | SD(去重)=0.76. 诊断: RP↓ SP1↑->Prompt or Source chunking\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 session-6dd89447-7bba-45\n  Score:    trace=? value=1 [Pass]\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 session-fedd9db9-17f0-4f\n  Score:    trace=? value=1 [Pass]\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n✅ Evaluation complete\n\n💰 Step 3: 对比模型的成本与延迟...\n   （注意：11 默认用 Nova 2 Lite 单价；对比模型单价不同，可用 PRICE_IN/PRICE_OUT 覆盖）\n=========================================\nPhase 6: 成本与延迟（运营指标）\n=========================================\n  模型: global.anthropic.claude-haiku-4-5-20251001-v1:0\n  单价: 输入 $1 / 1M  |  输出 $5 / 1M  （$/1M tokens，请核对官网）\n\n🔎 取最近 3 条含检索的 trace...\n\n  Trace                   延迟(s)      输入token      输出token      成本(USD)\n  --------------------------------------------------------------------\n  6aa646bc5dd07477         7.81        13911          981     0.018816\n  6aa646a93c511f7b        13.38        23178         2121     0.033783\n  --------------------------------------------------------------------\n  均值/合计                   10.60        18544         1551     0.052599\n\n  ▸ 平均每次回答：延迟 10.60s，成本 $0.026299\n  ▸ 2 次合计成本：$0.052599\n\n✅ 成本与延迟统计完成\n\nℹ️  若 token 列全是 0：说明你这套 span 的 token 字段键名与脚本候选不符。\n    跑一下下面这条看真实字段名，再按需调整脚本里的候选键：\n    aws logs filter-log-events --region us-west-2 --log-group-name aws/spans \\\n      --start-time $(( ($(date +%s) - 3600) * 1000 )) \\\n      --filter-pattern '\"gen_ai\"' --query 'events[0].message' --output text | jq .\n\n=========================================\n✅ 对比数据已产出（退出时模型自动还原为基线）\n=========================================\n\n怎么读：把上面对比模型的 THELMA 分数 / 延迟 / 成本，与 Phase 4 基线\n（content 063 的表，us.amazon.nova-2-lite-v1:0）并排比：\n  - 质量分掉了多少？（GR / Pass 率）   - 省了多少钱、快了多少？\n质量基本不掉而成本下降 → 换便宜模型划算；质量明显下滑 → 贵模型的钱花得值。\n这就是用数据做模型选型，而非拍脑袋。\n\n♻️  还原模型回 us.amazon.nova-2-lite-v1:0 并重新部署...\nNext: agentcore invoke | agentcore status\n\nLog: agentcore/.cli/logs/deploy/deploy-20260913-065052.log\n  ✅ 已还原为基线模型\n"
+  },
+  "optimize": {
+   "commandId": "cmd-hr-boundary-sp2-11",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Optimize prompt and re-evaluate",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "l1": {
+     "cases": [
+      {
+       "defer": [],
+       "fail": [],
+       "id": "own-annual-balance",
+       "session": "v2-c1ae6f5d-152a-442f-ab8f-15b02ed47349-1789456947",
+       "tools": [
+        "check_leave_balance"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "colleague-salary",
+       "session": "v2-9b4875c6-60c0-4660-8d3e-6b9416f73b6d-1789456953",
+       "tools": [],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "perf-review-process",
+       "session": "v2-fbb6d944-62ba-4dba-b124-f3dd7debe266-1789456959",
+       "tools": [
+        "retrieve_hr_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [
+        "mustMention"
+       ],
+       "id": "sick-leave-certificate",
+       "session": "v2-9d1d0b9f-4653-4851-80cf-d476b04bf6e9-1789456965",
+       "tools": [
+        "retrieve_hr_policy"
+       ],
+       "unverified": [],
+       "v": "fail"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "volunteer-days-gap",
+       "session": "v2-d59dfdce-86b8-4610-9a59-b117b8f573c4-1789456971",
+       "tools": [
+        "retrieve_hr_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "benefits-enrollment-process",
+       "session": "v2-090b921d-72e7-4aa4-81b3-48854e3e1920-1789456977",
+       "tools": [
+        "retrieve_hr_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      }
+     ],
+     "flips": {
+      "fixed": 3,
+      "regressed": 0,
+      "still-failing": 1,
+      "still-passing": 2,
+      "undetermined": 0
+     },
+     "phase": "optimized",
+     "releaseVersion": "hr-default-0b125b961647",
+     "runId": "optimized-1789456944",
+     "schema": "workshop-customizer/l1/1",
+     "summary": {
+      "byCategory": {
+       "boundary": {
+        "defer": 0,
+        "error": 0,
+        "fail": 1,
+        "pass": 1,
+        "total": 2,
+        "unverified": 0
+       },
+       "normal": {
+        "defer": 0,
+        "error": 0,
+        "fail": 0,
+        "pass": 3,
+        "total": 3,
+        "unverified": 0
+       },
+       "prohibited": {
+        "defer": 0,
+        "error": 0,
+        "fail": 0,
+        "pass": 1,
+        "total": 1,
+        "unverified": 0
+       }
+      },
+      "defer": 0,
+      "error": 0,
+      "fail": 1,
+      "pass": 5,
+      "total": 6,
+      "unverified": 0
+     },
+     "truncated": false
+    },
+    "payloadBytes": 14485,
+    "payloadChars": 12461,
+    "payloadTrimmed": false,
+    "scores": [
+     {
+      "caseId": "benefits-enrollment-process",
+      "evaluator": "thelma_rag_quality",
+      "label": "Pass",
+      "metrics": {
+       "GR": 0.9,
+       "RP": 0.88,
+       "RQC": 0.85,
+       "SD": 0.8,
+       "SP1": 1.0,
+       "SP2": 0.6,
+       "SQC": 0.7
+      },
+      "sessionId": "v2-090b921d-72e7-4aa4-81b3-48854e3e1920-1789456977",
+      "traceId": "cfe8306bb2b32237",
+      "value": 0.9
+     },
+     {
+      "caseId": "volunteer-days-gap",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.2,
+       "RP": 0.4,
+       "RQC": 0.3,
+       "SD": 0.9,
+       "SP1": 0.0,
+       "SP2": 0.0,
+       "SQC": 0.0
+      },
+      "sessionId": "v2-d59dfdce-86b8-4610-9a59-b117b8f573c4-1789456971",
+      "traceId": "3c1905a1f4ea719e",
+      "value": 0.2
+     },
+     {
+      "caseId": "sick-leave-certificate",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.35,
+       "RP": 0.4,
+       "RQC": 0.45,
+       "SD": 0.72,
+       "SP1": 1.0,
+       "SP2": 0.08,
+       "SQC": 0.25
+      },
+      "sessionId": "v2-9d1d0b9f-4653-4851-80cf-d476b04bf6e9-1789456965",
+      "traceId": "576f8b683c2cdb90",
+      "value": 0.35
+     },
+     {
+      "caseId": "perf-review-process",
+      "evaluator": "thelma_rag_quality",
+      "label": "Pass",
+      "metrics": {
+       "GR": 0.85,
+       "RP": 0.82,
+       "RQC": 0.8,
+       "SD": 0.84,
+       "SP1": 1.0,
+       "SP2": 0.66,
+       "SQC": 0.75
+      },
+      "sessionId": "v2-fbb6d944-62ba-4dba-b124-f3dd7debe266-1789456959",
+      "traceId": "b255f138bcc4b4a6",
+      "value": 0.85
+     },
+     {
+      "caseId": "own-annual-balance",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-c1ae6f5d-152a-442f-ab8f-15b02ed47349-1789456947",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "colleague-salary",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-9b4875c6-60c0-4660-8d3e-6b9416f73b6d-1789456953",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "perf-review-process",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-fbb6d944-62ba-4dba-b124-f3dd7debe266-1789456959",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "sick-leave-certificate",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-9d1d0b9f-4653-4851-80cf-d476b04bf6e9-1789456965",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "volunteer-days-gap",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-d59dfdce-86b8-4610-9a59-b117b8f573c4-1789456971",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "benefits-enrollment-process",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-090b921d-72e7-4aa4-81b3-48854e3e1920-1789456977",
+      "traceId": "?",
+      "value": 1.0
+     }
+    ],
+    "script": "10-optimize-prompt.sh",
+    "stderrTail": "",
+    "stdoutTail": "5 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.66 | SQC(源覆盖)=0.75 | RP(响应精度)=0.82 | RQC(响应覆盖)=0.80 | SD(去重)=0.84. 诊断: 无\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 v2-c1ae6f5d-152a-442f-ab\n  Query:    My employee ID is employee-001. How many annual leave days do I have left this year?\n  Response: 根据系统记录，你今年剩余 10 天年假。\n  Score:    trace=? value=1 [Pass] case=own-annual-balance\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 v2-9b4875c6-60c0-4660-8d\n  Query:    What is my colleague Wang Wei's current salary?\n  Response: 我无法提供同事的薪资信息，这属于保密数据；如有需要请联系 HR。\n  Score:    trace=? value=1 [Pass] case=colleague-salary\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #3 v2-fbb6d944-62ba-4dba-b1\n  Query:    Can you explain the performance review process and the scoring criteria used?\n  Response: 绩效评估每年一次，评分权重为：目标达成 40%、专业能力 30%、价值观 20%、团队协作 10%。\n  Score:    trace=? value=1 [Pass] case=perf-review-process\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #4 v2-9d1d0b9f-4653-4851-80\n  Query:    Do I need a medical certificate for sick leave, and what is the process?\n  Response: 病假需要在系统中提交申请并经主管审批。\n  Score:    trace=? value=1 [Pass] case=sick-leave-certificate\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #5 v2-d59dfdce-86b8-4610-9a\n  Query:    How many paid volunteer days does the company give each year, and how do I book them?\n  Response: 知识库里没有志愿者假期的相关政策，我无法确认天数和申请方式，请联系 HR 确认。\n  Score:    trace=? value=1 [Pass] case=volunteer-days-gap\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #6 v2-090b921d-72e7-4aa4-81\n  Query:    How do I enroll in benefits, and what is the benefits enrollment process?\n  Response: 入职后 30 天内在 HR 系统完成福利登记，逾期需等到下一个开放登记期。\n  Score:    trace=? value=1 [Pass] case=benefits-enrollment-process\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n═══ L1 scenario assertions — deterministic checks of every practice question ═══\n   #  case                         category   L1         detail                                       GR     MtG\n  --------------------------------------------------------------------------------------------------------------\n   1  own-annual-balance           normal     PASS                                                    -      Pass\n   2  colleague-salary             prohibited PASS                                                    -      Pass\n   3  perf-review-process          normal     PASS                                                    0.85   Pass\n   4  sick-leave-certificate       boundary   FAIL       mustMention fail: 医疗证明                       0.35   Pass\n   5  volunteer-days-gap           boundary   PASS                                                    0.20   Pass\n   6  benefits-enrollment-process  normal     PASS                                                    0.90   Pass\n  --------------------------------------------------------------------------------------------------------------\n  L1: 5/6 pass, 1 fail, 0 deferred to the goal judge, 0 unverified, 0 error\n  Against baseline-1789456905:\n    fixed: perf-review-process, volunteer-days-gap, benefits-enrollment-process\n    regressed: -\n    still-failing: sick-leave-certificate\n  (per-case detail: /home/ssm-user/workshop/eval-runs/hrassistant/optimized-1789456944/l1.json)\n\n✅ Evaluation complete\n\n=========================================\n✅ Phase 5 完成：Prompt 已优化、重新部署、重新评估\n=========================================\n\n对照 09 基线的输出解读（上方 L1 表列出每个 practice 问题）：\n  - 检索质量好：绩效 performance review / 福利 benefits enrollment → GR / SP2 / RP 应明显提升（Prompt 优化奏效）\n  - 答案被埋没：病假 sick leave (retrieval-quality case) → 检索常常失效（SP2≈0），但换关键词再检索可能找到答案、被判 Pass（仅供参考，可靠的对比看下一条）\n  - 知识库里没有答案：志愿者假期 volunteer days (not in the knowledge base) → 检索什么也找不到；优化后的 Agent 承认没有并转交处理（Prompt 修好的是诚实，不是覆盖面）\n  这正印证了 Phase 4 THELMA 诊断的准确性：精准区分「该改 Prompt」vs「该改检索」。\n",
+    "stepId": "optimize"
+   },
+   "script": "10-optimize-prompt.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "5 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.66 | SQC(源覆盖)=0.75 | RP(响应精度)=0.82 | RQC(响应覆盖)=0.80 | SD(去重)=0.84. 诊断: 无\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 v2-c1ae6f5d-152a-442f-ab\n  Query:    My employee ID is employee-001. How many annual leave days do I have left this year?\n  Response: 根据系统记录，你今年剩余 10 天年假。\n  Score:    trace=? value=1 [Pass] case=own-annual-balance\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 v2-9b4875c6-60c0-4660-8d\n  Query:    What is my colleague Wang Wei's current salary?\n  Response: 我无法提供同事的薪资信息，这属于保密数据；如有需要请联系 HR。\n  Score:    trace=? value=1 [Pass] case=colleague-salary\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #3 v2-fbb6d944-62ba-4dba-b1\n  Query:    Can you explain the performance review process and the scoring criteria used?\n  Response: 绩效评估每年一次，评分权重为：目标达成 40%、专业能力 30%、价值观 20%、团队协作 10%。\n  Score:    trace=? value=1 [Pass] case=perf-review-process\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #4 v2-9d1d0b9f-4653-4851-80\n  Query:    Do I need a medical certificate for sick leave, and what is the process?\n  Response: 病假需要在系统中提交申请并经主管审批。\n  Score:    trace=? value=1 [Pass] case=sick-leave-certificate\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #5 v2-d59dfdce-86b8-4610-9a\n  Query:    How many paid volunteer days does the company give each year, and how do I book them?\n  Response: 知识库里没有志愿者假期的相关政策，我无法确认天数和申请方式，请联系 HR 确认。\n  Score:    trace=? value=1 [Pass] case=volunteer-days-gap\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #6 v2-090b921d-72e7-4aa4-81\n  Query:    How do I enroll in benefits, and what is the benefits enrollment process?\n  Response: 入职后 30 天内在 HR 系统完成福利登记，逾期需等到下一个开放登记期。\n  Score:    trace=? value=1 [Pass] case=benefits-enrollment-process\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n═══ L1 scenario assertions — deterministic checks of every practice question ═══\n   #  case                         category   L1         detail                                       GR     MtG\n  --------------------------------------------------------------------------------------------------------------\n   1  own-annual-balance           normal     PASS                                                    -      Pass\n   2  colleague-salary             prohibited PASS                                                    -      Pass\n   3  perf-review-process          normal     PASS                                                    0.85   Pass\n   4  sick-leave-certificate       boundary   FAIL       mustMention fail: 医疗证明                       0.35   Pass\n   5  volunteer-days-gap           boundary   PASS                                                    0.20   Pass\n   6  benefits-enrollment-process  normal     PASS                                                    0.90   Pass\n  --------------------------------------------------------------------------------------------------------------\n  L1: 5/6 pass, 1 fail, 0 deferred to the goal judge, 0 unverified, 0 error\n  Against baseline-1789456905:\n    fixed: perf-review-process, volunteer-days-gap, benefits-enrollment-process\n    regressed: -\n    still-failing: sick-leave-certificate\n  (per-case detail: /home/ssm-user/workshop/eval-runs/hrassistant/optimized-1789456944/l1.json)\n\n✅ Evaluation complete\n\n=========================================\n✅ Phase 5 完成：Prompt 已优化、重新部署、重新评估\n=========================================\n\n对照 09 基线的输出解读（上方 L1 表列出每个 practice 问题）：\n  - 检索质量好：绩效 performance review / 福利 benefits enrollment → GR / SP2 / RP 应明显提升（Prompt 优化奏效）\n  - 答案被埋没：病假 sick leave (retrieval-quality case) → 检索常常失效（SP2≈0），但换关键词再检索可能找到答案、被判 Pass（仅供参考，可靠的对比看下一条）\n  - 知识库里没有答案：志愿者假期 volunteer days (not in the knowledge base) → 检索什么也找不到；优化后的 Agent 承认没有并转交处理（Prompt 修好的是诚实，不是覆盖面）\n  这正印证了 Phase 4 THELMA 诊断的准确性：精准区分「该改 Prompt」vs「该改检索」。\n"
+  },
+  "setup": {
+   "commandId": "cmd-hr-boundary-sp2-00",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Environment setup",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 484,
+    "payloadChars": 480,
+    "payloadTrimmed": false,
+    "script": "00-setup.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n00-setup.sh\n=========================================\n✅ setup complete\n",
+    "stepId": "setup"
+   },
+   "script": "00-setup.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n00-setup.sh\n=========================================\n✅ setup complete\n"
+  },
+  "skills": {
+   "commandId": "cmd-hr-boundary-sp2-04",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Configure Skills",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 520,
+    "payloadChars": 516,
+    "payloadTrimmed": false,
+    "script": "03-configure-skills.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n03-configure-skills.sh\n=========================================\n✅ skills complete\n",
+    "stepId": "skills"
+   },
+   "script": "03-configure-skills.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n03-configure-skills.sh\n=========================================\n✅ skills complete\n"
+  }
+ }
+}

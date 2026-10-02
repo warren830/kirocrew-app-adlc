@@ -1,0 +1,38 @@
+{
+  "template": {
+    "name": "sample-eval-first-building-enterprise-agents-with-agentcore",
+    "repository": "https://github.com/aws-samples/sample-eval-first-building-enterprise-agents-with-agentcore.git",
+    "commit": "245092299e97219e53cc6645d8a7b397e4e7222a",
+    "committedAt": "2026-06-25T21:43:51+08:00",
+    "subject": "Merge pull request #6 from phoenixyy/fix/english-doc-proofreading",
+    "localPath": "upstream/",
+    "pinnedAt": "2026-09-09T12:55:00+08:00"
+  },
+  "scenarioSchemaVersion": 1,
+  "packSchemaVersion": 1,
+  "defaultScenario": "hr-default",
+  "runtime": {
+    "agentcoreCli": "1.0.0-preview.30",
+    "python": "3.12"
+  },
+  "hardcodedHrSurfaces": [
+    "knowledge-base/generate_hr_docs.py",
+    "knowledge-base/domain_faqs.py",
+    "knowledge-base/create_kb.py",
+    "lambda/hr_tools_handler.py",
+    "gateway/hr-tools-schema.json",
+    "02-create-gateway.sh",
+    "03-configure-skills.sh",
+    "04-deploy.sh",
+    "09-run-eval.sh",
+    "10-optimize-prompt.sh",
+    "cfn/workshop-infra.yaml"
+  ],
+  "toolchainObserved": {
+    "python": "3.14.5",
+    "node": "v26.0.0",
+    "npm": "11.12.1",
+    "git": "2.50.1",
+    "missingPythonPackages": ["pyyaml", "jsonschema", "boto3", "pytest"]
+  }
+}

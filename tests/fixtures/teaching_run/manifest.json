@@ -1,0 +1,22 @@
+{
+  "_comment": "Canonical Guided Run fixture for the RunStep step-output parser, the report (case table, teaching contrast) and rehearsal. <run>/<step>.stdout.log, <step>.l1-compact.json and <step>.sessions.tsv are the raw host files of steps 06/09/10, produced by generate.py (the rendered release scripts run against a fake AgentCore; L1 is real). common/*.stdout.log are the recorded stdout tails of 11/12/13 from the live 2026-09-13 IT run (the 12 log gains its model-identity header). <run>/steps.json is the parsed result: every step's outputs exactly as the embedded parser of sync/ssm/WorkshopCustomizerRunStep.json and guided_execution.parse_invocation deliver them; tests/test_teaching_run.py keeps it fresh (WSC_UPDATE_TEACHING_RUN=1 rewrites it).",
+  "runs": {
+    "it-2026-09-13": {
+      "pack": "it-helpdesk",
+      "description": "The 2026-09-13 live IT numbers mapped onto today's it-helpdesk cases: 2 of 4 probes retrieved in the baseline (P2 GR 0.5 SP2 0.45 SQC 0.50; iPad GR 0.941 SP2 0.46 SQC 0.60), P2 fell to 0.286 after optimization. Nothing reproduces cleanly.",
+      "expect": {"currentRun": "insufficient_evidence", "groups": {"prompt_fixable": "insufficient_evidence", "retrieval_gap": "insufficient_evidence", "l1": "reproduced"}}
+    },
+    "hr-reproduced": {
+      "pack": "hr-default",
+      "description": "Synthetic hr-default run in which every HR contrast reproduces: perf/benefits rise from GR 0.45/0.50 to 0.85/0.90 with good retrieval, the buried sick-leave gap stays Fail with SP2 0.05/0.08.",
+      "expect": {"currentRun": "reproduced", "groups": {"prompt_fixable": "reproduced", "retrieval_gap": "reproduced", "l1": "reproduced"}}
+    },
+    "hr-boundary-sp2": {
+      "pack": "hr-default",
+      "description": "hr-reproduced with the sick-leave baseline at SP2 0.25 / SQC 0.35: just above the retrieval-failed bounds (SP2 <= 0.2 or SQC < 0.3), so the gap is not reproduced.",
+      "expect": {"currentRun": "not_reproduced", "groups": {"prompt_fixable": "reproduced", "retrieval_gap": "not_reproduced", "l1": "reproduced"}}
+    }
+  },
+  "commonSteps": {"cost-latency": "common/cost-latency.stdout.log", "models": "common/models.stdout.log", "judge-stability": "common/judge-stability.stdout.log"},
+  "documentVersion": "7"
+}

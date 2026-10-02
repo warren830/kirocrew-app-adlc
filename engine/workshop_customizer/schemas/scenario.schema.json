@@ -1,0 +1,592 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workshop-customizer.local/schemas/scenario.schema.json",
+  "title": "Workshop Customizer Scenario (schema v1)",
+  "description": "Single source of business truth for one customer-specific Eval-First workshop pack. Every generated file, AWS resource name, golden question and lab step must derive from this document.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "displayName",
+    "packKind",
+    "language",
+    "namespace",
+    "agent",
+    "facts",
+    "knowledge",
+    "tools",
+    "skills",
+    "prompts",
+    "evaluation"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{2,40}$",
+      "description": "Pack identifier; also the derivation namespace used in reports."
+    },
+    "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "description": { "type": "string", "maxLength": 4000 },
+    "packKind": {
+      "enum": ["reference", "customer", "workshop"],
+      "description": "reference = internal or fictional pack with no customer (blocking items may be sa_synthetic); customer = every blocking item and knowledge document must be customer_confirmed; workshop = a real customer scenario taught in class (blocking items are customer_confirmed or origin-labeled sa_synthetic settings, with at least one customer-confirmed anchor golden case per category). In every kind a noise document labeled origin teaching_design is a teaching device that needs no customer confirmation."
+    },
+    "language": { "enum": ["zh-CN", "en"] },
+    "customer": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "materialApproval": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Reference to the customer's approval that the supplied material may be used in the workshop."
+        },
+        "dataClassification": { "enum": ["synthetic", "internal", "confidential"] }
+      }
+    },
+    "namespace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agentName",
+        "toolTargetName",
+        "gatewayName",
+        "knowledgeBaseName",
+        "kbPrefix",
+        "ssmParameterPrefix",
+        "lambdaFunctionName"
+      ],
+      "properties": {
+        "agentName": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]{2,18}$",
+          "description": "Harness / agent name (replaces hrassistant). At most 19 characters: the harness is named <agentName>_<agentName> (AWS limit 40)."
+        },
+        "toolTargetName": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{2,40}$",
+          "description": "Gateway target name; tool events appear as <toolTargetName>___<tool>."
+        },
+        "gatewayName": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,40}$" },
+        "knowledgeBaseName": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,49}$", "description": "At most 50 characters: the S3 Vectors bucket is <knowledgeBaseName>-vectors-<suffix> (AWS limit 63)." },
+        "kbPrefix": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,40}/$" },
+        "ssmParameterPrefix": { "type": "string", "pattern": "^/app/[a-z][a-z0-9-]{1,40}$" },
+        "lambdaFunctionName": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,60}$" }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["audience", "purpose", "scope", "roles", "handoffConditions", "prohibitedBehaviors"],
+      "properties": {
+        "audience": { "type": "string", "minLength": 1 },
+        "purpose": { "type": "string", "minLength": 1 },
+        "scope": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "outOfScope": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "name", "description"],
+            "properties": {
+              "id": { "$ref": "#/$defs/itemId" },
+              "name": { "type": "string", "minLength": 1 },
+              "description": { "type": "string", "minLength": 1 },
+              "permissions": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        },
+        "handoffConditions": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "prohibitedBehaviors": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "facts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/fact" }
+    },
+    "knowledge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["documents"],
+      "properties": {
+        "documents": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "title", "file", "provenance"],
+            "properties": {
+              "id": { "$ref": "#/$defs/itemId" },
+              "title": { "type": "string", "minLength": 1 },
+              "file": { "$ref": "#/$defs/relPath" },
+              "provenance": { "$ref": "#/$defs/provenance" },
+              "noise": {
+                "type": "boolean",
+                "description": "True when the document intentionally carries teaching noise (dirty FAQ) so retrieval metrics can surface it."
+              },
+              "origin": { "$ref": "#/$defs/origin" }
+            }
+          }
+        },
+        "noisePlan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "rationale"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "rationale": { "type": "string", "minLength": 1 },
+            "description": { "type": "string" }
+          }
+        }
+      }
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/tool" }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "file"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,60}$" },
+          "file": { "$ref": "#/$defs/relPath" }
+        }
+      }
+    },
+    "prompts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baselineFile", "optimizationCandidateFile"],
+      "properties": {
+        "baselineFile": { "$ref": "#/$defs/relPath" },
+        "optimizationCandidateFile": { "$ref": "#/$defs/relPath" }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["retrievalToolName", "goldenSet"],
+      "properties": {
+        "retrievalToolName": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{2,60}$",
+          "description": "Tool whose Gateway event marks a retrieval trace (drives trace discovery)."
+        },
+        "judgeModel": { "type": "string", "minLength": 1 },
+        "goldenSet": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/goldenCase" } },
+        "noiseBand": {
+          "type": "object",
+          "description": "Per-metric judge spread measured by judge-stability calibration; a delta inside the band is not a real change.",
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+        },
+        "judge": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Mind the Goal judge wording. The policy text itself always comes from agent.*",
+          "properties": {
+            "userLabel": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 40,
+              "description": "One line. 'not' is needed because Python's re.search lets $ match before a trailing newline.",
+              "pattern": "^[^\\r\\n]+$",
+              "not": { "pattern": "[\\r\\n]" }
+            }
+          }
+        },
+        "l1": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Deterministic (L1) marker rules for shouldRefuse/shouldEscalate.",
+          "properties": {
+            "refusalMarkers": {
+              "type": "array",
+              "maxItems": 30,
+              "description": "Replaces the built-in en + zh-CN refusal markers when present.",
+              "items": { "type": "string", "minLength": 1, "maxLength": 60 }
+            },
+            "escalationMarkers": {
+              "type": "array",
+              "maxItems": 30,
+              "description": "Phrases that count as a hand-off in the answer; no default.",
+              "items": { "type": "string", "minLength": 1, "maxLength": 60 }
+            },
+            "escalationTools": {
+              "type": "array",
+              "maxItems": 10,
+              "description": "Calling one of these tools counts as escalation. Each must be a declared tool name.",
+              "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,60}$" }
+            }
+          }
+        }
+      }
+    },
+    "labs": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Lab material: free-text observations, optional guide supplements, the teaching skeleton (labs.teaching: first conversation, baseline defects, teaching phenomena) and an optional reviewed guide narrative (labs.guide).",
+      "properties": {
+        "observations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "studentGuideFile": { "$ref": "#/$defs/relPath" },
+        "instructorGuideFile": { "$ref": "#/$defs/relPath" },
+        "teaching": { "$ref": "#/$defs/teaching" },
+        "guide": { "$ref": "#/$defs/guide" }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "exceptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["itemId", "reason", "approvedBy", "approvedAt"],
+            "properties": {
+              "itemId": { "$ref": "#/$defs/itemId" },
+              "reason": { "type": "string", "minLength": 1 },
+              "approvedBy": {
+                "type": "array",
+                "minItems": 2,
+                "items": { "type": "string", "minLength": 1 },
+                "description": "Two approvers: Product/Workshop Owner and the SA."
+              },
+              "approvedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "itemId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,60}$" },
+    "relPath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._/\\-]+$",
+      "description": "Path relative to the scenario root; no absolute paths, no parent traversal."
+    },
+    "provenance": {
+      "enum": ["customer_confirmed", "sa_synthetic", "ai_draft", "pending"],
+      "description": "customer_confirmed: confirmed by the customer SME; sa_synthetic: safe synthetic data authored by the SA; ai_draft: model-drafted, unreviewed; pending: awaiting confirmation."
+    },
+    "criticality": { "enum": ["blocking", "advisory"] },
+    "actorId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,60}$" },
+    "materialId": { "type": "string", "maxLength": 16, "pattern": "^mat-[0-9a-f]{12}$" },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "Where an item comes from: customer_material (derived from uploaded customer materials, cited by id), sa_authored (written by the SA) or teaching_design (a deliberate teaching device such as a noise document).",
+      "properties": {
+        "kind": { "enum": ["customer_material", "sa_authored", "teaching_design"] },
+        "materials": { "type": "array", "uniqueItems": true, "maxItems": 20, "items": { "$ref": "#/$defs/materialId" } },
+        "note": { "type": "string", "minLength": 1, "maxLength": 500 }
+      },
+      "if": { "properties": { "kind": { "const": "customer_material" } } },
+      "then": { "required": ["materials"], "properties": { "materials": { "minItems": 1 } } }
+    },
+    "teachingText": { "type": "string", "minLength": 1, "maxLength": 400 },
+    "teaching": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firstConversation", "baselineDefects", "phenomena"],
+      "description": "Teaching skeleton: the moments the customized Workshop must reproduce (first conversation / Memory, baseline defects the candidate prompt fixes, and the teaching phenomena tied to practice cases or documents). Retrieval probes are derived: the practice cases listed by prompt_fixable and retrieval_gap phenomena.",
+      "properties": {
+        "firstConversation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["query", "actorId", "unknownContext"],
+          "properties": {
+            "query": { "type": "string", "minLength": 1, "maxLength": 1000 },
+            "actorId": { "$ref": "#/$defs/actorId" },
+            "unknownContext": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 5,
+              "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+            },
+            "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+            "teachingPoint": { "$ref": "#/$defs/teachingText" },
+            "mustNotMention": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 10,
+              "description": "Advisory memory check on the 06 answer: terms the first (context-free) answer should not contain.",
+              "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+            }
+          }
+        },
+        "baselineDefects": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "description", "candidateFix"],
+            "properties": {
+              "id": { "$ref": "#/$defs/itemId" },
+              "description": { "$ref": "#/$defs/teachingText" },
+              "candidateFix": { "type": "string", "minLength": 4, "maxLength": 300 },
+              "baselineMarker": { "type": "string", "minLength": 4, "maxLength": 300 }
+            }
+          }
+        },
+        "phenomena": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "$ref": "#/$defs/phenomenon" } },
+        "stabilityCaseId": { "$ref": "#/$defs/itemId" }
+      }
+    },
+    "phenomenon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "teachingPoint"],
+      "properties": {
+        "id": { "$ref": "#/$defs/itemId" },
+        "kind": { "enum": ["prompt_fixable", "retrieval_gap", "noise_grounding", "tool_use", "refusal", "escalation"] },
+        "caseIds": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/itemId" } },
+        "defectIds": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/itemId" } },
+        "documentIds": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "$ref": "#/$defs/itemId" } },
+        "mechanism": { "enum": ["buried", "absent"] },
+        "baitTerms": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "minLength": 2, "maxLength": 80 } },
+        "absentTerms": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "type": "string", "minLength": 2, "maxLength": 80 } },
+        "design": {
+          "enum": ["contrast", "control"],
+          "description": "tool_use / refusal / escalation only (default control): control = the optimized run passes; contrast = the baseline fails and the optimized run passes."
+        },
+        "teachingPoint": { "$ref": "#/$defs/teachingText" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "prompt_fixable" } }, "required": ["kind"] },
+          "then": { "required": ["caseIds", "defectIds"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "retrieval_gap" } }, "required": ["kind"] },
+          "then": { "required": ["caseIds", "mechanism"] },
+          "else": { "not": { "anyOf": [{ "required": ["mechanism"] }, { "required": ["baitTerms"] }, { "required": ["absentTerms"] }] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "noise_grounding" } }, "required": ["kind"] },
+          "then": { "required": ["documentIds"], "not": { "anyOf": [{ "required": ["caseIds"] }, { "required": ["defectIds"] }] } },
+          "else": { "required": ["caseIds"], "not": { "required": ["documentIds"] } }
+        },
+        {
+          "if": { "properties": { "kind": { "enum": ["tool_use", "refusal", "escalation"] } }, "required": ["kind"] },
+          "then": { "not": { "required": ["defectIds"] } },
+          "else": { "not": { "required": ["design"] } }
+        },
+        {
+          "if": { "properties": { "mechanism": { "const": "buried" } }, "required": ["mechanism"] },
+          "then": { "required": ["baitTerms"] }
+        },
+        {
+          "if": { "properties": { "mechanism": { "const": "absent" } }, "required": ["mechanism"] },
+          "then": { "required": ["absentTerms"] }
+        }
+      ]
+    },
+    "guideStepId": {
+      "enum": [
+        "prerequisites", "setup", "infra", "knowledge-base", "gateway", "skills", "agent", "memory", "conversation",
+        "eval-env", "conversation-rerun", "evaluators", "baseline", "optimize", "cost-latency", "models",
+        "judge-stability", "cleanup"
+      ]
+    },
+    "guide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "provenance"],
+      "description": "Optional reviewed teaching narrative for the generated Workshop Guide. Prose only: never business truth, never commands. Its provenance can never be customer_confirmed.",
+      "properties": {
+        "id": { "const": "guide-narrative" },
+        "provenance": { "enum": ["sa_synthetic", "ai_draft", "pending"] },
+        "tagline": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "scenarioIntro": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "memoryLesson": { "type": "string", "minLength": 1, "maxLength": 600 },
+        "retrievalContrast": { "type": "string", "minLength": 1, "maxLength": 1200 },
+        "stepNotes": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/guideStepId" },
+          "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 1200 }
+        },
+        "facilitatorNotes": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/guideStepId" },
+          "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 2000 }
+        },
+        "designRationale": { "type": "string", "minLength": 1, "maxLength": 3000 },
+        "experiments": {
+          "type": "array",
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["audience", "title", "body"],
+            "properties": {
+              "audience": { "enum": ["student", "instructor"] },
+              "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "body": { "type": "string", "minLength": 1, "maxLength": 1500 }
+            }
+          }
+        },
+        "attribution": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    },
+    "confirmation": {
+      "type": "object",
+      "properties": {
+        "confirmedBy": { "type": "string", "minLength": 1 },
+        "confirmedAt": { "type": "string", "format": "date-time" },
+        "confirmationRef": { "type": "string", "minLength": 1 }
+      },
+      "if": { "properties": { "provenance": { "const": "customer_confirmed" } }, "required": ["provenance"] },
+      "then": { "required": ["confirmedBy", "confirmedAt", "confirmationRef"] }
+    },
+    "fact": {
+      "allOf": [
+        { "$ref": "#/$defs/confirmation" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "statement", "criticality", "provenance"],
+          "properties": {
+            "id": { "$ref": "#/$defs/itemId" },
+            "statement": { "type": "string", "minLength": 1 },
+            "criticality": { "$ref": "#/$defs/criticality" },
+            "provenance": { "$ref": "#/$defs/provenance" },
+            "source": { "type": "string", "description": "Where the statement comes from (document, meeting, policy id)." },
+            "tags": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "origin": { "$ref": "#/$defs/origin" },
+            "confirmedBy": {},
+            "confirmedAt": {},
+            "confirmationRef": {}
+          }
+        }
+      ]
+    },
+    "tool": {
+      "allOf": [
+        { "$ref": "#/$defs/confirmation" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "description", "kind", "inputSchema", "provenance"],
+          "properties": {
+            "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{2,60}$" },
+            "description": { "type": "string", "minLength": 1 },
+            "kind": { "enum": ["retrieval", "mock"] },
+            "inputSchema": {
+              "type": "object",
+              "required": ["type"],
+              "properties": { "type": { "const": "object" } }
+            },
+            "provenance": { "$ref": "#/$defs/provenance" },
+            "fixtures": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["default"],
+              "properties": {
+                "default": { "type": "object" },
+                "cases": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["when", "return"],
+                    "properties": {
+                      "when": { "type": "object", "minProperties": 1 },
+                      "return": { "type": "object" },
+                      "note": { "type": "string" }
+                    }
+                  }
+                },
+                "errors": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["when", "error"],
+                    "properties": {
+                      "when": { "type": "object", "minProperties": 1 },
+                      "error": { "type": "string", "minLength": 1 },
+                      "note": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            },
+            "origin": { "$ref": "#/$defs/origin" },
+            "confirmedBy": {},
+            "confirmedAt": {},
+            "confirmationRef": {}
+          },
+          "if": { "properties": { "kind": { "const": "mock" } } },
+          "then": { "required": ["fixtures"] }
+        }
+      ]
+    },
+    "goldenCase": {
+      "allOf": [
+        { "$ref": "#/$defs/confirmation" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "label", "query", "category", "set", "actorId", "expected", "basis", "provenance"],
+          "properties": {
+            "id": { "$ref": "#/$defs/itemId" },
+            "label": { "type": "string", "minLength": 1 },
+            "query": { "type": "string", "minLength": 1 },
+            "category": { "enum": ["normal", "boundary", "prohibited"] },
+            "set": {
+              "enum": ["practice", "holdout"],
+              "description": "practice cases are visible to students; holdout cases never enter the agent prompt, skills or knowledge base."
+            },
+            "criticality": { "$ref": "#/$defs/criticality" },
+            "actorId": { "$ref": "#/$defs/actorId" },
+            "roleId": { "$ref": "#/$defs/itemId" },
+            "expected": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "mustMention": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "mustMentionAnyOf": {
+                  "type": "array",
+                  "description": "Each group passes when ANY of its members appears in the answer.",
+                  "items": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+                },
+                "mustNotMention": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "requiredTools": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "forbiddenTools": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+                "shouldEscalate": { "type": "boolean" },
+                "shouldRefuse": { "type": "boolean" }
+              }
+            },
+            "basis": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/itemId" },
+              "description": "Fact ids that justify the expected behavior."
+            },
+            "provenance": { "$ref": "#/$defs/provenance" },
+            "origin": { "$ref": "#/$defs/origin" },
+            "confirmedBy": {},
+            "confirmedAt": {},
+            "confirmationRef": {}
+          }
+        }
+      ]
+    }
+  }
+}

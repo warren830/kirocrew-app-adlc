@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The server writes where the console is: its base (static/ is under it), its API and its host (standalone | kirocrew). -->
+<base href="/"><meta name="adlc-api" content="/api/console"><meta name="adlc-host" content="standalone">
+<title>ADLC Console</title>
+<script src="static/vendor/react.production.min.js"></script>
+<script src="static/vendor/react-dom.production.min.js"></script>
+<script type="importmap">{"imports": {"react": "./static/shims/react.mjs", "react-dom/client": "./static/shims/react-dom-client.mjs",
+  "lucide-react": "./static/shims/lucide-react.mjs", "@kirocrew/app-sdk": "./static/shims/app-sdk.mjs"}}</script>
+</head><body style="margin:0"><div id="root"></div>
+<script type="module">
+import Console from './static/console.mjs'
+import { createRoot } from 'react-dom/client'
+createRoot(document.getElementById('root')).render(window.React.createElement(Console))
+</script></body></html>

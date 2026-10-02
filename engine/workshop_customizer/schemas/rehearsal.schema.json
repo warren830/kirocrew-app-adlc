@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workshop-customizer.local/schemas/rehearsal.schema.json",
+  "title": "Workshop Customizer rehearsal (run/rehearsal.json, schema workshop-customizer/rehearsal/2)",
+  "description": "The class verdict over the same-release Guided Runs (rehearsal.build_rehearsal). Only this document carries readyForClass = verdict ready AND the current report complete AND both guides built (SPEC D2, D8). Human-readable fields are in the pack language (language) and each has an English twin <field>En (rehearsal_strings.py); the machine codes do not depend on the language. Version 2 added language and the English twins; a workshop-customizer/rehearsal/1 record (the English-only engine) is described by rehearsal-1.schema.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "language", "generatedAt", "projectId", "releaseVersion", "templateCommit", "inputs", "verdict", "reasonCode",
+               "reason", "reasonEn", "readyForClass", "readiness", "groups", "summary", "phenomena", "caseTable", "advisory", "runs",
+               "consistency", "warnings", "remediation", "scopeWarning", "scopeWarningEn"],
+  "properties": {
+    "schema": {"const": "workshop-customizer/rehearsal/2"},
+    "language": {"$ref": "#/$defs/language",
+                 "description": "The language of every human-readable field: the scenario's language, zh-* -> zh-CN, else en. Each such field has an English twin (<field>En)."},
+    "generatedAt": {"type": ["string", "null"], "description": "The newest updatedAt of the runs considered (deterministic; no clock read)."},
+    "projectId": {"type": ["string", "null"]},
+    "releaseVersion": {"type": ["string", "null"]},
+    "templateCommit": {"type": ["string", "null"]},
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenario", "releaseVerified", "runStatus", "reportStatus", "missingEvidence", "decisiveRun", "runsConsidered",
+                   "completeRuns", "noiseBand", "improvementBar", "thresholds", "documentsSearched", "evidenceSources"],
+      "properties": {
+        "scenario": {"enum": ["build snapshot", "scenario file"],
+                     "description": "What was judged: the build snapshot of the release the run executed (app; CLI project dir or --build-dir), or a bare scenario file (CLI only; never ready for class)."},
+        "releaseVerified": {"type": "boolean", "description": "The build's release manifest names the run's release (always true in the app)."},
+        "runStatus": {"type": ["string", "null"]},
+        "reportStatus": {"$ref": "#/$defs/reportStatus"},
+        "missingEvidence": {"type": "array", "items": {"type": "string"}},
+        "decisiveRun": {"type": ["string", "null"], "description": "The latest complete run: 'current' or 'history/<id>'."},
+        "runsConsidered": {"type": "integer", "minimum": 1},
+        "completeRuns": {"type": "integer", "minimum": 0},
+        "noiseBand": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "source", "stabilityVerdict"],
+          "properties": {"value": {"type": ["number", "null"]}, "source": {"type": ["string", "null"]},
+                         "stabilityVerdict": {"type": ["string", "null"], "description": "13-judge-stability.sh verdict of the evidence run."}}
+        },
+        "improvementBar": {"type": ["number", "null"]},
+        "thresholds": {"type": "object", "additionalProperties": {"type": "number"}},
+        "documentsSearched": {"type": ["integer", "null"], "minimum": 0},
+        "evidenceSources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "phases", "conversation"],
+          "description": "Which per-case evidence the evidence run (the decisive run, else the current one) carries.",
+          "properties": {
+            "source": {"$ref": "#/$defs/runSource"},
+            "phases": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["l1", "scored"],
+                "properties": {"l1": {"type": ["string", "null"]}, "scored": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}}
+              }
+            },
+            "conversation": {"enum": ["present", "missing"]}
+          }
+        }
+      }
+    },
+    "verdict": {"$ref": "#/$defs/verdict"},
+    "reasonCode": {"enum": ["CONTRASTS_REPRODUCED", "PHENOMENON_NOT_REPRODUCED", "PHENOMENON_INSUFFICIENT", "RUN_INCOMPLETE",
+                            "PARITY_MISSING", "TEACHING_UNDECLARED"]},
+    "reason": {"type": "string"},
+    "reasonEn": {"type": "string"},
+    "readyForClass": {"type": "boolean"},
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "reportComplete", "guidesBuilt", "guides", "blockers", "blockerTexts"],
+      "properties": {
+        "verdict": {"$ref": "#/$defs/verdict"},
+        "reportComplete": {"type": "boolean"},
+        "guidesBuilt": {"type": "boolean"},
+        "guides": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["student", "instructor"],
+          "properties": {"student": {"$ref": "#/$defs/guide"}, "instructor": {"$ref": "#/$defs/guide"}}
+        },
+        "blockers": {"type": "array", "uniqueItems": true,
+                     "items": {"enum": ["VERDICT_NOT_READY", "VERDICT_INSUFFICIENT_EVIDENCE", "REPORT_INCOMPLETE", "GUIDES_MISSING",
+                                        "SCENARIO_NOT_BUILD_SNAPSHOT", "RELEASE_NOT_VERIFIED"]},
+                     "description": "readyForClass is true exactly when this list is empty."},
+        "blockerTexts": {"type": "array",
+                         "description": "What each blocker means, in blockers order (text in the pack language, textEn in English).",
+                         "items": {"type": "object", "additionalProperties": false, "required": ["code", "text", "textEn"],
+                                   "properties": {"code": {"type": "string"}, "text": {"type": "string", "minLength": 1},
+                                                  "textEn": {"type": "string", "minLength": 1}}}}
+      }
+    },
+    "groups": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "prompt_fixable": {"$ref": "#/$defs/groupStatus"},
+        "retrieval_gap": {"$ref": "#/$defs/groupStatus"},
+        "l1": {"$ref": "#/$defs/groupStatus"}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phenomena", "reproduced", "notReproduced", "insufficientEvidence", "practiceCases", "casesInPhenomena",
+                   "blockingHints", "advisoryHints"],
+      "properties": {
+        "phenomena": {"type": "integer", "minimum": 0},
+        "reproduced": {"type": "integer", "minimum": 0},
+        "notReproduced": {"type": "integer", "minimum": 0},
+        "insufficientEvidence": {"type": "integer", "minimum": 0},
+        "practiceCases": {"type": "integer", "minimum": 0},
+        "casesInPhenomena": {"type": "integer", "minimum": 0},
+        "blockingHints": {"type": "integer", "minimum": 0},
+        "advisoryHints": {"type": "integer", "minimum": 0}
+      }
+    },
+    "phenomena": {"type": "array", "items": {"$ref": "#/$defs/phenomenon"}},
+    "caseTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "schema", "cases"],
+      "description": "Every practice case of the evidence run (guided_report.case_table rows, including cases no phenomenon lists), with phenomenonIds.",
+      "properties": {
+        "source": {"$ref": "#/$defs/runSource"},
+        "schema": {"type": ["string", "null"]},
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["caseId", "category", "probe", "kinds", "phenomenonIds", "baseline", "optimized"],
+            "properties": {
+              "caseId": {"type": "string"},
+              "category": {"type": ["string", "null"]},
+              "probe": {"type": "boolean"},
+              "kinds": {"type": "array", "items": {"type": "string"}},
+              "phenomenonIds": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+              "baseline": {"$ref": "#/$defs/caseCell"},
+              "optimized": {"$ref": "#/$defs/caseCell"}
+            }
+          }
+        }
+      }
+    },
+    "advisory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "status", "reading", "source"],
+        "properties": {
+          "id": {"type": ["string", "null"]},
+          "kind": {"enum": ["noise_grounding", "memory"]},
+          "status": {"const": "advisory"},
+          "reading": {"enum": ["observed", "not_observed", "no_evidence", "generic", "personalized", "unknown"]},
+          "source": {"type": "string"},
+          "note": {"type": "string"},
+          "noteEn": {"type": "string"}
+        }
+      }
+    },
+    "runs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/run"}},
+    "consistency": {"$ref": "#/$defs/consistency"},
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "messageEn", "refs"],
+        "properties": {
+          "code": {"enum": ["DECISIVE_RUN_ARCHIVED", "VERDICT_MIXED", "PHENOMENON_MIXED", "PF_OPTIMIZED_NOT_PASS", "ABSENT_GAP_NOT_ADMITTED",
+                           "ABSENT_GAP_NO_ANSWER", "MTG_REFUSAL_CONFLICT"]},
+          "message": {"type": "string"},
+          "messageEn": {"type": "string"},
+          "refs": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "remediation": {"type": "array", "items": {"$ref": "#/$defs/hint"}},
+    "scopeWarning": {"type": "string", "minLength": 1},
+    "scopeWarningEn": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "language": {"enum": ["en", "zh-CN"]},
+    "verdict": {"enum": ["ready", "not_ready", "insufficient_evidence"]},
+    "status": {"enum": ["reproduced", "not_reproduced", "insufficient_evidence"]},
+    "groupStatus": {"enum": ["reproduced", "not_reproduced", "insufficient_evidence", "missing"]},
+    "reportStatus": {"enum": ["complete", "incomplete"]},
+    "consistency": {"enum": ["none", "single_run", "consistent", "mixed"]},
+    "runSource": {"type": "string", "pattern": "^(current|history/[A-Za-z0-9._-]+)$"},
+    "caseCell": {
+      "type": "object",
+      "required": ["l1", "thelma", "mtg", "combined"],
+      "properties": {"l1": {"type": ["object", "null"]}, "thelma": {"type": ["object", "null"]}, "mtg": {"type": ["object", "null"]}}
+    },
+    "guide": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "present"],
+      "properties": {"path": {"type": "string"}, "present": {"type": "boolean"}}
+    },
+    "caseVerdict": {
+      "type": "object",
+      "required": ["caseId", "status", "code", "reason", "reasonEn"],
+      "properties": {
+        "caseId": {"type": "string"},
+        "status": {"$ref": "#/$defs/status"},
+        "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"},
+        "reason": {"type": "string"},
+        "reasonEn": {"type": "string"},
+        "warning": {"type": "string"},
+        "warningEn": {"type": "string"}
+      }
+    },
+    "phenomenon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "caseIds", "teachingPoint", "verdict", "reasonCode", "source", "cases", "replication", "hintIds"],
+      "properties": {
+        "id": {"type": ["string", "null"]},
+        "kind": {"enum": ["prompt_fixable", "retrieval_gap", "tool_use", "refusal", "escalation"]},
+        "caseIds": {"type": "array", "items": {"type": "string"}},
+        "teachingPoint": {"type": ["string", "null"]},
+        "mechanism": {"type": ["string", "null"]},
+        "design": {"enum": ["contrast", "control"]},
+        "verdict": {"$ref": "#/$defs/status"},
+        "reasonCode": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"},
+        "source": {"type": ["string", "null"]},
+        "cases": {"type": "array", "items": {"$ref": "#/$defs/caseVerdict"}},
+        "replication": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["completeRuns", "reproducedIn", "runs", "consistency"],
+          "properties": {
+            "completeRuns": {"type": "integer", "minimum": 0},
+            "reproducedIn": {"type": "integer", "minimum": 0},
+            "runs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["source", "status"],
+                "properties": {"source": {"type": "string"}, "status": {"$ref": "#/$defs/status"}}
+              }
+            },
+            "consistency": {"$ref": "#/$defs/consistency"}
+          }
+        },
+        "hintIds": {"type": "array", "items": {"type": "string", "pattern": "^h[0-9]{2,}$"}}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "current", "runStatus", "reportStatus", "missingEvidence", "teachingContrast", "verdict",
+                   "baselineCommandId", "optimizeCommandId", "optimizeFinishedAt", "updatedAt", "phenomena"],
+      "properties": {
+        "source": {"$ref": "#/$defs/runSource"},
+        "current": {"type": "boolean"},
+        "runStatus": {"type": ["string", "null"]},
+        "reportStatus": {"$ref": "#/$defs/reportStatus"},
+        "missingEvidence": {"type": "array", "items": {"type": "string"}},
+        "teachingContrast": {"enum": ["reproduced", "not_reproduced", "insufficient_evidence", "undeclared"]},
+        "verdict": {"$ref": "#/$defs/verdict"},
+        "baselineCommandId": {"type": ["string", "null"]},
+        "optimizeCommandId": {"type": ["string", "null"]},
+        "optimizeFinishedAt": {"type": ["string", "null"]},
+        "updatedAt": {"type": ["string", "null"]},
+        "phenomena": {"type": "object", "additionalProperties": {"$ref": "#/$defs/status"}},
+        "sharesEvidenceWithCurrent": {"const": true}
+      }
+    },
+    "hint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "code", "severity", "phenomenonId", "phenomenonIds", "caseId", "asset", "action", "actionEn", "because", "becauseEn"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^h[0-9]{2,}$"},
+        "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"},
+        "severity": {"enum": ["blocking", "advisory"]},
+        "phenomenonId": {"type": ["string", "null"], "description": "The phenomenon the severity comes from (the first blocking caller)."},
+        "phenomenonIds": {"type": "array", "uniqueItems": true, "items": {"type": "string"},
+                          "description": "Every phenomenon that references this hint (a case-less hint can be shared)."},
+        "caseId": {"type": ["string", "null"]},
+        "asset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "file", "scenarioPath", "scopes"],
+          "properties": {
+            "kind": {"enum": ["kb_doc", "baseline_prompt", "candidate_prompt", "golden_case", "teaching", "tool_fixture", "judge", "ops", "run", "guide"]},
+            "file": {"type": ["string", "null"], "description": "Project-relative file the SA edits (scenario.yaml, a prompt or a knowledge document)."},
+            "scenarioPath": {"type": ["string", "null"]},
+            "scopes": {"type": "array", "uniqueItems": true,
+                       "items": {"enum": ["agent", "facts", "knowledge", "tools", "skills", "prompts", "golden", "labs", "guides"]}}
+          }
+        },
+        "action": {"type": "string", "minLength": 1, "description": "What to change, in the pack language."},
+        "actionEn": {"type": "string", "minLength": 1, "description": "The same action in English."},
+        "because": {"type": "string"},
+        "becauseEn": {"type": "string"}
+      }
+    }
+  }
+}

@@ -1,0 +1,140 @@
+{
+ "name": "积分柱状图 PNG · 样例",
+ "description": "points-chart-png 的样例任务：每道题给 Agent 一个（或两个）会员积分文件（CSV 或 Excel，放在它的工作目录里），评分标准检查它画的 points-chart.png 本身（横向、排序、颜色、数值标注、标题）和输入文件没被改动——裁判看的是图片本身。用于 Claude Agent SDK Runtime（要有 Bash，模板 3 起）。",
+ "mode": "split",
+ "train": [
+  {
+   "id": "train-basic",
+   "question": "工作目录里的 members.csv 是本期会员积分，帮我画一张积分柱状图。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 3 根\n柱子按本期积分从高到低排列，自上而下依次是 M1201（2500）、M1203（1000）、M1202（40）\nM1201 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：2500、1000、40\n标题是「会员本期积分」，横轴标签是「本期积分」\n没有改动输入文件 members.csv（它不在改动过的文件里）\n回复说明已生成 points-chart.png、共 3 位会员、最高的是 M1201（2500 分）",
+   "files": [
+    {
+     "path": "members.csv",
+     "source": "files/train-basic.csv"
+    }
+   ]
+  },
+  {
+   "id": "train-duplicate",
+   "question": "members.csv 里有一位会员录了两笔积分，按会员汇总后画成柱状图。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 2 根\n柱子按本期积分从高到低排列，自上而下依次是 M2205（800）、M2201（120）\nM2205 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：800、120\n标题是「会员本期积分」，横轴标签是「本期积分」\nM2205 只有一根柱子，两笔积分合并为 800\n没有改动输入文件 members.csv（它不在改动过的文件里）\n回复说明已生成 points-chart.png、共 2 位会员、最高的是 M2205（800 分）",
+   "files": [
+    {
+     "path": "members.csv",
+     "source": "files/train-duplicate.csv"
+    }
+   ]
+  },
+  {
+   "id": "train-zero-ids",
+   "question": "门店导出的 members.xlsx，会员号是带前导零的数字，画一张本期积分排行图。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 3 根\n柱子按本期积分从高到低排列，自上而下依次是 0100（1200）、0042（650）、0007（90）\n0100 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：1200、650、90\n标题是「会员本期积分」，横轴标签是「本期积分」\n纵轴上的会员号保留前导零：0100、0042、0007（不是 100、42、7）\n没有改动输入文件 members.xlsx（它不在改动过的文件里）\n回复说明已生成 points-chart.png、共 3 位会员、最高的是 0100（1200 分）",
+   "files": [
+    {
+     "path": "members.xlsx",
+     "source": "files/train-zero-ids.xlsx"
+    }
+   ]
+  },
+  {
+   "id": "train-extra-columns",
+   "question": "用工作目录的 members.csv 出一张图，看看谁的本期积分最多。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 3 根\n柱子按本期积分从高到低排列，自上而下依次是 M4002（3300）、M4003（860）、M4001（15）\nM4002 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：3300、860、15\n标题是「会员本期积分」，横轴标签是「本期积分」\n没有改动输入文件 members.csv（它不在改动过的文件里）\n回复说明已生成 points-chart.png、共 3 位会员、最高的是 M4002（3300 分）",
+   "files": [
+    {
+     "path": "members.csv",
+     "source": "files/train-extra-columns.csv"
+    }
+   ]
+  }
+ ],
+ "val": [
+  {
+   "id": "val-basic",
+   "question": "把 members.csv 的会员本期积分画成图表。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 3 根\n柱子按本期积分从高到低排列，自上而下依次是 M7002（1500）、M7003（920）、M7001（300）\nM7002 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：1500、920、300\n标题是「会员本期积分」，横轴标签是「本期积分」\n没有改动输入文件 members.csv（它不在改动过的文件里）\n回复说明已生成 points-chart.png、共 3 位会员、最高的是 M7002（1500 分）",
+   "files": [
+    {
+     "path": "members.csv",
+     "source": "files/val-basic.csv"
+    }
+   ]
+  },
+  {
+   "id": "val-thousands",
+   "question": "members.csv 里的积分带千分位，帮我画积分柱状图。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 3 根\n柱子按本期积分从高到低排列，自上而下依次是 M8003（2100）、M8001（1050）、M8002（480）\nM8003 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：2100、1050、480\n标题是「会员本期积分」，横轴标签是「本期积分」\n没有改动输入文件 members.csv（它不在改动过的文件里）\n回复说明已生成 points-chart.png、共 3 位会员、最高的是 M8003（2100 分）",
+   "files": [
+    {
+     "path": "members.csv",
+     "source": "files/val-thousands.csv"
+    }
+   ]
+  },
+  {
+   "id": "val-supplement",
+   "question": "members.csv 是本期积分，supplement.csv 是补录的积分，合在一起画一张积分柱状图。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 3 根\n柱子按本期积分从高到低排列，自上而下依次是 M8003（2100）、M8001（1250）、M8002（480）\nM8003 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：2100、1250、480\n标题是「会员本期积分」，横轴标签是「本期积分」\nM8001 的两笔积分合并为 1250\n没有改动输入文件 members.csv、supplement.csv（它们不在改动过的文件里）\n回复说明已生成 points-chart.png、共 3 位会员、最高的是 M8003（2100 分）",
+   "files": [
+    {
+     "path": "members.csv",
+     "source": "files/val-thousands.csv"
+    },
+    {
+     "path": "supplement.csv",
+     "source": "files/val-supplement.csv"
+    }
+   ]
+  }
+ ],
+ "test": [
+  {
+   "id": "test-basic",
+   "question": "工作目录里的 members.csv 是这期会员积分，帮我画张图。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 3 根\n柱子按本期积分从高到低排列，自上而下依次是 M1002（2450）、M1003（1200）、M1001（800）\nM1002 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：2450、1200、800\n标题是「会员本期积分」，横轴标签是「本期积分」\n没有改动输入文件 members.csv（它不在改动过的文件里）\n回复说明已生成 points-chart.png、共 3 位会员、最高的是 M1002（2450 分）",
+   "files": [
+    {
+     "path": "members.csv",
+     "source": "files/test-basic.csv"
+    }
+   ]
+  },
+  {
+   "id": "test-supplement",
+   "question": "members.csv 是本期积分，supplement.csv 是补录的，合起来画成积分柱状图。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 3 根\n柱子按本期积分从高到低排列，自上而下依次是 M3001（2250）、M3005（2100）、M3003（1080）\nM3001 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：2250、2100、1080\n标题是「会员本期积分」，横轴标签是「本期积分」\nM3001 的两笔积分合并为 2250\n没有改动输入文件 members.csv、supplement.csv（它们不在改动过的文件里）\n回复说明已生成 points-chart.png、共 3 位会员、最高的是 M3001（2250 分）",
+   "files": [
+    {
+     "path": "members.csv",
+     "source": "files/test-members.csv"
+    },
+    {
+     "path": "supplement.csv",
+     "source": "files/test-supplement.csv"
+    }
+   ]
+  },
+  {
+   "id": "test-zero-ids",
+   "question": "门店系统导出的 members.xlsx，帮我出一张会员积分排行图。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 3 根\n柱子按本期积分从高到低排列，自上而下依次是 00031（1500）、00450（720）、00127（300）\n00031 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：1500、720、300\n标题是「会员本期积分」，横轴标签是「本期积分」\n纵轴上的会员号保留前导零：00031、00450、00127\n没有改动输入文件 members.xlsx（它不在改动过的文件里）\n回复说明已生成 points-chart.png、共 3 位会员、最高的是 00031（1500 分）",
+   "files": [
+    {
+     "path": "members.xlsx",
+     "source": "files/test-zero-ids.xlsx"
+    }
+   ]
+  },
+  {
+   "id": "test-many",
+   "question": "把 members.csv 里所有会员的本期积分画成柱状图。",
+   "rubric": "工作目录里生成了图片 points-chart.png（不是别的文件名）\n是横向柱状图：每位会员一根横向的柱子，共 6 根\n柱子按本期积分从高到低排列，自上而下依次是 M6001（3010）、M6002（1250）、M6007（990）、M6005（620）、M6004（400）、M6009（75）\nM6001 的柱子是橙色，其余柱子是蓝色\n每根柱子右端标着它的积分：3010、1250、990、620、400、75\n标题是「会员本期积分」，横轴标签是「本期积分」\n没有改动输入文件 members.csv（它不在改动过的文件里）\n回复说明已生成 points-chart.png、共 6 位会员、最高的是 M6001（3010 分）",
+   "files": [
+    {
+     "path": "members.csv",
+     "source": "files/test-many.csv"
+    }
+   ]
+  }
+ ]
+}

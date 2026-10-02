@@ -1,0 +1,866 @@
+{
+ "_comment": "Rendered-release fingerprint of the reference pack. Captured at 4e2651d (before the P0d script-facts refactor, unchanged by it); re-captured in P1 when the reference packs gained labs.teaching and its content, and in P1b when render switched to the teaching runtime (per-case actors, run record, L1, scenario-policy judge prompt). Regenerate only when release output changes on purpose: WSC_UPDATE_GOLDENS=1 .venv/bin/python3 -m pytest tests/test_golden_render.py",
+ "files": {
+  "00-config.sh": "c79d24382a28ad3b546af9e8cb6d76a68167cb4c1eb3936e06dc7be77691656c",
+  "00-deploy-infra.sh": "f471893051f39efd8201a876b817fbe362315a8f24114420cb4fc38ed76928d6",
+  "00-setup.sh": "eb5971496cf0bd9e82aeb7632e6af5f1d79446c5a7c4d3a299adf87a795d94b3",
+  "01-create-kb.sh": "90eacd8c98bb164cf24d9b730bae6cd94182ab2add9f2bbb4dd93f0c4076af28",
+  "02-create-gateway.sh": "d603fa056b96fe91e037940b95d4b119757f035bda3cd6f79d31d578aee5358c",
+  "03-configure-skills.sh": "4b67d6ea1057a8ccb065b3928620100109c1a7e4b3c117a315c220b621ecd002",
+  "04-deploy.sh": "bb9457b63faf517d9eaf3da4e6c6bd70e50ca926ff8cfa5e522b2f9807fdf9d4",
+  "05-setup-memory.sh": "f868c7ad5a437952a486b5204c1bfd46bbef0f1edaf2cb96fc590a6caf1051de",
+  "06-test-conversation.sh": "989f19876405032cebc0274cc5a55d963b01795202b0d81e7d848cdf1b2308bb",
+  "07-setup-eval-env.sh": "8b18b8b05b5427fe690605b45166853c1b5b1c14d20f1ada02e3b9bfb32538d0",
+  "08-create-evaluators.sh": "d262108d3ebabb2636b524e93545196a02214cd8edfc6b0564889c3b653399e3",
+  "09-run-eval.sh": "041c8297341ffb48de3e7ee9b022076e1793f59e9f1aedcdf86aeeab890a79cc",
+  "10-optimize-prompt.sh": "da47e0e29e969f3a348947846de13f02d30af7444e83b189036ea88a59edd36d",
+  "11-cost-latency.sh": "b65c22c8af1481820edb34d770310c8b67485e9d0e5c9db5be4a8f899508db4f",
+  "12-compare-models.sh": "cb9d641660dd04ef7cecce33169320a05a85923ef7717a3b251c471698210844",
+  "13-judge-stability.sh": "6ba7cd774857eccf807a2392d4c05e94111576b59b0bd26f51aa0dda428fe8cf",
+  "99-cleanup.sh": "58de61478fe1d09a61e649c1e1d594c28d84a1067bef0c8f4ed7e8bea274d7d2",
+  "LICENSE": "7cb750713252efd1d578837ba8785b61319109906f0c10b87adab7cf4badfc42",
+  "README.md": "0149cbe46e6ec3a9be1c1339a1d44cf57e3088e6e956ce10986c7cfa52804a8d",
+  "cfn/workshop-infra.yaml": "538e4092a25ddbaca03dac92962308ba88753f18e13bf078a72f4865e11a6e6c",
+  "evaluation_ready.py": "62587e33f56ba1339fae9a03dd4c0960a1e840c96cb3ee047853b9d844ec89e5",
+  "evaluators/README.md": "5ed0463e9eb383c5ccc08a53a40eed52ff63b99a8f24ff9ef427de1b5b136a13",
+  "evaluators/mtg_eval/evaluators/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+  "evaluators/mtg_eval/evaluators/mind_the_goal/__init__.py": "601ccb329dcac2f1d448a8e0304e5a3b600beefc5db561bbac6acf3aff8ca0e3",
+  "evaluators/mtg_eval/evaluators/mind_the_goal/gsr.py": "8f9a2e037fad7a3fc3dd4ea60484e9e0f0a16c268ed747158fc02882aa404167",
+  "evaluators/mtg_eval/evaluators/mind_the_goal/prompts.py": "f9122659126cde2ff3a38ead0436152c1e3350dc917cf28e55edc335ca4ff72a",
+  "evaluators/mtg_eval/evaluators/mind_the_goal/segmentation.py": "a80c0184d1c27034f6171bd8cf74415d62c08bd6b03cf1a886d087228408445f",
+  "evaluators/mtg_eval/evaluators/mind_the_goal/turn_quality.py": "739f9a0651c8d0e9a6b02b4bbe2d9271d9f7e4858950b94a5515a8dbc9e2db11",
+  "evaluators/mtg_eval/execution-role-policy.json": "2c923161e3f77b9797eff8d10fb3fcd318efcae3399bddac6100e63f75621758",
+  "evaluators/mtg_eval/lambda_function.py": "d46eb51de26689d57940af0ff7c4f040dfd74e138219475f980807153f91cce3",
+  "evaluators/mtg_eval/pyproject.toml": "1c3b4d31f253038e4ef05ba83cdd0d98cf15149652599d251be901ca5e4bc52c",
+  "evaluators/mtg_eval/session_adapter.py": "83453d870fce6c8bb0bb5374258d233fbf428162147815f5866dae1cc99f411f",
+  "evaluators/mtg_eval/shared/__init__.py": "66f42843c07bb80342457ab4980460f1a72e12651f9c816a697bb39f9d47fce5",
+  "evaluators/mtg_eval/shared/embedding_client.py": "5a18f92fbfff09b435dad6167545ee509e86f7e515ed6fcced36fb1f2dab920d",
+  "evaluators/mtg_eval/shared/llm_client.py": "7d80530c83efe7ea3db02e4720d4bfd36e51bbb2105d801abb7048defb5092a2",
+  "evaluators/mtg_eval/shared/logger.py": "6536a9e431c5dc442ef2f4f19b85832f9aa4a74cd761de552a7decd0bef0fbe0",
+  "evaluators/mtg_eval/shared/models.py": "0a458240e8b0dce471db33f336f977ab8bb12acbda5a161786b3b89cd35320d2",
+  "evaluators/mtg_eval/shared/serialization.py": "e2292a27a96848efc099979b33f2361e0d0f3dac436a7d9e278d6c60955c44cc",
+  "evaluators/thelma_eval/evaluators/__init__.py": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+  "evaluators/thelma_eval/evaluators/thelma/__init__.py": "4be3b69bde5278935accd466a980830e32444ed1fbb6e403e845b1ce672464bc",
+  "evaluators/thelma_eval/evaluators/thelma/decompose/__init__.py": "9fed7b314c6a9828a3501961650f157819ab8a275eea85c35353df0ddc2e9be9",
+  "evaluators/thelma_eval/evaluators/thelma/interplay.py": "5d9d5211dd81ec7d7f76fb616b7b977da42a9db1307e46d0921b2b8de61dcf22",
+  "evaluators/thelma_eval/evaluators/thelma/match/__init__.py": "08da27957c4afecae6c87485a580e3574098a8d9eda54c8258e44cf436935206",
+  "evaluators/thelma_eval/evaluators/thelma/metrics.py": "6938ae0f529c3215a05ca8564392214b318c04692d2ba913974ed74bdb459934",
+  "evaluators/thelma_eval/evaluators/thelma/prompts.py": "d9e1da56b1461f76bb2245bfbc26d659461d4066e24ac8c0c23d4aa098a9c8b2",
+  "evaluators/thelma_eval/execution-role-policy.json": "2c923161e3f77b9797eff8d10fb3fcd318efcae3399bddac6100e63f75621758",
+  "evaluators/thelma_eval/lambda_function.py": "40a83b9f482720a88cdb2bf27a73733531df9a8bb84613828853668f879754f4",
+  "evaluators/thelma_eval/pyproject.toml": "d231a0e3e5b4eacec6d68eff2744707485d8bb10bcd9fc5b7b3db047585b9481",
+  "evaluators/thelma_eval/shared/__init__.py": "66f42843c07bb80342457ab4980460f1a72e12651f9c816a697bb39f9d47fce5",
+  "evaluators/thelma_eval/shared/embedding_client.py": "5a18f92fbfff09b435dad6167545ee509e86f7e515ed6fcced36fb1f2dab920d",
+  "evaluators/thelma_eval/shared/llm_client.py": "7d80530c83efe7ea3db02e4720d4bfd36e51bbb2105d801abb7048defb5092a2",
+  "evaluators/thelma_eval/shared/logger.py": "6536a9e431c5dc442ef2f4f19b85832f9aa4a74cd761de552a7decd0bef0fbe0",
+  "evaluators/thelma_eval/shared/models.py": "0a458240e8b0dce471db33f336f977ab8bb12acbda5a161786b3b89cd35320d2",
+  "evaluators/thelma_eval/shared/serialization.py": "e2292a27a96848efc099979b33f2361e0d0f3dac436a7d9e278d6c60955c44cc",
+  "evaluators/thelma_eval/span_adapter.py": "27bf5514dc4cca88f90ad75e840bcb35df11a7d86f85fd4cf3d084099ad723a9",
+  "gateway/create_gateway.py": "ce81e7f9fa10b16c162898c8166af4af0866d16704c7c4af1541a1d7f20b71ce",
+  "gateway/maint-tools-schema.json": "fc78f48991f8784c6dfc681b7fab5e6d6f48f1ec80b13f6ced30135c93b6131f",
+  "knowledge-base/create_kb.py": "011acf3d9b72ac9712ce0669c901a14f8ce039945515cfbd40c5d8c316664263",
+  "l1_eval.py": "823f24ad9366979e929ee86a3c855324707476d7ccac5e1e1fc5521c6a7c1d60",
+  "lambda/fixtures.json": "c78b874a8617fde2d1cf96d57801b71b84d7f388b31606d5c09ebedbcf60ff13",
+  "lambda/scenario_tools_handler.py": "8df515926af7f17bb272348c9e5bc702302c80dfced11f03b54dbca9a948a247",
+  "pack/golden/practice.json": "d7f5827edb3d54aa05b133efa810e7f880b6ecae8729e8b187a81a75521f9ee5",
+  "pack/knowledge-base/docs/fault_codes.md": "755ab494617c266e3503166c5eec8ae898336d046f44f51e5a9855a96d34b7f8",
+  "pack/knowledge-base/docs/food_safety_hygiene.md": "c16fc9002e9a592f6a6ddad0c6c8d05ced14f4b2be7ae3d82d0a7e314da0264c",
+  "pack/knowledge-base/docs/lockout_tagout.md": "1ba381020bb35dd7fa82746c3899500703f05d79c7c4fc10bd796db4bb614c2b",
+  "pack/knowledge-base/docs/preventive_maintenance.md": "140255dcbe13957d6db62e3d9da2d5bcf8e93f626f524ad19361c7115d8cc18c",
+  "pack/knowledge-base/docs/spare_parts.md": "6c181361880f780d5ba6f1c3ad778670f5167910920fe8ac1e23df3dab15ea42",
+  "pack/knowledge-base/docs/work_orders.md": "3af5c9669069296f4dea9e1e61779497c1b704408f03f369775e2349f5daaa4b",
+  "pack/labs/student-guide.md": "0149cbe46e6ec3a9be1c1339a1d44cf57e3088e6e956ce10986c7cfa52804a8d",
+  "pack/pack.env": "2b9a8bacc4517308568c495e87210877fd5d4bda2a50fbe1361654f03f378f71",
+  "pack/pack.json": "fe5edf5cf73541b217e9b79b734e5ed53ddbfda7819b66f421b721547e87628c",
+  "pack/prompts/baseline.md": "5e58eaf1042fa2a7c7909357209033211f550df8678007454b24c54129bb2e14",
+  "pack/prompts/optimization-candidate.md": "36822444d91c1cd816ac783b9762e826645fe359ab7cf9a62ef7d1e3e7e7ae94",
+  "pack/skills/fault-first-response/SKILL.md": "98559276698bb87a1e5bffb91c0c1e2ed0189361f9494e8041bd058be9d771fb",
+  "pack/skills/pm-planner/SKILL.md": "64781f913a0b4c387a2a3f05b654d13763627e54b6f8f49f1e7aebdedd8e6c46",
+  "pack/tools/fixtures.json": "c78b874a8617fde2d1cf96d57801b71b84d7f388b31606d5c09ebedbcf60ff13",
+  "pack/tools/schema.json": "fc78f48991f8784c6dfc681b7fab5e6d6f48f1ec80b13f6ced30135c93b6131f",
+  "static/scripts/00-config.sh": "632446d234af99e1e9b9aafb85bd0bf7ec7b909ae814877774e2ed84682b8be6",
+  "static/scripts/00-deploy-infra.sh": "87efd0e702d289a34e609570e2045b0577162a10d75bbb55de55c23f3e975ae3",
+  "static/scripts/00-setup.sh": "e853f304106239f80a595b8255c040a8898d0adab6da13d28ba51aba3b4a7cd5",
+  "static/scripts/01-create-kb.sh": "21c80fd0a39cb494882c0e0c228bf6f9eb6e757c7ee72f3bfd88eae05b63f0d1",
+  "static/scripts/02-create-gateway.sh": "59b32286e56f3ddc8e5362a002579d0505ece4680d27b8b716ad7028ee08a4ac",
+  "static/scripts/03-configure-skills.sh": "2ea234e3c1e88c5cba338b1c46b326f60c0631d98ba868d637e813c280ab0fb5",
+  "static/scripts/04-deploy.sh": "635221a24bc8d13791e0ec296004a30df06068549040597977c93c8b12de66a1",
+  "static/scripts/05-setup-memory.sh": "fa34334272f225b7441c2d7833b393c8db66dd46966cf52f50ce0dd84fe18e5d",
+  "static/scripts/06-test-conversation.sh": "4830840987ae192e85fe5be1a2a3a0b3a0fdb36c473785414581706293ac2f4f",
+  "static/scripts/07-setup-eval-env.sh": "87383fef9d23640ae21aaf51b491af5c5515b6a3ed9b316901d052507a083161",
+  "static/scripts/08-create-evaluators.sh": "db78d41520eca6256a36c6be2b516533269c37a65aeb4c7dafa58f7c63a61c9d",
+  "static/scripts/09-run-eval.sh": "889054c3af5a7052cae2310f1f8dd0db53db118d1a39d01596e330061ab28f7b",
+  "static/scripts/10-optimize-prompt.sh": "6792c766afe8423d591dc775391fdc4bf810cb5ce3dd2d1e243e98583d6d7a26",
+  "static/scripts/11-cost-latency.sh": "ed272a11b8f045ba7130327d848129354deb69ed3bef0971d3ef704b89751fbc",
+  "static/scripts/12-compare-models.sh": "afad323cfe720542728ce3419272f4b4cebfe2e34f89a18bdac8ced9cbb6d8e6",
+  "static/scripts/13-judge-stability.sh": "a05b7a286b5a2ed7f44712b31b653ad11ee072ddb095e2adf14bea6969cd917c",
+  "static/scripts/99-cleanup.sh": "02248f99b93b20b1fedbecdbb274565972175ff04d7059d5de255022eac687b9",
+  "trace_metrics.py": "f07bf8eaa4b01d3bdab14bcb2ccc74bff65002bc7979968df6d1d3197635a7c5",
+  "trace_session.py": "14f2e8477dd73156db423c82fca549ea8047931cb3d8c33185787f0df652db91"
+ },
+ "manifestSha256": "606b01abb7211468bd26d45399250fe9326bdc04851a3dc087a4671c853c4cc4",
+ "packId": "maintenance",
+ "patches": [
+  [
+   "01-create-kb.sh",
+   "docs-from-pack",
+   1
+  ],
+  [
+   "knowledge-base/create_kb.py",
+   "kb-prune-helper",
+   1
+  ],
+  [
+   "knowledge-base/create_kb.py",
+   "kb-prune-stale-documents",
+   1
+  ],
+  [
+   "02-create-gateway.sh",
+   "lambda-zip-fixtures",
+   1
+  ],
+  [
+   "02-create-gateway.sh",
+   "lambda-update-handler",
+   1
+  ],
+  [
+   "04-deploy.sh",
+   "harness-create-flags",
+   1
+  ],
+  [
+   "04-deploy.sh",
+   "explicit-workshop-memory",
+   1
+  ],
+  [
+   "04-deploy.sh",
+   "skills-files-access-point",
+   1
+  ],
+  [
+   "04-deploy.sh",
+   "harness-filesystem-schema",
+   1
+  ],
+  [
+   "04-deploy.sh",
+   "baseline-prompt-from-pack",
+   1
+  ],
+  [
+   "04-deploy.sh",
+   "skills-list-from-pack",
+   1
+  ],
+  [
+   "05-setup-memory.sh",
+   "direct-command-runtime-setup",
+   1
+  ],
+  [
+   "06-test-conversation.sh",
+   "first-conversation-from-pack",
+   1
+  ],
+  [
+   "06-test-conversation.sh",
+   "first-conversation-actor",
+   1
+  ],
+  [
+   "06-test-conversation.sh",
+   "first-conversation-topic",
+   1
+  ],
+  [
+   "01-create-kb.sh",
+   "docs-copy-message",
+   1
+  ],
+  [
+   "knowledge-base/create_kb.py",
+   "kb-description-from-pack",
+   1
+  ],
+  [
+   "06-test-conversation.sh",
+   "memory-notice-from-pack",
+   1
+  ],
+  [
+   "06-test-conversation.sh",
+   "phase3-title-from-pack",
+   1
+  ],
+  [
+   "02-create-gateway.sh",
+   "gateway-deploy-message",
+   1
+  ],
+  [
+   "02-create-gateway.sh",
+   "gateway-resolve-message",
+   1
+  ],
+  [
+   "02-create-gateway.sh",
+   "gateway-mock-notice",
+   1
+  ],
+  [
+   "gateway/create_gateway.py",
+   "gateway-role-description",
+   1
+  ],
+  [
+   "evaluators/mtg_eval/evaluators/mind_the_goal/prompts.py",
+   "mtg-judge-scenario-policy",
+   1
+  ],
+  [
+   "evaluators/mtg_eval/evaluators/mind_the_goal/prompts.py",
+   "mtg-dialog-source",
+   1
+  ],
+  [
+   "evaluators/mtg_eval/evaluators/mind_the_goal/prompts.py",
+   "mtg-rcof-e2-policy",
+   1
+  ],
+  [
+   "evaluators/mtg_eval/evaluators/mind_the_goal/prompts.py",
+   "mtg-rcof-e6-policy",
+   1
+  ],
+  [
+   "evaluators/mtg_eval/evaluators/mind_the_goal/prompts.py",
+   "mtg-user-label",
+   1
+  ],
+  [
+   "05-setup-memory.sh",
+   "memory-runtime-status",
+   1
+  ],
+  [
+   "gateway/create_gateway.py",
+   "nova-compatible-target-name",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "golden-order-comment",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "golden-queries",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "golden-labels",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "golden-case-arrays",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "eval-run-context",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "recent-n",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "session-io-per-process",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "fresh-baseline-traces",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "golden-count-message",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "per-case-actor-session-log",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "expected-retrieval-count",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "refresh-session-io-after-conversations",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "evaluate-all-retrieval-cases",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "guide-trace-only-evaluation",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "wait-for-usable-evaluation-evidence",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "evaluation-retry-budget",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "evaluation-retry-budget-index",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "reject-empty-evaluation",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "reject-evaluation-error",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "count-usable-scores",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "reject-invalid-score",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "reject-all-skipped",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "case-tagged-scores-env",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "case-tagged-scores-load",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "case-tagged-scores-print",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "probe-sessions-only-scope",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "probe-sessions-only-filter",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "one-trace-per-probe-session",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "no-retrieval-still-scores-l1",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "mtg-every-practice-session",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "mtg-fatal-only-noninteractive",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "l1-after-judges",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "runtime-scoped-lookup",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "evaluator-scoped-lookup",
+   1
+  ],
+  [
+   "13-judge-stability.sh",
+   "runtime-scoped-lookup",
+   1
+  ],
+  [
+   "13-judge-stability.sh",
+   "evaluator-scoped-lookup",
+   1
+  ],
+  [
+   "13-judge-stability.sh",
+   "guide-explicit-trace-stability",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "golden-queries",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "golden-labels",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "golden-case-arrays",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "eval-run-context",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "candidate-prompt-from-pack",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "candidate-prompt-message",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "golden-count-message",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "fresh-optimized-traces",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "per-case-actor-session-log",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "wait-for-current-batch",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "probe-trace-count",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "probe-trace-wait-message",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "wait-for-all-retrieval-cases",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "matching-optimized-sample-count",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "optimize-closing-from-teaching",
+   1
+  ],
+  [
+   "11-cost-latency.sh",
+   "recent-n-cost",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "comparison-eval-phase",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "comparison-plan-message",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "comparison-rerun-message",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "comparison-reading-reference",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-scoped-harness-lookup",
+   2
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-scoped-runtime-lookup",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-scoped-kb-fallback",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-eval-runs",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "parallel-eval-helpers",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "parallel-eval-rag-judge",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "parallel-eval-goal-judge",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "settle-before-eval-helper",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "settle-before-eval",
+   1
+  ],
+  [
+   "13-judge-stability.sh",
+   "settle-before-eval-trace-time",
+   1
+  ],
+  [
+   "13-judge-stability.sh",
+   "settle-before-eval-row",
+   1
+  ],
+  [
+   "13-judge-stability.sh",
+   "settle-before-eval",
+   1
+  ],
+  [
+   "04-deploy.sh",
+   "prune-cli-zips",
+   1
+  ],
+  [
+   "08-create-evaluators.sh",
+   "prune-cli-zips",
+   1
+  ],
+  [
+   "08-create-evaluators.sh",
+   "preserve-memory-on-evaluator-deploy",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "noninteractive-model-confirmation",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "comparison-model-pricing",
+   1
+  ],
+  [
+   "11-cost-latency.sh",
+   "model-specific-price-snapshot",
+   1
+  ],
+  [
+   "11-cost-latency.sh",
+   "cost-token-counter",
+   1
+  ],
+  [
+   "11-cost-latency.sh",
+   "collect-cost-spans",
+   1
+  ],
+  [
+   "11-cost-latency.sh",
+   "exclude-wrapper-token-totals",
+   1
+  ],
+  [
+   "11-cost-latency.sh",
+   "deduplicate-token-usage",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "propagate-deploy-failure",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "propagate-deploy-failure",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "compare-models-in-place",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "compare-models-header",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "compare-models-header-duration",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "compare-models-header-deploy",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "compare-models-plan-in-place",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "compare-models-duration",
+   1
+  ],
+  [
+   "12-compare-models.sh",
+   "compare-models-done-message",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "optimize-prompt-in-place",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "optimize-prompt-in-place-header",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-addons-before-infra",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-scenario-only-flag",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-scenario-only-stop",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-runtime-image-policy",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-controller-workdir",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-bound-workdir",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "cleanup-must-not-retain-and-pass",
+   1
+  ],
+  [
+   "knowledge-base/create_kb.py",
+   "idempotent-kb-cleanup",
+   1
+  ],
+  [
+   "knowledge-base/create_kb.py",
+   "idempotent-kb-parameter-cleanup",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "document-service-eni-retention",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "document-cleanup-retry",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "deferred-cleanup-exit-status",
+   1
+  ],
+  [
+   "99-cleanup.sh",
+   "remove-retained-resource-success-claim",
+   1
+  ],
+  [
+   "00-setup.sh",
+   "skill-dirs",
+   1
+  ],
+  [
+   "cfn/workshop-infra.yaml",
+   "userdata-skill-dirs",
+   1
+  ],
+  [
+   "cfn/workshop-infra.yaml",
+   "userdata-skill-heredocs",
+   2
+  ],
+  [
+   "03-configure-skills.sh",
+   "generated",
+   1
+  ],
+  [
+   "gateway/create_gateway.py",
+   "gateway-description",
+   1
+  ],
+  [
+   "gateway/create_gateway.py",
+   "gateway-target-description",
+   1
+  ],
+  [
+   "gateway/create_gateway.py",
+   "gateway-role-docstring",
+   1
+  ],
+  [
+   "gateway/create_gateway.py",
+   "gateway-role-comment",
+   1
+  ],
+  [
+   "gateway/create_gateway.py",
+   "gateway-lambda-help",
+   1
+  ],
+  [
+   "02-create-gateway.sh",
+   "gateway-header-neutral",
+   1
+  ],
+  [
+   "02-create-gateway.sh",
+   "gateway-intro-neutral",
+   1
+  ],
+  [
+   "02-create-gateway.sh",
+   "gateway-step1-neutral",
+   1
+  ],
+  [
+   "02-create-gateway.sh",
+   "gateway-step2-neutral",
+   1
+  ],
+  [
+   "01-create-kb.sh",
+   "kb-header-neutral",
+   1
+  ],
+  [
+   "01-create-kb.sh",
+   "kb-prefix-neutral",
+   1
+  ],
+  [
+   "01-create-kb.sh",
+   "kb-step1-neutral",
+   1
+  ],
+  [
+   "09-run-eval.sh",
+   "eval-header-neutral",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "optimize-header-neutral",
+   1
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "optimize-prompt-comment-neutral",
+   1
+  ]
+ ],
+ "version": "maintenance-c8acba8ebcac"
+}

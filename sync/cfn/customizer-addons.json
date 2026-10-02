@@ -1,0 +1,2037 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Workshop Customizer add-ons: target contract, fixed SSM documents, applier install and least-privilege sync/run policy.",
+  "Metadata": {
+    "WorkshopCustomizer": {
+      "applierSha256": "37aca05220a5ffe5adc003d2d161559aea863afded8f0055a6a435efbd049430",
+      "installDocumentBytes": 48568,
+      "runDocumentBytes": 16032,
+      "runDocumentSha256": "8cede4b98c0a4e229f0b483313db67efd71b002f16ca6ff996e466696628bacd"
+    }
+  },
+  "Parameters": {
+    "WorkshopStackName": {
+      "Type": "String",
+      "Default": "workshop-infra",
+      "Description": "Name of the upstream workshop stack (exports SkillsBucketName)."
+    },
+    "WorkshopInstanceId": {
+      "Type": "AWS::EC2::Instance::Id",
+      "Description": "InstanceId output of the workshop stack (the students' EC2)."
+    },
+    "TemplateCommit": {
+      "Type": "String",
+      "AllowedPattern": "^[0-9a-f]{40}$",
+      "Description": "Pinned upstream commit every synced release must declare."
+    },
+    "TargetRoot": {
+      "Type": "String",
+      "Default": "/home/ssm-user/workshop",
+      "AllowedPattern": "^/[A-Za-z0-9._/-]+$"
+    },
+    "TargetUser": {
+      "Type": "String",
+      "Default": "ssm-user",
+      "AllowedPattern": "^[a-z_][a-z0-9_-]{0,31}$"
+    },
+    "TargetGroup": {
+      "Type": "String",
+      "Default": "ssm-user",
+      "AllowedPattern": "^[a-z_][a-z0-9_-]{0,31}$"
+    },
+    "AgentName": {
+      "Type": "String",
+      "Default": "hrassistant",
+      "AllowedPattern": "^[a-z][a-z0-9_-]{2,60}$"
+    },
+    "ToolTargetName": {
+      "Type": "String",
+      "Default": "hr-tools",
+      "AllowedPattern": "^[a-z][a-z0-9-]{2,60}$"
+    },
+    "ToolFunctionName": {
+      "Type": "String",
+      "Default": "hr-tools-handler",
+      "AllowedPattern": "^[a-z][a-z0-9-]{2,60}$"
+    },
+    "KnowledgeBaseName": {
+      "Type": "String",
+      "Default": "hr-knowledge-base",
+      "AllowedPattern": "^[a-z][a-z0-9-]{2,60}$"
+    },
+    "SsmParameterPrefix": {
+      "Type": "String",
+      "Default": "/app/hr",
+      "AllowedPattern": "^/app/[a-z][a-z0-9-]{1,60}$"
+    },
+    "ComparisonModelId": {
+      "Type": "String",
+      "Default": "us.amazon.nova-pro-v1:0",
+      "AllowedPattern": "^[a-zA-Z0-9][a-zA-Z0-9._:/-]{1,200}$"
+    },
+    "ComparisonInputPrice": {
+      "Type": "Number",
+      "Default": 0.8,
+      "MinValue": 0
+    },
+    "ComparisonOutputPrice": {
+      "Type": "Number",
+      "Default": 3.2,
+      "MinValue": 0
+    },
+    "GatewayName": {
+      "Type": "String",
+      "Default": "hrgateway",
+      "AllowedPattern": "[a-z][a-z0-9-]{2,99}"
+    }
+  },
+  "Resources": {
+    "TargetContractParameter": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "/workshop-customizer/target-contract",
+        "Type": "String",
+        "Description": "Workshop Customizer target contract \u2014 trust anchor read by the App before any SendCommand.",
+        "Value": {
+          "Fn::Sub": [
+            "{\"schema\":\"workshop-customizer/target-contract/1\",\"targetRoot\":\"${TargetRoot}\",\"user\":\"${TargetUser}\",\"group\":\"${TargetGroup}\",\"templateCommit\":\"${TemplateCommit}\",\"packSchemaVersion\":1,\"allowedReleasePrefixes\":[\"s3://${WorkshopBucket}/customizer-releases/\"],\"documentName\":\"WorkshopCustomizerApplyRelease\",\"runDocumentName\":\"WorkshopCustomizerRunStep\",\"instanceId\":\"${WorkshopInstanceId}\",\"workshopStack\":\"${WorkshopStackName}\",\"addonsStack\":\"${AWS::StackName}\",\"region\":\"${AWS::Region}\",\"comparisonModel\":{\"id\":\"${ComparisonModelId}\",\"inputPricePerMillionUsd\":\"${ComparisonInputPrice}\",\"outputPricePerMillionUsd\":\"${ComparisonOutputPrice}\"}}",
+            {
+              "WorkshopBucket": {
+                "Fn::ImportValue": {
+                  "Fn::Sub": "${WorkshopStackName}-SkillsBucketName"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "InstallApplierDocument": {
+      "Type": "AWS::SSM::Document",
+      "Properties": {
+        "Name": "WorkshopCustomizerInstallApplier",
+        "DocumentType": "Command",
+        "DocumentFormat": "JSON",
+        "UpdateMethod": "NewVersion",
+        "Content": {
+          "schemaVersion": "2.2",
+          "description": "Workshop Customizer: install the release applier and target contract on the workshop EC2.",
+          "parameters": {
+            "TargetRoot": {
+              "type": "String",
+              "default": "/home/ssm-user/workshop",
+              "allowedPattern": "^/[A-Za-z0-9._/-]+$"
+            },
+            "TargetUser": {
+              "type": "String",
+              "default": "ssm-user",
+              "allowedPattern": "^[a-z_][a-z0-9_-]{0,31}$"
+            },
+            "TargetGroup": {
+              "type": "String",
+              "default": "ssm-user",
+              "allowedPattern": "^[a-z_][a-z0-9_-]{0,31}$"
+            },
+            "ContractParameterName": {
+              "type": "String",
+              "default": "/workshop-customizer/target-contract",
+              "allowedPattern": "^/[A-Za-z0-9._/-]+$"
+            },
+            "Region": {
+              "type": "String",
+              "default": "us-west-2",
+              "allowedPattern": "^[a-z]{2}(-[a-z]+)+-[0-9]$"
+            }
+          },
+          "mainSteps": [
+            {
+              "action": "aws:runShellScript",
+              "name": "installApplier",
+              "precondition": {
+                "StringEquals": [
+                  "platformType",
+                  "Linux"
+                ]
+              },
+              "inputs": {
+                "timeoutSeconds": "600",
+                "runCommand": [
+                  "#!/bin/bash",
+                  "set -euo pipefail",
+                  "install -d -m 0755 /opt/workshop-customizer /etc/workshop-customizer",
+                  "exec 9>/opt/workshop-customizer/install.lock",
+                  "flock -x 9",
+                  "if ! /usr/bin/python3.12 -m pip --version >/dev/null 2>&1; then dnf install -y python3.12 python3.12-pip; fi",
+                  "install -d -m 0755 /opt/workshop-customizer/bin",
+                  "ln -sfn /usr/bin/python3.12 /opt/workshop-customizer/bin/python3",
+                  "CLI_VERSION=\"$(/usr/local/bin/npx --no-install agentcore --version 2>/dev/null || true)\"",
+                  "if [ \"$CLI_VERSION\" != \"1.0.0-preview.30\" ]; then",
+                  "  /usr/local/bin/npm install -g @aws/agentcore@1.0.0-preview.30",
+                  "fi",
+                  "cat > /opt/workshop-customizer/apply_release.b64 <<'B64EOF'",
+                  "IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJXb3Jrc2hvcCBDdXN0b21pemVyIOKAlCBob3N0LXNp",
+                  "ZGUgcmVsZWFzZSBhcHBsaWVyLgoKUHJlLWluc3RhbGxlZCBvbiB0aGUgd29ya3Nob3AgRUMyIGJ5",
+                  "IHRoZSBDbG91ZEZvcm1hdGlvbiBzdGFjayBhbmQgaW52b2tlZCBPTkxZIHRocm91Z2ggdGhlCmN1",
+                  "c3RvbSBTU00gRG9jdW1lbnQgYGBXb3Jrc2hvcEN1c3RvbWl6ZXJBcHBseVJlbGVhc2VgYC4gVGhl",
+                  "IEFwcCBuZXZlciBzaGlwcyBhIHNjcmlwdCBib2R5OwppdCBwYXNzZXMgdHlwZWQgcGFyYW1ldGVy",
+                  "cyAoUzMgVVJJLCBleHBlY3RlZCBTSEEtMjU2LCBleHBlY3RlZCB2ZXJzaW9uLCBhY3Rpb24pLgoK",
+                  "QWN0aW9ucwotLS0tLS0tCmFwcGx5ICAgICBmZXRjaCB0aGUgcmVsZWFzZSBidW5kbGUgZnJvbSBh",
+                  "biBhbGxvdy1saXN0ZWQgcHJlZml4LCB2ZXJpZnkgaXRzIGhhc2gsIGV4dHJhY3QgaXQKICAgICAg",
+                  "ICAgIHNhZmVseSBpbnRvIHN0YWdpbmcsIHZlcmlmeSBSRUxFQVNFLmpzb24gKHZlcnNpb24sIHRl",
+                  "bXBsYXRlIGNvbW1pdCwgcGVyLWZpbGUgaGFzaGVzKSwKICAgICAgICAgIG1vdmUgaXQgdG8gYGBy",
+                  "ZWxlYXNlcy88dmVyc2lvbj5gYCwgc2V0IG93bmVyc2hpcCwgc3dpdGNoIGBgY3VycmVudGBgIGF0",
+                  "b21pY2FsbHksCiAgICAgICAgICBydW4gdGhlIHNtb2tlIGNoZWNrIGFuZCBhcm0gdGhlIGNvbW1p",
+                  "dCB3YXRjaGRvZy4gQW55IGZhaWx1cmUgYmVmb3JlIHRoZSBzd2l0Y2ggbGVhdmVzCiAgICAgICAg",
+                  "ICBgYGN1cnJlbnRgYCB1bnRvdWNoZWQ7IGEgc21va2UgZmFpbHVyZSBhZnRlciB0aGUgc3dpdGNo",
+                  "IHJvbGxzIGJhY2sgaW1tZWRpYXRlbHkuCmNvbW1pdCAgICBjb25maXJtIHRoZSBwZW5kaW5nIHJl",
+                  "bGVhc2UgKHN0b3BzIHRoZSB3YXRjaGRvZyByb2xsYmFjaykuCnJvbGxiYWNrICBzd2l0Y2ggYGBj",
+                  "dXJyZW50YGAgYmFjayB0byB0aGUgcHJldmlvdXMgcmVsZWFzZS4Kc3RhdHVzICAgIHByaW50IHRo",
+                  "ZSBkZXBsb3ltZW50IHN0YXRlLgp3YXRjaGRvZyAgKHNwYXduZWQgYnkgYXBwbHkpIHJvbGwgYmFj",
+                  "ayBhdXRvbWF0aWNhbGx5IGlmIG5vIGNvbW1pdCBhcnJpdmVzIGJlZm9yZSB0aGUgZGVhZGxpbmUu",
+                  "CgpMYXlvdXQgdW5kZXIgdGhlIHRhcmdldCByb290IChmcm9tIHRoZSB0YXJnZXQgY29udHJhY3Qp",
+                  "OgoKICAgIHJlbGVhc2VzLzx2ZXJzaW9uPi8gICAgICBpbW11dGFibGUgcmVsZWFzZSB0cmVlcwog",
+                  "ICAgY3VycmVudCAtPiByZWxlYXNlcy88dj4gIGF0b21pYyBzeW1saW5rIHN3aXRjaCAob3MucmVw",
+                  "bGFjZSBvbiB0aGUgc3ltbGluaykKICAgIHByZXZpb3VzIC0+IHJlbGVhc2VzLzx2PiBjb252ZW5p",
+                  "ZW5jZSBsaW5rLCBkZXJpdmVkIGZyb20gdGhlIHN0YXRlIGZpbGUKICAgIGRlcGxveW1lbnQtbWFu",
+                  "aWZlc3QuanNvbiBzaW5nbGUgc291cmNlIG9mIHRydXRoICh0ZW1wIGZpbGUgKyByZW5hbWUpCiAg",
+                  "ICAuc3RhZ2luZy8gICAgICAgICAgICAgICAgc2NyYXRjaCwgYWx3YXlzIGNsZWFuZWQKClRoZSBz",
+                  "Y3JpcHQgaXMgc3RhbmRhcmQtbGlicmFyeSBvbmx5IChweXRob24zIGlzIG9uIHRoZSBBTDIwMjMg",
+                  "aW1hZ2UpOyBkb3dubG9hZHMgdXNlIHRoZSBBV1MKQ0xJIGFscmVhZHkgcHJlc2VudCBvbiB0aGUg",
+                  "aW5zdGFuY2UuIGBgZmlsZTovL2BgIHNvdXJjZXMgYXJlIGFjY2VwdGVkIG9ubHkgd2hlbiB0aGUg",
+                  "Y29udHJhY3QKYWxsb3ctbGlzdHMgdGhlbSAodXNlZCBieSB0aGUgbG9jYWwgdGVzdC1zdWl0ZSku",
+                  "CiIiIgoKZnJvbSBfX2Z1dHVyZV9fIGltcG9ydCBhbm5vdGF0aW9ucwoKaW1wb3J0IGFyZ3BhcnNl",
+                  "CmltcG9ydCBoYXNobGliCmltcG9ydCBqc29uCmltcG9ydCBvcwppbXBvcnQgcmUKaW1wb3J0IHNo",
+                  "dXRpbAppbXBvcnQgc3RhdAppbXBvcnQgc3VicHJvY2VzcwppbXBvcnQgdGVtcGZpbGUKaW1wb3J0",
+                  "IHN5cwppbXBvcnQgdGltZQppbXBvcnQgemlwZmlsZQpmcm9tIGRhdGV0aW1lIGltcG9ydCBkYXRl",
+                  "dGltZSwgdGltZWRlbHRhLCB0aW1lem9uZQpmcm9tIHBhdGhsaWIgaW1wb3J0IFBhdGgKZnJvbSB0",
+                  "eXBpbmcgaW1wb3J0IEFueQoKQ09OVFJBQ1RfUEFUSCA9IG9zLmVudmlyb24uZ2V0KCJXU0NfVEFS",
+                  "R0VUX0NPTlRSQUNUIiwgIi9ldGMvd29ya3Nob3AtY3VzdG9taXplci90YXJnZXQuanNvbiIpClNU",
+                  "QVRFX0ZJTEUgPSAiZGVwbG95bWVudC1tYW5pZmVzdC5qc29uIgpNQU5JRkVTVF9OQU1FID0gIlJF",
+                  "TEVBU0UuanNvbiIKU1RBVEVfU0NIRU1BID0gIndvcmtzaG9wLWN1c3RvbWl6ZXIvZGVwbG95bWVu",
+                  "dC8xIgoKVkVSU0lPTl9SRSA9IHJlLmNvbXBpbGUociJeW2Etel1bYS16MC05LV17Miw0MH0tWzAt",
+                  "OWEtZl17MTJ9JCIpClNIQTI1Nl9SRSA9IHJlLmNvbXBpbGUociJeWzAtOWEtZl17NjR9JCIpCkNP",
+                  "TU1JVF9SRSA9IHJlLmNvbXBpbGUociJeWzAtOWEtZl17NDB9JCIpCgpNQVhfRU5UUklFUyA9IDUw",
+                  "MDAKTUFYX0ZJTEVfQllURVMgPSA1MCAqIDEwMjQgKiAxMDI0Ck1BWF9UT1RBTF9CWVRFUyA9IDIw",
+                  "MCAqIDEwMjQgKiAxMDI0Ck1BWF9DT01QUkVTU0lPTl9SQVRJTyA9IDEwMApLRUVQX1JFTEVBU0VT",
+                  "ID0gMwojOiBUaGUgc2NlbmFyaW8gc2NoZW1hJ3MgbmFtZXNwYWNlLmFnZW50TmFtZSBwYXR0ZXJu",
+                  "LCBhbmQgdGhlIG5hbWVzIHRoZSB2YWxpZGF0b3IgcmVzZXJ2ZXMgYmVjYXVzZSB0aGV5CiM6IGFy",
+                  "ZSBlbnRyaWVzIG9mIHRoaXMgdGFyZ2V0IHJvb3QgKHZhbGlkYXRvci5SRVNFUlZFRF9BR0VOVF9O",
+                  "QU1FUyk7IHRlc3RzIGtlZXAgYm90aCBpbiBzdGVwLgpBR0VOVF9OQU1FX1JFID0gcmUuY29tcGls",
+                  "ZShyIl5bYS16XVthLXowLTldezIsMTh9JCIpClJFU0VSVkVEX0FHRU5UX05BTUVTID0gKCJjdXJy",
+                  "ZW50IiwgInByZXZpb3VzIiwgInJlbGVhc2VzIiwgInJ1biIsICJza2lsbHMiKQpERUZBVUxUX1dB",
+                  "VENIRE9HX01JTlVURVMgPSAyMApSRVFVSVJFRF9SRUxFQVNFX0ZJTEVTID0gKE1BTklGRVNUX05B",
+                  "TUUsICIwNC1kZXBsb3kuc2giLCAiMDktcnVuLWV2YWwuc2giLCAicGFjay9wYWNrLmVudiIsICJw",
+                  "YWNrL3BhY2suanNvbiIsICJsYW1iZGEvZml4dHVyZXMuanNvbiIpCgoKY2xhc3MgQXBwbHlFcnJv",
+                  "cihFeGNlcHRpb24pOgogICAgIiIiRmFpbCBjbG9zZWQ6IHRoZSBtZXNzYWdlIGlzIHNhZmUgdG8g",
+                  "c3VyZmFjZSB0byB0aGUgU1NNIGNvbW1hbmQgb3V0cHV0LiIiIgoKCmRlZiB1dGNub3coKSAtPiBk",
+                  "YXRldGltZToKICAgIHJldHVybiBkYXRldGltZS5ub3codGltZXpvbmUudXRjKQoKCmRlZiBpc28o",
+                  "ZHQ6IGRhdGV0aW1lKSAtPiBzdHI6CiAgICByZXR1cm4gZHQucmVwbGFjZShtaWNyb3NlY29uZD0w",
+                  "KS5pc29mb3JtYXQoKQoKCiMgLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCiMgQ29udHJhY3QsIHN0YXRlLCBo",
+                  "YXNoaW5nCiMgLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCgoKZGVmIGxvYWRfY29udHJhY3QocGF0aDogc3Ry",
+                  "ID0gQ09OVFJBQ1RfUEFUSCkgLT4gZGljdFtzdHIsIEFueV06CiAgICBwID0gUGF0aChwYXRoKQog",
+                  "ICAgaWYgbm90IHAuaXNfZmlsZSgpOgogICAgICAgIHJhaXNlIEFwcGx5RXJyb3IoZiJ0YXJnZXQg",
+                  "Y29udHJhY3QgbWlzc2luZzoge3BhdGh9ICh0aGUgc3RhY2sgbXVzdCBpbnN0YWxsIGl0OyByZWZ1",
+                  "c2luZyB0byBhcHBseSkiKQogICAgY29udHJhY3QgPSBqc29uLmxvYWRzKHAucmVhZF90ZXh0KGVu",
+                  "Y29kaW5nPSJ1dGYtOCIpKQogICAgZm9yIGtleSBpbiAoInRhcmdldFJvb3QiLCAidXNlciIsICJn",
+                  "cm91cCIsICJ0ZW1wbGF0ZUNvbW1pdCIsICJhbGxvd2VkUmVsZWFzZVByZWZpeGVzIiwgInBhY2tT",
+                  "Y2hlbWFWZXJzaW9uIik6CiAgICAgICAgaWYga2V5IG5vdCBpbiBjb250cmFjdDoKICAgICAgICAg",
+                  "ICAgcmFpc2UgQXBwbHlFcnJvcihmInRhcmdldCBjb250cmFjdCBsYWNrcyAne2tleX0nIikKICAg",
+                  "IGlmIG5vdCBDT01NSVRfUkUubWF0Y2goc3RyKGNvbnRyYWN0WyJ0ZW1wbGF0ZUNvbW1pdCJdKSk6",
+                  "CiAgICAgICAgcmFpc2UgQXBwbHlFcnJvcigidGFyZ2V0IGNvbnRyYWN0IHRlbXBsYXRlQ29tbWl0",
+                  "IGlzIG5vdCBhIDQwLWhleCBjb21taXQiKQogICAgaWYgbm90IGlzaW5zdGFuY2UoY29udHJhY3Rb",
+                  "ImFsbG93ZWRSZWxlYXNlUHJlZml4ZXMiXSwgbGlzdCkgb3Igbm90IGNvbnRyYWN0WyJhbGxvd2Vk",
+                  "UmVsZWFzZVByZWZpeGVzIl06CiAgICAgICAgcmFpc2UgQXBwbHlFcnJvcigidGFyZ2V0IGNvbnRy",
+                  "YWN0IGFsbG93ZWRSZWxlYXNlUHJlZml4ZXMgbXVzdCBiZSBhIG5vbi1lbXB0eSBsaXN0IikKICAg",
+                  "IHJldHVybiBjb250cmFjdAoKCmRlZiBzaGEyNTZfZmlsZShwYXRoOiBQYXRoKSAtPiBzdHI6CiAg",
+                  "ICBkaWdlc3QgPSBoYXNobGliLnNoYTI1NigpCiAgICB3aXRoIHBhdGgub3BlbigicmIiKSBhcyBo",
+                  "YW5kbGU6CiAgICAgICAgZm9yIGNodW5rIGluIGl0ZXIobGFtYmRhOiBoYW5kbGUucmVhZCgxIDw8",
+                  "IDE2KSwgYiIiKToKICAgICAgICAgICAgZGlnZXN0LnVwZGF0ZShjaHVuaykKICAgIHJldHVybiBk",
+                  "aWdlc3QuaGV4ZGlnZXN0KCkKCgpkZWYgY29udGVudF9oYXNoKGZpbGVzOiBkaWN0W3N0ciwgc3Ry",
+                  "XSkgLT4gc3RyOgogICAgcmV0dXJuIGhhc2hsaWIuc2hhMjU2KCJcbiIuam9pbihmIntrfSB7dn0i",
+                  "IGZvciBrLCB2IGluIHNvcnRlZChmaWxlcy5pdGVtcygpKSkuZW5jb2RlKCJ1dGYtOCIpKS5oZXhk",
+                  "aWdlc3QoKQoKCmRlZiByZWFkX3N0YXRlKHJvb3Q6IFBhdGgpIC0+IGRpY3Rbc3RyLCBBbnldOgog",
+                  "ICAgcGF0aCA9IHJvb3QgLyBTVEFURV9GSUxFCiAgICBpZiBub3QgcGF0aC5pc19maWxlKCk6CiAg",
+                  "ICAgICAgcmV0dXJuIHsic2NoZW1hIjogU1RBVEVfU0NIRU1BLCAiYWN0aXZlIjogTm9uZSwgInBy",
+                  "ZXZpb3VzIjogTm9uZSwgInN0YXR1cyI6ICJuby1hY3RpdmUtcmVsZWFzZSIsICJoaXN0b3J5Ijog",
+                  "W119CiAgICByZXR1cm4ganNvbi5sb2FkcyhwYXRoLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgi",
+                  "KSkKCgpkZWYgd3JpdGVfc3RhdGUocm9vdDogUGF0aCwgc3RhdGU6IGRpY3Rbc3RyLCBBbnldKSAt",
+                  "PiBOb25lOgogICAgc3RhdGVbInNjaGVtYSJdID0gU1RBVEVfU0NIRU1BCiAgICBzdGF0ZVsidXBk",
+                  "YXRlZEF0Il0gPSBpc28odXRjbm93KCkpCiAgICB0bXAgPSByb290IC8gZiIue1NUQVRFX0ZJTEV9",
+                  "LnRtcCIKICAgIHRtcC53cml0ZV90ZXh0KGpzb24uZHVtcHMoc3RhdGUsIGluZGVudD0yLCBzb3J0",
+                  "X2tleXM9VHJ1ZSkgKyAiXG4iLCBlbmNvZGluZz0idXRmLTgiKQogICAgb3MucmVwbGFjZSh0bXAs",
+                  "IHJvb3QgLyBTVEFURV9GSUxFKQoKCmRlZiByZWNvcmQoc3RhdGU6IGRpY3Rbc3RyLCBBbnldLCB2",
+                  "ZXJzaW9uOiBzdHIgfCBOb25lLCBhY3Rpb246IHN0ciwgcmVzdWx0OiBzdHIpIC0+IE5vbmU6CiAg",
+                  "ICBzdGF0ZS5zZXRkZWZhdWx0KCJoaXN0b3J5IiwgW10pLmFwcGVuZCh7InZlcnNpb24iOiB2ZXJz",
+                  "aW9uLCAiYWN0aW9uIjogYWN0aW9uLCAicmVzdWx0IjogcmVzdWx0LCAiYXQiOiBpc28odXRjbm93",
+                  "KCkpfSkKICAgIHN0YXRlWyJoaXN0b3J5Il0gPSBzdGF0ZVsiaGlzdG9yeSJdWy01MDpdCgoKIyAt",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0KIyBGZXRjaCBhbmQgZXh0cmFjdAojIC0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LQoKCmRlZiBmZXRjaF9idW5kbGUodXJpOiBzdHIsIGRlc3Q6IFBhdGgsIGFsbG93ZWRfcHJlZml4",
+                  "ZXM6IGxpc3Rbc3RyXSkgLT4gTm9uZToKICAgIGlmIG5vdCBhbnkodXJpLnN0YXJ0c3dpdGgocHJl",
+                  "Zml4KSBmb3IgcHJlZml4IGluIGFsbG93ZWRfcHJlZml4ZXMpOgogICAgICAgIHJhaXNlIEFwcGx5",
+                  "RXJyb3IoInNvdXJjZSBVUkkgaXMgb3V0c2lkZSB0aGUgYWxsb3ctbGlzdGVkIHJlbGVhc2UgcHJl",
+                  "Zml4ZXMiKQogICAgaWYgdXJpLnN0YXJ0c3dpdGgoInMzOi8vIik6CiAgICAgICAgY21kID0gWyJh",
+                  "d3MiLCAiczMiLCAiY3AiLCAiLS1vbmx5LXNob3ctZXJyb3JzIiwgdXJpLCBzdHIoZGVzdCldCiAg",
+                  "ICAgICAgcHJvYyA9IHN1YnByb2Nlc3MucnVuKGNtZCwgY2FwdHVyZV9vdXRwdXQ9VHJ1ZSwgdGV4",
+                  "dD1UcnVlLCB0aW1lb3V0PTYwMCkKICAgICAgICBpZiBwcm9jLnJldHVybmNvZGUgIT0gMDoKICAg",
+                  "ICAgICAgICAgcmFpc2UgQXBwbHlFcnJvcihmImRvd25sb2FkIGZhaWxlZDoge3Byb2Muc3RkZXJy",
+                  "LnN0cmlwKClbOjMwMF19IikKICAgIGVsaWYgdXJpLnN0YXJ0c3dpdGgoImZpbGU6Ly8iKToKICAg",
+                  "ICAgICBzaHV0aWwuY29weWZpbGUodXJpW2xlbigiZmlsZTovLyIpOl0sIGRlc3QpCiAgICBlbHNl",
+                  "OgogICAgICAgIHJhaXNlIEFwcGx5RXJyb3IoInVuc3VwcG9ydGVkIHNvdXJjZSBzY2hlbWUgKGV4",
+                  "cGVjdGVkIHMzOi8vIG9yIGFuIGFsbG93LWxpc3RlZCBmaWxlOi8vKSIpCgoKZGVmIHNhZmVfZXh0",
+                  "cmFjdCh6aXBfcGF0aDogUGF0aCwgZGVzdDogUGF0aCkgLT4gTm9uZToKICAgICIiIkV4dHJhY3Qg",
+                  "d2l0aCB6aXAtc2xpcCwgc3ltbGluaywgZHVwbGljYXRlLCBzaXplIGFuZCByYXRpbyBwcm90ZWN0",
+                  "aW9ucy4iIiIKICAgIGRlc3QubWtkaXIocGFyZW50cz1UcnVlLCBleGlzdF9vaz1GYWxzZSkKICAg",
+                  "IHNlZW46IHNldFtzdHJdID0gc2V0KCkKICAgIHRvdGFsID0gMAogICAgd2l0aCB6aXBmaWxlLlpp",
+                  "cEZpbGUoemlwX3BhdGgpIGFzIGFyY2hpdmU6CiAgICAgICAgaW5mb3MgPSBhcmNoaXZlLmluZm9s",
+                  "aXN0KCkKICAgICAgICBpZiBsZW4oaW5mb3MpID4gTUFYX0VOVFJJRVM6CiAgICAgICAgICAgIHJh",
+                  "aXNlIEFwcGx5RXJyb3IoZiJidW5kbGUgaGFzIHtsZW4oaW5mb3MpfSBlbnRyaWVzOyBsaW1pdCBp",
+                  "cyB7TUFYX0VOVFJJRVN9IikKICAgICAgICBmb3IgaW5mbyBpbiBpbmZvczoKICAgICAgICAgICAg",
+                  "bmFtZSA9IGluZm8uZmlsZW5hbWUKICAgICAgICAgICAgaWYgbmFtZS5lbmRzd2l0aCgiLyIpOgog",
+                  "ICAgICAgICAgICAgICAgY29udGludWUgICMgZGlyZWN0b3JpZXMgYXJlIGNyZWF0ZWQgaW1wbGlj",
+                  "aXRseQogICAgICAgICAgICBub3JtID0gb3MucGF0aC5ub3JtcGF0aChuYW1lKQogICAgICAgICAg",
+                  "ICBpZiBuYW1lLnN0YXJ0c3dpdGgoKCIvIiwgIlxcIikpIG9yIG5vcm0uc3RhcnRzd2l0aCgiLi4i",
+                  "KSBvciAiLy4uLyIgaW4gZiIve25vcm19LyIgb3IgIlxcIiBpbiBuYW1lIG9yIG5vcm0gIT0gbmFt",
+                  "ZS5yc3RyaXAoIi8iKToKICAgICAgICAgICAgICAgIHJhaXNlIEFwcGx5RXJyb3IoZiJidW5kbGUg",
+                  "ZW50cnkgcmVqZWN0ZWQgKHBhdGggZXNjYXBlKToge25hbWUhcn0iKQogICAgICAgICAgICBpZiBu",
+                  "b3JtIGluIHNlZW46CiAgICAgICAgICAgICAgICByYWlzZSBBcHBseUVycm9yKGYiYnVuZGxlIGVu",
+                  "dHJ5IGR1cGxpY2F0ZWQ6IHtuYW1lIXJ9IikKICAgICAgICAgICAgc2Vlbi5hZGQobm9ybSkKICAg",
+                  "ICAgICAgICAgbW9kZSA9IChpbmZvLmV4dGVybmFsX2F0dHIgPj4gMTYpICYgMG8xNzAwMDAKICAg",
+                  "ICAgICAgICAgaWYgbW9kZSBpbiAoc3RhdC5TX0lGTE5LLCBzdGF0LlNfSUZDSFIsIHN0YXQuU19J",
+                  "RkJMSywgc3RhdC5TX0lGSUZPLCBzdGF0LlNfSUZTT0NLKToKICAgICAgICAgICAgICAgIHJhaXNl",
+                  "IEFwcGx5RXJyb3IoZiJidW5kbGUgZW50cnkgcmVqZWN0ZWQgKHNwZWNpYWwgZmlsZSAvIHN5bWxp",
+                  "bmspOiB7bmFtZSFyfSIpCiAgICAgICAgICAgIGlmIGluZm8uZmlsZV9zaXplID4gTUFYX0ZJTEVf",
+                  "QllURVM6CiAgICAgICAgICAgICAgICByYWlzZSBBcHBseUVycm9yKGYiYnVuZGxlIGVudHJ5IHRv",
+                  "byBsYXJnZToge25hbWUhcn0iKQogICAgICAgICAgICBpZiBpbmZvLmNvbXByZXNzX3NpemUgYW5k",
+                  "IGluZm8uZmlsZV9zaXplIC8gbWF4KGluZm8uY29tcHJlc3Nfc2l6ZSwgMSkgPiBNQVhfQ09NUFJF",
+                  "U1NJT05fUkFUSU86CiAgICAgICAgICAgICAgICByYWlzZSBBcHBseUVycm9yKGYiYnVuZGxlIGVu",
+                  "dHJ5IGNvbXByZXNzaW9uIHJhdGlvIHN1c3BpY2lvdXM6IHtuYW1lIXJ9IikKICAgICAgICAgICAg",
+                  "dG90YWwgKz0gaW5mby5maWxlX3NpemUKICAgICAgICAgICAgaWYgdG90YWwgPiBNQVhfVE9UQUxf",
+                  "QllURVM6CiAgICAgICAgICAgICAgICByYWlzZSBBcHBseUVycm9yKCJidW5kbGUgdW5jb21wcmVz",
+                  "c2VkIHNpemUgZXhjZWVkcyBsaW1pdCIpCiAgICAgICAgICAgIHRhcmdldCA9IGRlc3QgLyBub3Jt",
+                  "CiAgICAgICAgICAgIHRhcmdldC5wYXJlbnQubWtkaXIocGFyZW50cz1UcnVlLCBleGlzdF9vaz1U",
+                  "cnVlKQogICAgICAgICAgICB3aXRoIGFyY2hpdmUub3BlbihpbmZvKSBhcyBzcmMsIHRhcmdldC5v",
+                  "cGVuKCJ3YiIpIGFzIG91dDoKICAgICAgICAgICAgICAgIHNodXRpbC5jb3B5ZmlsZW9iaihzcmMs",
+                  "IG91dCkKICAgICMgbm9ybWFsaXNlIHBlcm1pc3Npb25zOiBmaWxlcyAwNjQ0LCBkaXJzIDA3NTUs",
+                  "IHNjcmlwdHMgMDc1NQogICAgZm9yIHBhdGggaW4gZGVzdC5yZ2xvYigiKiIpOgogICAgICAgIGlm",
+                  "IHBhdGguaXNfZGlyKCk6CiAgICAgICAgICAgIHBhdGguY2htb2QoMG83NTUpCiAgICAgICAgZWxp",
+                  "ZiBwYXRoLnN1ZmZpeCA9PSAiLnNoIjoKICAgICAgICAgICAgcGF0aC5jaG1vZCgwbzc1NSkKICAg",
+                  "ICAgICBlbHNlOgogICAgICAgICAgICBwYXRoLmNobW9kKDBvNjQ0KQoKCmRlZiB2ZXJpZnlfcmVs",
+                  "ZWFzZV90cmVlKHJlbGVhc2VfZGlyOiBQYXRoLCAqLCBleHBlY3RlZF92ZXJzaW9uOiBzdHIsIGV4",
+                  "cGVjdGVkX2NvbW1pdDogc3RyLCBwYWNrX3NjaGVtYV92ZXJzaW9uOiBpbnQpIC0+IGRpY3Rbc3Ry",
+                  "LCBBbnldOgogICAgbWFuaWZlc3RfcGF0aCA9IHJlbGVhc2VfZGlyIC8gTUFOSUZFU1RfTkFNRQog",
+                  "ICAgaWYgbm90IG1hbmlmZXN0X3BhdGguaXNfZmlsZSgpOgogICAgICAgIHJhaXNlIEFwcGx5RXJy",
+                  "b3IoZiJ7TUFOSUZFU1RfTkFNRX0gbWlzc2luZyBpbiBidW5kbGUiKQogICAgbWFuaWZlc3QgPSBq",
+                  "c29uLmxvYWRzKG1hbmlmZXN0X3BhdGgucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpKQogICAg",
+                  "aWYgbWFuaWZlc3QuZ2V0KCJzY2hlbWEiKSAhPSAid29ya3Nob3AtY3VzdG9taXplci9yZWxlYXNl",
+                  "LzEiOgogICAgICAgIHJhaXNlIEFwcGx5RXJyb3IoInVuc3VwcG9ydGVkIHJlbGVhc2UgbWFuaWZl",
+                  "c3Qgc2NoZW1hIikKICAgIGlmIG1hbmlmZXN0LmdldCgidmVyc2lvbiIpICE9IGV4cGVjdGVkX3Zl",
+                  "cnNpb246CiAgICAgICAgcmFpc2UgQXBwbHlFcnJvcihmInZlcnNpb24gbWlzbWF0Y2g6IGJ1bmRs",
+                  "ZSBpcyB7bWFuaWZlc3QuZ2V0KCd2ZXJzaW9uJykhcn0sIGV4cGVjdGVkIHtleHBlY3RlZF92ZXJz",
+                  "aW9uIXJ9IikKICAgIGlmIG1hbmlmZXN0LmdldCgidGVtcGxhdGVDb21taXQiKSAhPSBleHBlY3Rl",
+                  "ZF9jb21taXQ6CiAgICAgICAgcmFpc2UgQXBwbHlFcnJvcigidGVtcGxhdGUgY29tbWl0IG1pc21h",
+                  "dGNoIGJldHdlZW4gYnVuZGxlIGFuZCB0YXJnZXQgY29udHJhY3QiKQogICAgZXhwZWN0ZWRfZmls",
+                  "ZXM6IGRpY3Rbc3RyLCBzdHJdID0gbWFuaWZlc3QuZ2V0KCJmaWxlcyIsIHt9KQogICAgIyBQeXRo",
+                  "b24gYnl0ZWNvZGUgY2FjaGVzIGFyZSBuZXZlciByZWxlYXNlIGNvbnRlbnQgKHRoZSBzbW9rZSBj",
+                  "b21waWxlcyBzb3VyY2VzOyBvcGVyYXRvcnMgbWF5IHJ1biBweXRob24KICAgICMgaW5zaWRlIHRo",
+                  "ZSB0cmVlKS4gVGhleSBhcmUgaWdub3JlZCBoZXJlIGFuZCBuZXZlciBjb3VudGVkIGFzIGV4cGVj",
+                  "dGVkIG9yIHVuZXhwZWN0ZWQgZmlsZXMuCiAgICBhY3R1YWwgPSB7CiAgICAgICAgcC5yZWxhdGl2",
+                  "ZV90byhyZWxlYXNlX2RpcikuYXNfcG9zaXgoKTogc2hhMjU2X2ZpbGUocCkKICAgICAgICBmb3Ig",
+                  "cCBpbiBzb3J0ZWQocmVsZWFzZV9kaXIucmdsb2IoIioiKSkKICAgICAgICBpZiBwLmlzX2ZpbGUo",
+                  "KSBhbmQgcC5uYW1lICE9IE1BTklGRVNUX05BTUUgYW5kICJfX3B5Y2FjaGVfXyIgbm90IGluIHAu",
+                  "cmVsYXRpdmVfdG8ocmVsZWFzZV9kaXIpLnBhcnRzIGFuZCBwLnN1ZmZpeCAhPSAiLnB5YyIKICAg",
+                  "IH0KICAgIG1pc3NpbmcgPSBzb3J0ZWQoc2V0KGV4cGVjdGVkX2ZpbGVzKSAtIHNldChhY3R1YWwp",
+                  "KQogICAgdW5leHBlY3RlZCA9IHNvcnRlZChzZXQoYWN0dWFsKSAtIHNldChleHBlY3RlZF9maWxl",
+                  "cykpCiAgICBtaXNtYXRjaGVkID0gc29ydGVkKHJlbCBmb3IgcmVsIGluIGV4cGVjdGVkX2ZpbGVz",
+                  "IGlmIHJlbCBpbiBhY3R1YWwgYW5kIGFjdHVhbFtyZWxdICE9IGV4cGVjdGVkX2ZpbGVzW3JlbF0p",
+                  "CiAgICBpZiBtaXNzaW5nIG9yIHVuZXhwZWN0ZWQgb3IgbWlzbWF0Y2hlZDoKICAgICAgICByYWlz",
+                  "ZSBBcHBseUVycm9yKGYicmVsZWFzZSBpbnRlZ3JpdHkgZmFpbGVkOiBtaXNzaW5nPXttaXNzaW5n",
+                  "Wzo1XX0gdW5leHBlY3RlZD17dW5leHBlY3RlZFs6NV19IG1pc21hdGNoZWQ9e21pc21hdGNoZWRb",
+                  "OjVdfSIpCiAgICBpZiBjb250ZW50X2hhc2goYWN0dWFsKSAhPSBtYW5pZmVzdC5nZXQoImNvbnRl",
+                  "bnRIYXNoIik6CiAgICAgICAgcmFpc2UgQXBwbHlFcnJvcigicmVsZWFzZSBjb250ZW50SGFzaCBt",
+                  "aXNtYXRjaCIpCiAgICBmb3IgcmVsIGluIFJFUVVJUkVEX1JFTEVBU0VfRklMRVM6CiAgICAgICAg",
+                  "aWYgbm90IChyZWxlYXNlX2RpciAvIHJlbCkuaXNfZmlsZSgpOgogICAgICAgICAgICByYWlzZSBB",
+                  "cHBseUVycm9yKGYicmVsZWFzZSBsYWNrcyByZXF1aXJlZCBmaWxlIHtyZWx9IikKICAgIHBhY2sg",
+                  "PSBqc29uLmxvYWRzKChyZWxlYXNlX2RpciAvICJwYWNrIiAvICJwYWNrLmpzb24iKS5yZWFkX3Rl",
+                  "eHQoZW5jb2Rpbmc9InV0Zi04IikpCiAgICBpZiBwYWNrLmdldCgidGVtcGxhdGVDb21taXQiKSAh",
+                  "PSBleHBlY3RlZF9jb21taXQ6CiAgICAgICAgcmFpc2UgQXBwbHlFcnJvcigicGFjay5qc29uIHRl",
+                  "bXBsYXRlIGNvbW1pdCBkb2VzIG5vdCBtYXRjaCB0aGUgdGFyZ2V0IGNvbnRyYWN0IikKICAgIGRl",
+                  "bCBwYWNrX3NjaGVtYV92ZXJzaW9uICAjIHJlc2VydmVkOiBzY2hlbWEgbmVnb3RpYXRpb24gbGFu",
+                  "ZHMgd2l0aCBwYWNrIHNjaGVtYSB2MgogICAgcmV0dXJuIG1hbmlmZXN0CgoKIyAtLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0KIyBGaWxlc3lzdGVtIG9wZXJhdGlvbnMKIyAtLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0KCgpk",
+                  "ZWYgc3dpdGNoX2N1cnJlbnQocm9vdDogUGF0aCwgdmVyc2lvbjogc3RyKSAtPiBOb25lOgogICAg",
+                  "IiIiQXRvbWljYWxseSByZXBvaW50IGBgY3VycmVudGBgIGF0IGBgcmVsZWFzZXMvPHZlcnNpb24+",
+                  "YGAuIiIiCiAgICB0bXAgPSByb290IC8gIi5jdXJyZW50LnRtcCIKICAgIGlmIHRtcC5pc19zeW1s",
+                  "aW5rKCkgb3IgdG1wLmV4aXN0cygpOgogICAgICAgIHRtcC51bmxpbmsoKQogICAgb3Muc3ltbGlu",
+                  "ayhmInJlbGVhc2VzL3t2ZXJzaW9ufSIsIHRtcCkKICAgIG9zLnJlcGxhY2UodG1wLCByb290IC8g",
+                  "ImN1cnJlbnQiKQoKCmRlZiBwb2ludF9wcmV2aW91cyhyb290OiBQYXRoLCB2ZXJzaW9uOiBzdHIg",
+                  "fCBOb25lKSAtPiBOb25lOgogICAgbGluayA9IHJvb3QgLyAicHJldmlvdXMiCiAgICBpZiBsaW5r",
+                  "LmlzX3N5bWxpbmsoKSBvciBsaW5rLmV4aXN0cygpOgogICAgICAgIGxpbmsudW5saW5rKCkKICAg",
+                  "IGlmIHZlcnNpb246CiAgICAgICAgb3Muc3ltbGluayhmInJlbGVhc2VzL3t2ZXJzaW9ufSIsIGxp",
+                  "bmspCgoKZGVmIHNldF9vd25lcnNoaXAocGF0aDogUGF0aCwgdXNlcjogc3RyLCBncm91cDogc3Ry",
+                  "KSAtPiBzdHI6CiAgICAiIiJjaG93biByZWN1cnNpdmVseSB3aGVuIHJ1bm5pbmcgYXMgcm9vdDsg",
+                  "cmVwb3J0IHdoYXQgaGFwcGVuZWQuIiIiCiAgICBpZiBvcy5nZXRldWlkKCkgIT0gMDoKICAgICAg",
+                  "ICByZXR1cm4gInNraXBwZWQgKG5vdCByb290KSIKICAgIHRyeToKICAgICAgICBpbXBvcnQgZ3Jw",
+                  "CiAgICAgICAgaW1wb3J0IHB3ZAoKICAgICAgICB1aWQgPSBwd2QuZ2V0cHduYW0odXNlcikucHdf",
+                  "dWlkCiAgICAgICAgZ2lkID0gZ3JwLmdldGdybmFtKGdyb3VwKS5ncl9naWQKICAgIGV4Y2VwdCBL",
+                  "ZXlFcnJvciBhcyBleGM6CiAgICAgICAgcmFpc2UgQXBwbHlFcnJvcihmInRhcmdldCB1c2VyL2dy",
+                  "b3VwIG5vdCBwcmVzZW50IG9uIGhvc3Q6IHtleGN9IikgZnJvbSBleGMKICAgIG9zLmNob3duKHBh",
+                  "dGgsIHVpZCwgZ2lkKQogICAgZm9yIHAgaW4gcGF0aC5yZ2xvYigiKiIpOgogICAgICAgIG9zLmxj",
+                  "aG93bihwLCB1aWQsIGdpZCkKICAgIHJldHVybiBmImNob3duZWQgdG8ge3VzZXJ9Ontncm91cH0i",
+                  "CgoKZGVmIHNtb2tlX2NoZWNrKHJlbGVhc2VfZGlyOiBQYXRoLCAqLCBleHBlY3RlZF92ZXJzaW9u",
+                  "OiBzdHIsIGV4cGVjdGVkX2NvbW1pdDogc3RyLCBwYWNrX3NjaGVtYV92ZXJzaW9uOiBpbnQsIHVz",
+                  "ZXI6IHN0cikgLT4gZGljdFtzdHIsIEFueV06CiAgICAiIiJQb3N0LXN3aXRjaCBzbW9rZTogaW50",
+                  "ZWdyaXR5IGFnYWluLCBzaGVsbCBzeW50YXgsIFB5dGhvbiBjb21waWxlLCByZWFkYWJpbGl0eSBi",
+                  "eSB0aGUgdGFyZ2V0IHVzZXIuIiIiCiAgICB2ZXJpZnlfcmVsZWFzZV90cmVlKHJlbGVhc2VfZGly",
+                  "LCBleHBlY3RlZF92ZXJzaW9uPWV4cGVjdGVkX3ZlcnNpb24sIGV4cGVjdGVkX2NvbW1pdD1leHBl",
+                  "Y3RlZF9jb21taXQsIHBhY2tfc2NoZW1hX3ZlcnNpb249cGFja19zY2hlbWFfdmVyc2lvbikKICAg",
+                  "IHJlc3VsdHM6IGRpY3Rbc3RyLCBBbnldID0geyJpbnRlZ3JpdHkiOiAib2sifQogICAgYmFzaCA9",
+                  "IHNodXRpbC53aGljaCgiYmFzaCIpCiAgICBpZiBiYXNoOgogICAgICAgIGZvciBzY3JpcHQgaW4g",
+                  "c29ydGVkKHJlbGVhc2VfZGlyLmdsb2IoIiouc2giKSk6CiAgICAgICAgICAgIHByb2MgPSBzdWJw",
+                  "cm9jZXNzLnJ1bihbYmFzaCwgIi1uIiwgc3RyKHNjcmlwdCldLCBjYXB0dXJlX291dHB1dD1UcnVl",
+                  "LCB0ZXh0PVRydWUsIHRpbWVvdXQ9NjApCiAgICAgICAgICAgIGlmIHByb2MucmV0dXJuY29kZSAh",
+                  "PSAwOgogICAgICAgICAgICAgICAgcmFpc2UgQXBwbHlFcnJvcihmInNtb2tlOiBzaGVsbCBzeW50",
+                  "YXggZXJyb3IgaW4ge3NjcmlwdC5uYW1lfToge3Byb2Muc3RkZXJyLnN0cmlwKClbOjIwMF19IikK",
+                  "ICAgICAgICByZXN1bHRzWyJzaGVsbFN5bnRheCJdID0gIm9rIgogICAgaGFuZGxlciA9IHJlbGVh",
+                  "c2VfZGlyIC8gImxhbWJkYSIKICAgIGZvciBweSBpbiBzb3J0ZWQoaGFuZGxlci5nbG9iKCIqLnB5",
+                  "IikpOgogICAgICAgICMgUFlUSE9OUFlDQUNIRVBSRUZJWCBrZWVwcyB0aGUgYnl0ZWNvZGUgb3V0",
+                  "IG9mIHRoZSByZWxlYXNlIHRyZWUgKGludGVncml0eSBtdXN0IHN0YXkgYnl0ZS1leGFjdCkuCiAg",
+                  "ICAgICAgZW52ID0geyoqb3MuZW52aXJvbiwgIlBZVEhPTlBZQ0FDSEVQUkVGSVgiOiB0ZW1wZmls",
+                  "ZS5nZXR0ZW1wZGlyKCl9CiAgICAgICAgcHJvYyA9IHN1YnByb2Nlc3MucnVuKFtzeXMuZXhlY3V0",
+                  "YWJsZSwgIi1tIiwgInB5X2NvbXBpbGUiLCBzdHIocHkpXSwgY2FwdHVyZV9vdXRwdXQ9VHJ1ZSwg",
+                  "dGV4dD1UcnVlLCB0aW1lb3V0PTYwLCBlbnY9ZW52KQogICAgICAgIGlmIHByb2MucmV0dXJuY29k",
+                  "ZSAhPSAwOgogICAgICAgICAgICByYWlzZSBBcHBseUVycm9yKGYic21va2U6IHB5dGhvbiBjb21w",
+                  "aWxlIGVycm9yIGluIGxhbWJkYS97cHkubmFtZX0iKQogICAgcmVzdWx0c1sicHl0aG9uQ29tcGls",
+                  "ZSJdID0gIm9rIgogICAgaWYgb3MuZ2V0ZXVpZCgpID09IDAgYW5kIHNodXRpbC53aGljaCgic3Vk",
+                  "byIpOgogICAgICAgIHByb2JlID0gc3VicHJvY2Vzcy5ydW4oWyJzdWRvIiwgIi1uIiwgIi11Iiwg",
+                  "dXNlciwgInRlc3QiLCAiLXIiLCBzdHIocmVsZWFzZV9kaXIgLyAicGFjayIgLyAicGFjay5lbnYi",
+                  "KV0sIGNhcHR1cmVfb3V0cHV0PVRydWUsIHRpbWVvdXQ9MzApCiAgICAgICAgaWYgcHJvYmUucmV0",
+                  "dXJuY29kZSAhPSAwOgogICAgICAgICAgICByYWlzZSBBcHBseUVycm9yKGYic21va2U6IHt1c2Vy",
+                  "fSBjYW5ub3QgcmVhZCB0aGUgcmVsZWFzZSIpCiAgICAgICAgcmVzdWx0c1sidXNlclJlYWRhYmxl",
+                  "Il0gPSAib2siCiAgICBlbHNlOgogICAgICAgIHJlc3VsdHNbInVzZXJSZWFkYWJsZSJdID0gInNr",
+                  "aXBwZWQgKG5vdCByb290KSIKICAgIHJldHVybiByZXN1bHRzCgoKZGVmIHJlbGVhc2VfYWdlbnRf",
+                  "bmFtZShwYXRoOiBQYXRoKSAtPiBzdHIgfCBOb25lOgogICAgIiIiVGhlIHJlbGVhc2UncyBSRUxF",
+                  "QVNFLmpzb24gYGBuYW1lc3BhY2UuYWdlbnROYW1lYGA7IE5vbmUgd2hlbiBpdCBpcyB1bnJlYWRh",
+                  "YmxlLCBub3Qgb2YgdGhlIHNjaGVtYSdzCiAgICBzaGFwZSwgb3IgcmVzZXJ2ZWQgKGEgbGVnYWN5",
+                  "IG9yIGhhbmQtZWRpdGVkIHJlbGVhc2UsIG5ldmVyIGtlcHQgZm9yIGl0cyBuYW1lc3BhY2UpLiIi",
+                  "IgogICAgdHJ5OgogICAgICAgIG5hbWUgPSBqc29uLmxvYWRzKChwYXRoIC8gTUFOSUZFU1RfTkFN",
+                  "RSkucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpKVsibmFtZXNwYWNlIl1bImFnZW50TmFtZSJd",
+                  "CiAgICBleGNlcHQgKE9TRXJyb3IsIFZhbHVlRXJyb3IsIEtleUVycm9yLCBUeXBlRXJyb3IpOgog",
+                  "ICAgICAgIHJldHVybiBOb25lCiAgICBpZiBub3QgaXNpbnN0YW5jZShuYW1lLCBzdHIpIG9yIG5v",
+                  "dCBBR0VOVF9OQU1FX1JFLmZ1bGxtYXRjaChuYW1lKSBvciBuYW1lIGluIFJFU0VSVkVEX0FHRU5U",
+                  "X05BTUVTOgogICAgICAgIHJldHVybiBOb25lCiAgICByZXR1cm4gbmFtZQoKCmRlZiBwcnVuZV9y",
+                  "ZWxlYXNlcyhyb290OiBQYXRoLCBrZWVwOiBpbnQsIHByb3RlY3Q6IHNldFtzdHJdKSAtPiBsaXN0",
+                  "W3N0cl06CiAgICAiIiJSZW1vdmUgYWxsIGJ1dCB0aGUgbmV3ZXN0IGBga2VlcGBgIHJlbGVhc2Vz",
+                  "LCBuZXZlciBvbmUgaW4gYGBwcm90ZWN0YGAgYW5kIG5ldmVyIHRoZSBuZXdlc3QgcmVsZWFzZQog",
+                  "ICAgb2YgZWFjaCBuYW1lc3BhY2UgKFJFTEVBU0UuanNvbiBgYG5hbWVzcGFjZS5hZ2VudE5hbWVg",
+                  "YCkgYW1vbmcgdGhlbS4KCiAgICBUaGF0IHJlbGVhc2UncyA5OS1jbGVhbnVwLnNoIC0tc2NlbmFy",
+                  "aW8tb25seSBpcyBob3cgdGhlIFNBIHJlbW92ZXMgdGhlIG5hbWVzcGFjZSdzIHJlc291cmNlcyBi",
+                  "ZWZvcmUgYQogICAgbmV3IHN5bmMsIGFuZCB0aGUgaG9zdCBjYW5ub3QgdGVsbCB3aGV0aGVyIHRo",
+                  "ZXkgc3RpbGwgZXhpc3Q6IDAxLzAyIGNyZWF0ZSB0aGUga25vd2xlZGdlIGJhc2UgYW5kIHRoZQog",
+                  "ICAgR2F0ZXdheSBiZWZvcmUgMDQgY3JlYXRlcyBgYH4vd29ya3Nob3AvPGFnZW50TmFtZT5gYCwg",
+                  "YW5kIGEgZmFpbGVkIGNsZWFudXAgcmVtb3ZlcyB0aGF0IHdvcmtkaXIgdG9vLgogICAgR3Jvd3Ro",
+                  "IGlzIGJvdW5kZWQgYnkgdGhlIG51bWJlciBvZiBuYW1lc3BhY2VzIHVzZWQgaW4gb25lIGVudmly",
+                  "b25tZW50OiBhdCBtb3N0IGBga2VlcGBgIHJlbGVhc2VzIHBsdXMKICAgIG9uZSBwZXIgbmFtZXNw",
+                  "YWNlIHBsdXMgYGBwcm90ZWN0YGAuIEEgcmVsZWFzZSB3aXRob3V0IGEgcmVhZGFibGUgbmFtZXNw",
+                  "YWNlIGlzIHBydW5lZCBhcyBhbnkgb3RoZXIuIiIiCiAgICByZWxlYXNlcyA9IHJvb3QgLyAicmVs",
+                  "ZWFzZXMiCiAgICBpZiBub3QgcmVsZWFzZXMuaXNfZGlyKCk6CiAgICAgICAgcmV0dXJuIFtdCiAg",
+                  "ICBjYW5kaWRhdGVzID0gc29ydGVkKChwIGZvciBwIGluIHJlbGVhc2VzLml0ZXJkaXIoKSBpZiBw",
+                  "LmlzX2RpcigpKSwga2V5PWxhbWJkYSBwOiBwLnN0YXQoKS5zdF9tdGltZSwgcmV2ZXJzZT1UcnVl",
+                  "KQogICAgY2xlYW5lcnM6IGRpY3Rbc3RyLCBzdHJdID0ge30KICAgIGZvciBwYXRoIGluIGNhbmRp",
+                  "ZGF0ZXM6CiAgICAgICAgbmFtZSA9IHJlbGVhc2VfYWdlbnRfbmFtZShwYXRoKQogICAgICAgIGlm",
+                  "IG5hbWUgYW5kIG5hbWUgbm90IGluIGNsZWFuZXJzOgogICAgICAgICAgICBjbGVhbmVyc1tuYW1l",
+                  "XSA9IHBhdGgubmFtZQogICAgcHJvdGVjdCA9IHByb3RlY3QgfCBzZXQoY2xlYW5lcnMudmFsdWVz",
+                  "KCkpCiAgICByZW1vdmVkOiBsaXN0W3N0cl0gPSBbXQogICAgZm9yIHBhdGggaW4gY2FuZGlkYXRl",
+                  "c1trZWVwOl06CiAgICAgICAgaWYgcGF0aC5uYW1lIGluIHByb3RlY3Q6CiAgICAgICAgICAgIGNv",
+                  "bnRpbnVlCiAgICAgICAgc2h1dGlsLnJtdHJlZShwYXRoKQogICAgICAgIHJlbW92ZWQuYXBwZW5k",
+                  "KHBhdGgubmFtZSkKICAgIHJldHVybiByZW1vdmVkCgoKZGVmIHNwYXduX3dhdGNoZG9nKHJvb3Q6",
+                  "IFBhdGgsIHZlcnNpb246IHN0ciwgZGVhZGxpbmU6IGRhdGV0aW1lKSAtPiBOb25lOgogICAgY21k",
+                  "ID0gW3N5cy5leGVjdXRhYmxlLCBvcy5wYXRoLmFic3BhdGgoX19maWxlX18pLCAiLS1hY3Rpb24i",
+                  "LCAid2F0Y2hkb2ciLCAiLS12ZXJzaW9uIiwgdmVyc2lvbiwgIi0tZGVhZGxpbmUiLCBpc28oZGVh",
+                  "ZGxpbmUpLCAiLS10YXJnZXQtcm9vdCIsIHN0cihyb290KV0KICAgIHN1YnByb2Nlc3MuUG9wZW4o",
+                  "Y21kLCBzdGRpbj1zdWJwcm9jZXNzLkRFVk5VTEwsIHN0ZG91dD1zdWJwcm9jZXNzLkRFVk5VTEws",
+                  "IHN0ZGVycj1zdWJwcm9jZXNzLkRFVk5VTEwsIHN0YXJ0X25ld19zZXNzaW9uPVRydWUpCgoKIyAt",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0KIyBBY3Rpb25zCiMgLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tCgoKZGVmIGRv",
+                  "X3JvbGxiYWNrKHJvb3Q6IFBhdGgsIHN0YXRlOiBkaWN0W3N0ciwgQW55XSwgcmVhc29uOiBzdHIp",
+                  "IC0+IGRpY3Rbc3RyLCBBbnldOgogICAgcHJldmlvdXMgPSBzdGF0ZS5nZXQoInByZXZpb3VzIikK",
+                  "ICAgIGFjdGl2ZSA9IHN0YXRlLmdldCgiYWN0aXZlIikKICAgIGlmIHByZXZpb3VzIGFuZCAocm9v",
+                  "dCAvICJyZWxlYXNlcyIgLyBwcmV2aW91cykuaXNfZGlyKCk6CiAgICAgICAgc3dpdGNoX2N1cnJl",
+                  "bnQocm9vdCwgcHJldmlvdXMpCiAgICAgICAgc3RhdGUudXBkYXRlKHsiYWN0aXZlIjogcHJldmlv",
+                  "dXMsICJwcmV2aW91cyI6IE5vbmUsICJzdGF0dXMiOiAicm9sbGVkLWJhY2siLCAiY29tbWl0RGVh",
+                  "ZGxpbmUiOiBOb25lfSkKICAgICAgICBwb2ludF9wcmV2aW91cyhyb290LCBOb25lKQogICAgICAg",
+                  "IHJlY29yZChzdGF0ZSwgcHJldmlvdXMsICJyb2xsYmFjayIsIHJlYXNvbikKICAgICAgICB3cml0",
+                  "ZV9zdGF0ZShyb290LCBzdGF0ZSkKICAgICAgICByZXR1cm4geyJzdGF0dXMiOiAicm9sbGVkLWJh",
+                  "Y2siLCAiYWN0aXZlIjogcHJldmlvdXMsICJyb2xsZWRCYWNrRnJvbSI6IGFjdGl2ZSwgInJlYXNv",
+                  "biI6IHJlYXNvbn0KICAgICMgZmlyc3QgZGVwbG95bWVudCBmYWlsZWQ6IGxlYXZlIGEgZGVmaW5l",
+                  "ZCAibm8gcmVsZWFzZSBhY3RpdmUiIHN0YXRlCiAgICBjdXJyZW50ID0gcm9vdCAvICJjdXJyZW50",
+                  "IgogICAgaWYgY3VycmVudC5pc19zeW1saW5rKCk6CiAgICAgICAgY3VycmVudC51bmxpbmsoKQog",
+                  "ICAgc3RhdGUudXBkYXRlKHsiYWN0aXZlIjogTm9uZSwgInByZXZpb3VzIjogTm9uZSwgInN0YXR1",
+                  "cyI6ICJuby1hY3RpdmUtcmVsZWFzZSIsICJjb21taXREZWFkbGluZSI6IE5vbmV9KQogICAgcmVj",
+                  "b3JkKHN0YXRlLCBhY3RpdmUsICJyb2xsYmFjayIsIGYie3JlYXNvbn07IG5vIHByZXZpb3VzIHJl",
+                  "bGVhc2UiKQogICAgd3JpdGVfc3RhdGUocm9vdCwgc3RhdGUpCiAgICByZXR1cm4geyJzdGF0dXMi",
+                  "OiAibm8tYWN0aXZlLXJlbGVhc2UiLCAicm9sbGVkQmFja0Zyb20iOiBhY3RpdmUsICJyZWFzb24i",
+                  "OiByZWFzb259CgoKZGVmIGFjdGlvbl9hcHBseShhcmdzOiBhcmdwYXJzZS5OYW1lc3BhY2UsIGNv",
+                  "bnRyYWN0OiBkaWN0W3N0ciwgQW55XSkgLT4gZGljdFtzdHIsIEFueV06CiAgICBpZiBub3QgVkVS",
+                  "U0lPTl9SRS5tYXRjaChhcmdzLnZlcnNpb24gb3IgIiIpOgogICAgICAgIHJhaXNlIEFwcGx5RXJy",
+                  "b3IoInZlcnNpb24gcGFyYW1ldGVyIGhhcyBhbiBpbnZhbGlkIHNoYXBlIikKICAgIGlmIG5vdCBT",
+                  "SEEyNTZfUkUubWF0Y2goYXJncy5zaGEyNTYgb3IgIiIpOgogICAgICAgIHJhaXNlIEFwcGx5RXJy",
+                  "b3IoInNoYTI1NiBwYXJhbWV0ZXIgaGFzIGFuIGludmFsaWQgc2hhcGUiKQogICAgcm9vdCA9IFBh",
+                  "dGgoYXJncy50YXJnZXRfcm9vdCBvciBjb250cmFjdFsidGFyZ2V0Um9vdCJdKQogICAgcm9vdC5t",
+                  "a2RpcihwYXJlbnRzPVRydWUsIGV4aXN0X29rPVRydWUpCiAgICAocm9vdCAvICJyZWxlYXNlcyIp",
+                  "Lm1rZGlyKGV4aXN0X29rPVRydWUpCiAgICBzdGFnaW5nID0gcm9vdCAvICIuc3RhZ2luZyIKICAg",
+                  "IGlmIHN0YWdpbmcuZXhpc3RzKCk6CiAgICAgICAgc2h1dGlsLnJtdHJlZShzdGFnaW5nKQogICAg",
+                  "c3RhZ2luZy5ta2RpcigpCiAgICBzdGF0ZSA9IHJlYWRfc3RhdGUocm9vdCkKICAgIHRyeToKICAg",
+                  "ICAgICBidW5kbGUgPSBzdGFnaW5nIC8gInJlbGVhc2UuemlwIgogICAgICAgIGZldGNoX2J1bmRs",
+                  "ZShhcmdzLnNvdXJjZSwgYnVuZGxlLCBjb250cmFjdFsiYWxsb3dlZFJlbGVhc2VQcmVmaXhlcyJd",
+                  "KQogICAgICAgIGFjdHVhbF9zaGEgPSBzaGEyNTZfZmlsZShidW5kbGUpCiAgICAgICAgaWYgYWN0",
+                  "dWFsX3NoYSAhPSBhcmdzLnNoYTI1NjoKICAgICAgICAgICAgcmFpc2UgQXBwbHlFcnJvcigiYnVu",
+                  "ZGxlIHNoYTI1NiBkb2VzIG5vdCBtYXRjaCB0aGUgZXhwZWN0ZWQgdmFsdWUiKQogICAgICAgIGV4",
+                  "dHJhY3RlZCA9IHN0YWdpbmcgLyAidHJlZSIKICAgICAgICBzYWZlX2V4dHJhY3QoYnVuZGxlLCBl",
+                  "eHRyYWN0ZWQpCiAgICAgICAgbWFuaWZlc3QgPSB2ZXJpZnlfcmVsZWFzZV90cmVlKGV4dHJhY3Rl",
+                  "ZCwgZXhwZWN0ZWRfdmVyc2lvbj1hcmdzLnZlcnNpb24sIGV4cGVjdGVkX2NvbW1pdD1jb250cmFj",
+                  "dFsidGVtcGxhdGVDb21taXQiXSwgcGFja19zY2hlbWFfdmVyc2lvbj1pbnQoY29udHJhY3RbInBh",
+                  "Y2tTY2hlbWFWZXJzaW9uIl0pKQoKICAgICAgICB0YXJnZXQgPSByb290IC8gInJlbGVhc2VzIiAv",
+                  "IGFyZ3MudmVyc2lvbgogICAgICAgIGlmIHRhcmdldC5leGlzdHMoKToKICAgICAgICAgICAgZXhp",
+                  "c3RpbmcgPSBqc29uLmxvYWRzKCh0YXJnZXQgLyBNQU5JRkVTVF9OQU1FKS5yZWFkX3RleHQoZW5j",
+                  "b2Rpbmc9InV0Zi04IikpCiAgICAgICAgICAgIGlmIGV4aXN0aW5nLmdldCgiY29udGVudEhhc2gi",
+                  "KSAhPSBtYW5pZmVzdC5nZXQoImNvbnRlbnRIYXNoIik6CiAgICAgICAgICAgICAgICByYWlzZSBB",
+                  "cHBseUVycm9yKCJ2ZXJzaW9uIGNvbmZsaWN0OiBhIHJlbGVhc2Ugd2l0aCB0aGlzIHZlcnNpb24g",
+                  "YnV0IGRpZmZlcmVudCBjb250ZW50IGlzIGFscmVhZHkgaW5zdGFsbGVkOyBidWlsZCBhIG5ldyB2",
+                  "ZXJzaW9uIikKICAgICAgICAgICAgaWYgc3RhdGUuZ2V0KCJhY3RpdmUiKSA9PSBhcmdzLnZlcnNp",
+                  "b24gYW5kIHN0YXRlLmdldCgic3RhdHVzIikgPT0gImNvbW1pdHRlZCI6CiAgICAgICAgICAgICAg",
+                  "ICByZWNvcmQoc3RhdGUsIGFyZ3MudmVyc2lvbiwgImFwcGx5IiwgIm5vLW9wIChhbHJlYWR5IGFj",
+                  "dGl2ZSBhbmQgY29tbWl0dGVkKSIpCiAgICAgICAgICAgICAgICB3cml0ZV9zdGF0ZShyb290LCBz",
+                  "dGF0ZSkKICAgICAgICAgICAgICAgIHJldHVybiB7InN0YXR1cyI6ICJuby1vcCIsICJhY3RpdmUi",
+                  "OiBhcmdzLnZlcnNpb24sICJ2ZXJzaW9uIjogYXJncy52ZXJzaW9ufQogICAgICAgICAgICBzaHV0",
+                  "aWwucm10cmVlKGV4dHJhY3RlZCkKICAgICAgICBlbHNlOgogICAgICAgICAgICBvcy5yZXBsYWNl",
+                  "KGV4dHJhY3RlZCwgdGFyZ2V0KQogICAgICAgIG93bmVyc2hpcCA9IHNldF9vd25lcnNoaXAodGFy",
+                  "Z2V0LCBjb250cmFjdFsidXNlciJdLCBjb250cmFjdFsiZ3JvdXAiXSkKCiAgICAgICAgcHJldmlv",
+                  "dXMgPSBzdGF0ZS5nZXQoImFjdGl2ZSIpIGlmIHN0YXRlLmdldCgiYWN0aXZlIikgIT0gYXJncy52",
+                  "ZXJzaW9uIGVsc2Ugc3RhdGUuZ2V0KCJwcmV2aW91cyIpCiAgICAgICAgc3dpdGNoX2N1cnJlbnQo",
+                  "cm9vdCwgYXJncy52ZXJzaW9uKQogICAgICAgIHBvaW50X3ByZXZpb3VzKHJvb3QsIHByZXZpb3Vz",
+                  "KQogICAgICAgIGRlYWRsaW5lID0gdXRjbm93KCkgKyB0aW1lZGVsdGEobWludXRlcz1hcmdzLndh",
+                  "dGNoZG9nX21pbnV0ZXMpCiAgICAgICAgc3RhdGUudXBkYXRlKHsiYWN0aXZlIjogYXJncy52ZXJz",
+                  "aW9uLCAicHJldmlvdXMiOiBwcmV2aW91cywgInN0YXR1cyI6ICJwZW5kaW5nLWNvbW1pdCIsICJj",
+                  "b21taXREZWFkbGluZSI6IGlzbyhkZWFkbGluZSksICJhcHBsaWVkQXQiOiBpc28odXRjbm93KCkp",
+                  "LCAic291cmNlIjogYXJncy5zb3VyY2UsICJidW5kbGVTaGEyNTYiOiBhY3R1YWxfc2hhfSkKICAg",
+                  "ICAgICByZWNvcmQoc3RhdGUsIGFyZ3MudmVyc2lvbiwgImFwcGx5IiwgInN3aXRjaGVkOyBhd2Fp",
+                  "dGluZyBjb21taXQiKQogICAgICAgIHdyaXRlX3N0YXRlKHJvb3QsIHN0YXRlKQoKICAgICAgICB0",
+                  "cnk6CiAgICAgICAgICAgIHNtb2tlID0gc21va2VfY2hlY2sodGFyZ2V0LCBleHBlY3RlZF92ZXJz",
+                  "aW9uPWFyZ3MudmVyc2lvbiwgZXhwZWN0ZWRfY29tbWl0PWNvbnRyYWN0WyJ0ZW1wbGF0ZUNvbW1p",
+                  "dCJdLCBwYWNrX3NjaGVtYV92ZXJzaW9uPWludChjb250cmFjdFsicGFja1NjaGVtYVZlcnNpb24i",
+                  "XSksIHVzZXI9Y29udHJhY3RbInVzZXIiXSkKICAgICAgICBleGNlcHQgQXBwbHlFcnJvciBhcyBl",
+                  "eGM6CiAgICAgICAgICAgIHJvbGxiYWNrID0gZG9fcm9sbGJhY2socm9vdCwgc3RhdGUsIGYic21v",
+                  "a2UgZmFpbGVkOiB7ZXhjfSIpCiAgICAgICAgICAgIHJldHVybiB7InN0YXR1cyI6ICJzbW9rZS1m",
+                  "YWlsZWQiLCAidmVyc2lvbiI6IGFyZ3MudmVyc2lvbiwgImVycm9yIjogc3RyKGV4YyksICJyb2xs",
+                  "YmFjayI6IHJvbGxiYWNrfQoKICAgICAgICBpZiBub3QgYXJncy5ub193YXRjaGRvZzoKICAgICAg",
+                  "ICAgICAgc3Bhd25fd2F0Y2hkb2cocm9vdCwgYXJncy52ZXJzaW9uLCBkZWFkbGluZSkKICAgICAg",
+                  "ICBwcnVuZWQgPSBwcnVuZV9yZWxlYXNlcyhyb290LCBLRUVQX1JFTEVBU0VTLCBwcm90ZWN0PXt2",
+                  "IGZvciB2IGluIChhcmdzLnZlcnNpb24sIHByZXZpb3VzKSBpZiB2fSkKICAgICAgICByZXR1cm4g",
+                  "ewogICAgICAgICAgICAic3RhdHVzIjogInBlbmRpbmctY29tbWl0IiwKICAgICAgICAgICAgInZl",
+                  "cnNpb24iOiBhcmdzLnZlcnNpb24sCiAgICAgICAgICAgICJwcmV2aW91cyI6IHByZXZpb3VzLAog",
+                  "ICAgICAgICAgICAiY29tbWl0RGVhZGxpbmUiOiBpc28oZGVhZGxpbmUpLAogICAgICAgICAgICAi",
+                  "b3duZXJzaGlwIjogb3duZXJzaGlwLAogICAgICAgICAgICAic21va2UiOiBzbW9rZSwKICAgICAg",
+                  "ICAgICAgInBydW5lZCI6IHBydW5lZCwKICAgICAgICAgICAgInRlbXBsYXRlQ29tbWl0IjogY29u",
+                  "dHJhY3RbInRlbXBsYXRlQ29tbWl0Il0sCiAgICAgICAgfQogICAgZmluYWxseToKICAgICAgICBz",
+                  "aHV0aWwucm10cmVlKHN0YWdpbmcsIGlnbm9yZV9lcnJvcnM9VHJ1ZSkKCgpkZWYgYWN0aW9uX2Nv",
+                  "bW1pdChhcmdzOiBhcmdwYXJzZS5OYW1lc3BhY2UsIGNvbnRyYWN0OiBkaWN0W3N0ciwgQW55XSkg",
+                  "LT4gZGljdFtzdHIsIEFueV06CiAgICByb290ID0gUGF0aChhcmdzLnRhcmdldF9yb290IG9yIGNv",
+                  "bnRyYWN0WyJ0YXJnZXRSb290Il0pCiAgICBzdGF0ZSA9IHJlYWRfc3RhdGUocm9vdCkKICAgIGlm",
+                  "IGFyZ3MudmVyc2lvbiBhbmQgc3RhdGUuZ2V0KCJhY3RpdmUiKSAhPSBhcmdzLnZlcnNpb246CiAg",
+                  "ICAgICAgcmFpc2UgQXBwbHlFcnJvcihmImNhbm5vdCBjb21taXQge2FyZ3MudmVyc2lvbn06IGFj",
+                  "dGl2ZSByZWxlYXNlIGlzIHtzdGF0ZS5nZXQoJ2FjdGl2ZScpfSIpCiAgICBpZiBzdGF0ZS5nZXQo",
+                  "InN0YXR1cyIpIG5vdCBpbiAoInBlbmRpbmctY29tbWl0IiwgImNvbW1pdHRlZCIpOgogICAgICAg",
+                  "IHJhaXNlIEFwcGx5RXJyb3IoZiJub3RoaW5nIHRvIGNvbW1pdCAoc3RhdHVzIHtzdGF0ZS5nZXQo",
+                  "J3N0YXR1cycpfSkiKQogICAgc3RhdGUudXBkYXRlKHsic3RhdHVzIjogImNvbW1pdHRlZCIsICJj",
+                  "b21taXREZWFkbGluZSI6IE5vbmUsICJjb21taXR0ZWRBdCI6IGlzbyh1dGNub3coKSl9KQogICAg",
+                  "cmVjb3JkKHN0YXRlLCBzdGF0ZS5nZXQoImFjdGl2ZSIpLCAiY29tbWl0IiwgImNvbmZpcm1lZCBi",
+                  "eSBvcGVyYXRvciIpCiAgICB3cml0ZV9zdGF0ZShyb290LCBzdGF0ZSkKICAgIHJldHVybiB7InN0",
+                  "YXR1cyI6ICJjb21taXR0ZWQiLCAiYWN0aXZlIjogc3RhdGUuZ2V0KCJhY3RpdmUiKX0KCgpkZWYg",
+                  "YWN0aW9uX3JvbGxiYWNrKGFyZ3M6IGFyZ3BhcnNlLk5hbWVzcGFjZSwgY29udHJhY3Q6IGRpY3Rb",
+                  "c3RyLCBBbnldKSAtPiBkaWN0W3N0ciwgQW55XToKICAgIHJvb3QgPSBQYXRoKGFyZ3MudGFyZ2V0",
+                  "X3Jvb3Qgb3IgY29udHJhY3RbInRhcmdldFJvb3QiXSkKICAgIHN0YXRlID0gcmVhZF9zdGF0ZShy",
+                  "b290KQogICAgaWYgbm90IHN0YXRlLmdldCgiYWN0aXZlIik6CiAgICAgICAgcmFpc2UgQXBwbHlF",
+                  "cnJvcigibm8gYWN0aXZlIHJlbGVhc2UgdG8gcm9sbCBiYWNrIikKICAgIHJldHVybiBkb19yb2xs",
+                  "YmFjayhyb290LCBzdGF0ZSwgYXJncy5yZWFzb24gb3IgIm9wZXJhdG9yIHJvbGxiYWNrIikKCgpk",
+                  "ZWYgYWN0aW9uX3N0YXR1cyhhcmdzOiBhcmdwYXJzZS5OYW1lc3BhY2UsIGNvbnRyYWN0OiBkaWN0",
+                  "W3N0ciwgQW55XSkgLT4gZGljdFtzdHIsIEFueV06CiAgICByb290ID0gUGF0aChhcmdzLnRhcmdl",
+                  "dF9yb290IG9yIGNvbnRyYWN0WyJ0YXJnZXRSb290Il0pCiAgICBzdGF0ZSA9IHJlYWRfc3RhdGUo",
+                  "cm9vdCkKICAgIGN1cnJlbnQgPSByb290IC8gImN1cnJlbnQiCiAgICBzdGF0ZVsiY3VycmVudExp",
+                  "bmsiXSA9IG9zLnJlYWRsaW5rKGN1cnJlbnQpIGlmIGN1cnJlbnQuaXNfc3ltbGluaygpIGVsc2Ug",
+                  "Tm9uZQogICAgc3RhdGVbInJlbGVhc2VzIl0gPSBzb3J0ZWQocC5uYW1lIGZvciBwIGluIChyb290",
+                  "IC8gInJlbGVhc2VzIikuaXRlcmRpcigpKSBpZiAocm9vdCAvICJyZWxlYXNlcyIpLmlzX2Rpcigp",
+                  "IGVsc2UgW10KICAgIHJldHVybiBzdGF0ZQoKCmRlZiB3YXRjaGRvZ19leHBpcmUocm9vdDogUGF0",
+                  "aCwgdmVyc2lvbjogc3RyLCBub3c6IGRhdGV0aW1lKSAtPiBkaWN0W3N0ciwgQW55XToKICAgICIi",
+                  "Ik9uZSB3YXRjaGRvZyBldmFsdWF0aW9uLiBSb2xscyBiYWNrIHdoZW4gdGhlIHBlbmRpbmcgcmVs",
+                  "ZWFzZSBwYXNzZWQgaXRzIGRlYWRsaW5lLiIiIgogICAgc3RhdGUgPSByZWFkX3N0YXRlKHJvb3Qp",
+                  "CiAgICBpZiBzdGF0ZS5nZXQoImFjdGl2ZSIpICE9IHZlcnNpb24gb3Igc3RhdGUuZ2V0KCJzdGF0",
+                  "dXMiKSAhPSAicGVuZGluZy1jb21taXQiOgogICAgICAgIHJldHVybiB7InN0YXR1cyI6ICJpZGxl",
+                  "IiwgInJlYXNvbiI6ICJyZWxlYXNlIG5vIGxvbmdlciBwZW5kaW5nIn0KICAgIGRlYWRsaW5lID0g",
+                  "ZGF0ZXRpbWUuZnJvbWlzb2Zvcm1hdChzdGF0ZVsiY29tbWl0RGVhZGxpbmUiXSkKICAgIGlmIG5v",
+                  "dyA8IGRlYWRsaW5lOgogICAgICAgIHJldHVybiB7InN0YXR1cyI6ICJ3YWl0aW5nIiwgImRlYWRs",
+                  "aW5lIjogc3RhdGVbImNvbW1pdERlYWRsaW5lIl19CiAgICByZXR1cm4gZG9fcm9sbGJhY2socm9v",
+                  "dCwgc3RhdGUsICJ3YXRjaGRvZzogbm8gY29tbWl0IGJlZm9yZSBkZWFkbGluZSIpCgoKZGVmIGFj",
+                  "dGlvbl93YXRjaGRvZyhhcmdzOiBhcmdwYXJzZS5OYW1lc3BhY2UsIGNvbnRyYWN0OiBkaWN0W3N0",
+                  "ciwgQW55XSkgLT4gZGljdFtzdHIsIEFueV06CiAgICByb290ID0gUGF0aChhcmdzLnRhcmdldF9y",
+                  "b290IG9yIGNvbnRyYWN0WyJ0YXJnZXRSb290Il0pCiAgICB3aGlsZSBUcnVlOgogICAgICAgIHJl",
+                  "c3VsdCA9IHdhdGNoZG9nX2V4cGlyZShyb290LCBhcmdzLnZlcnNpb24sIHV0Y25vdygpKQogICAg",
+                  "ICAgIGlmIHJlc3VsdFsic3RhdHVzIl0gIT0gIndhaXRpbmciOgogICAgICAgICAgICByZXR1cm4g",
+                  "cmVzdWx0CiAgICAgICAgdGltZS5zbGVlcCgxNSkKCgojIC0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLQojIENM",
+                  "SQojIC0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0t",
+                  "LS0tLS0tLS0tLS0tLS0tLS0tLS0tLQoKCmRlZiBidWlsZF9wYXJzZXIoKSAtPiBhcmdwYXJzZS5B",
+                  "cmd1bWVudFBhcnNlcjoKICAgIHAgPSBhcmdwYXJzZS5Bcmd1bWVudFBhcnNlcihkZXNjcmlwdGlv",
+                  "bj0iV29ya3Nob3AgQ3VzdG9taXplciBob3N0IHJlbGVhc2UgYXBwbGllciIpCiAgICBwLmFkZF9h",
+                  "cmd1bWVudCgiLS1hY3Rpb24iLCByZXF1aXJlZD1UcnVlLCBjaG9pY2VzPVsiYXBwbHkiLCAiY29t",
+                  "bWl0IiwgInJvbGxiYWNrIiwgInN0YXR1cyIsICJ3YXRjaGRvZyJdKQogICAgcC5hZGRfYXJndW1l",
+                  "bnQoIi0tc291cmNlIiwgaGVscD0iczM6Ly/igKYgKG9yIGFsbG93LWxpc3RlZCBmaWxlOi8v4oCm",
+                  "KSBVUkkgb2YgcmVsZWFzZS56aXAiKQogICAgcC5hZGRfYXJndW1lbnQoIi0tc2hhMjU2IiwgaGVs",
+                  "cD0iZXhwZWN0ZWQgU0hBLTI1NiBvZiByZWxlYXNlLnppcCIpCiAgICBwLmFkZF9hcmd1bWVudCgi",
+                  "LS12ZXJzaW9uIiwgaGVscD0iZXhwZWN0ZWQgcmVsZWFzZSB2ZXJzaW9uIChSRUxFQVNFLmpzb24g",
+                  "dmVyc2lvbikiKQogICAgcC5hZGRfYXJndW1lbnQoIi0tcmVhc29uIiwgaGVscD0icm9sbGJhY2sg",
+                  "cmVhc29uIikKICAgIHAuYWRkX2FyZ3VtZW50KCItLWRlYWRsaW5lIiwgaGVscD0id2F0Y2hkb2cg",
+                  "ZGVhZGxpbmUgKGludGVybmFsKSIpCiAgICBwLmFkZF9hcmd1bWVudCgiLS13YXRjaGRvZy1taW51",
+                  "dGVzIiwgdHlwZT1pbnQsIGRlZmF1bHQ9REVGQVVMVF9XQVRDSERPR19NSU5VVEVTKQogICAgcC5h",
+                  "ZGRfYXJndW1lbnQoIi0tbm8td2F0Y2hkb2ciLCBhY3Rpb249InN0b3JlX3RydWUiLCBoZWxwPSJk",
+                  "byBub3Qgc3Bhd24gdGhlIGNvbW1pdCB3YXRjaGRvZyAodGVzdHMpIikKICAgIHAuYWRkX2FyZ3Vt",
+                  "ZW50KCItLXRhcmdldC1yb290IiwgaGVscD0ib3ZlcnJpZGUgdGhlIGNvbnRyYWN0IHRhcmdldCBy",
+                  "b290ICh0ZXN0cykiKQogICAgcC5hZGRfYXJndW1lbnQoIi0tY29udHJhY3QiLCBkZWZhdWx0PUNP",
+                  "TlRSQUNUX1BBVEgsIGhlbHA9InRhcmdldCBjb250cmFjdCBwYXRoIikKICAgIHJldHVybiBwCgoK",
+                  "ZGVmIG1haW4oYXJndjogbGlzdFtzdHJdIHwgTm9uZSA9IE5vbmUpIC0+IGludDoKICAgIGFyZ3Mg",
+                  "PSBidWlsZF9wYXJzZXIoKS5wYXJzZV9hcmdzKGFyZ3YpCiAgICB0cnk6CiAgICAgICAgY29udHJh",
+                  "Y3QgPSBsb2FkX2NvbnRyYWN0KGFyZ3MuY29udHJhY3QpCiAgICAgICAgaGFuZGxlciA9IHsiYXBw",
+                  "bHkiOiBhY3Rpb25fYXBwbHksICJjb21taXQiOiBhY3Rpb25fY29tbWl0LCAicm9sbGJhY2siOiBh",
+                  "Y3Rpb25fcm9sbGJhY2ssICJzdGF0dXMiOiBhY3Rpb25fc3RhdHVzLCAid2F0Y2hkb2ciOiBhY3Rp",
+                  "b25fd2F0Y2hkb2d9W2FyZ3MuYWN0aW9uXQogICAgICAgIHJlc3VsdCA9IGhhbmRsZXIoYXJncywg",
+                  "Y29udHJhY3QpCiAgICAgICAgcHJpbnQoanNvbi5kdW1wcyhyZXN1bHQsIGluZGVudD0yLCBzb3J0",
+                  "X2tleXM9VHJ1ZSwgZGVmYXVsdD1zdHIpKQogICAgICAgIHJldHVybiAwIGlmIHJlc3VsdC5nZXQo",
+                  "InN0YXR1cyIpIG5vdCBpbiAoInNtb2tlLWZhaWxlZCIsKSBlbHNlIDIKICAgIGV4Y2VwdCBBcHBs",
+                  "eUVycm9yIGFzIGV4YzoKICAgICAgICBwcmludChqc29uLmR1bXBzKHsic3RhdHVzIjogImVycm9y",
+                  "IiwgImVycm9yIjogc3RyKGV4Yyl9LCBpbmRlbnQ9MikpCiAgICAgICAgcmV0dXJuIDEKCgppZiBf",
+                  "X25hbWVfXyA9PSAiX19tYWluX18iOgogICAgc3lzLmV4aXQobWFpbigpKQo=",
+                  "B64EOF",
+                  "base64 -d /opt/workshop-customizer/apply_release.b64 > /opt/workshop-customizer/apply_release.py.tmp",
+                  "rm -f /opt/workshop-customizer/apply_release.b64",
+                  "python3 -m py_compile /opt/workshop-customizer/apply_release.py.tmp",
+                  "mv -f /opt/workshop-customizer/apply_release.py.tmp /opt/workshop-customizer/apply_release.py",
+                  "chmod 0755 /opt/workshop-customizer/apply_release.py",
+                  "cat > /opt/workshop-customizer/runtime_permissions.b64 <<'RUNTIME_PERMISSIONS_EOF'",
+                  "IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJHaXZlIHRoZSBkZXBsb3llZCBXb3Jrc2hvcCBoYXJu",
+                  "ZXNzIHJlYWQgYWNjZXNzIHRvIGl0cyBhY3R1YWwgcHJpdmF0ZSBFQ1IgaW1hZ2UuCgpUaGUgcGlu",
+                  "bmVkIENMSSBncmFudHMgRUNSIHB1bGwgcGVybWlzc2lvbnMgZm9yIGFuIGV4cGxpY2l0bHkgY29u",
+                  "ZmlndXJlZCBjb250YWluZXIsIGJ1dCB0aGUKc2VydmljZS1zZWxlY3RlZCBkZWZhdWx0IGltYWdl",
+                  "IG5lZWRzIHRoZSBzYW1lIHBlcm1pc3Npb25zLiBUaGlzIGZpeGVkIGhvc3QgaGVscGVyIGRlcml2",
+                  "ZXMgdGhlCnJlcG9zaXRvcnkgZnJvbSBHZXRBZ2VudFJ1bnRpbWUgYW5kIGNvbmZpbmVzIHRoZSBy",
+                  "b2xlIHRvIHRoZSBhY3RpdmUgcmVsZWFzZSdzIG5hbWVzcGFjZS4KIiIiCmZyb20gX19mdXR1cmVf",
+                  "XyBpbXBvcnQgYW5ub3RhdGlvbnMKCmltcG9ydCBhcmdwYXJzZQppbXBvcnQganNvbgppbXBvcnQg",
+                  "b3MKaW1wb3J0IHB3ZAppbXBvcnQgZ3JwCmltcG9ydCByZQppbXBvcnQgc3VicHJvY2VzcwppbXBv",
+                  "cnQgdGltZQpmcm9tIHBhdGhsaWIgaW1wb3J0IFBhdGgKCklNQUdFX1JFID0gcmUuY29tcGlsZSgK",
+                  "ICAgIHIiXig/UDxhY2NvdW50PlxkezEyfSlcLmRrclwuZWNyXC4oP1A8cmVnaW9uPlthLXowLTkt",
+                  "XSspXC5hbWF6b25hd3NcLmNvbSg/OlwuY24pPy8iCiAgICByIig/UDxyZXBvc2l0b3J5PlthLXow",
+                  "LTldKyg/OlsuXy8tXVthLXowLTldKykqKSg/OjpbXHcuLV0rfEBzaGEyNTY6WzAtOWEtZl17NjR9",
+                  "KSQiCikKCgpkZWYgaW1hZ2VfcHVsbF9wb2xpY3kodXJpOiBzdHIsIHBhcnRpdGlvbjogc3RyID0g",
+                  "ImF3cyIpIC0+IGRpY3Q6CiAgICBtYXRjaCA9IElNQUdFX1JFLmZ1bGxtYXRjaCh1cmkpCiAgICBp",
+                  "ZiBub3QgbWF0Y2g6CiAgICAgICAgcmFpc2UgVmFsdWVFcnJvcigicnVudGltZSBpbWFnZSBpcyBu",
+                  "b3QgYSBzdXBwb3J0ZWQgcHJpdmF0ZSBFQ1IgaW1hZ2UgVVJJIikKICAgIGZpZWxkcyA9IG1hdGNo",
+                  "Lmdyb3VwZGljdCgpCiAgICByZXBvc2l0b3J5ID0gZiJhcm46e3BhcnRpdGlvbn06ZWNyOntmaWVs",
+                  "ZHNbJ3JlZ2lvbiddfTp7ZmllbGRzWydhY2NvdW50J119OnJlcG9zaXRvcnkve2ZpZWxkc1sncmVw",
+                  "b3NpdG9yeSddfSIKICAgIHJldHVybiB7IlZlcnNpb24iOiAiMjAxMi0xMC0xNyIsICJTdGF0ZW1l",
+                  "bnQiOiBbCiAgICAgICAgeyJFZmZlY3QiOiAiQWxsb3ciLCAiQWN0aW9uIjogWyJlY3I6R2V0QXV0",
+                  "aG9yaXphdGlvblRva2VuIl0sICJSZXNvdXJjZSI6ICIqIn0sCiAgICAgICAgeyJFZmZlY3QiOiAi",
+                  "QWxsb3ciLCAiQWN0aW9uIjogWwogICAgICAgICAgICAiZWNyOkJhdGNoR2V0SW1hZ2UiLCAiZWNy",
+                  "OkdldERvd25sb2FkVXJsRm9yTGF5ZXIiLCAiZWNyOkJhdGNoQ2hlY2tMYXllckF2YWlsYWJpbGl0",
+                  "eSIsCiAgICAgICAgXSwgIlJlc291cmNlIjogcmVwb3NpdG9yeX0sCiAgICBdfQoKCmRlZiBhd3Mo",
+                  "cmVnaW9uOiBzdHIsIHNlcnZpY2U6IHN0ciwgb3BlcmF0aW9uOiBzdHIsICphcmdzOiBzdHIpIC0+",
+                  "IGRpY3Q6CiAgICByZXN1bHQgPSBzdWJwcm9jZXNzLnJ1bigKICAgICAgICBbImF3cyIsIHNlcnZp",
+                  "Y2UsIG9wZXJhdGlvbiwgKmFyZ3MsICItLXJlZ2lvbiIsIHJlZ2lvbiwgIi0tb3V0cHV0IiwgImpz",
+                  "b24iXSwKICAgICAgICBjYXB0dXJlX291dHB1dD1UcnVlLCB0ZXh0PVRydWUsIHRpbWVvdXQ9OTAs",
+                  "CiAgICApCiAgICBpZiByZXN1bHQucmV0dXJuY29kZToKICAgICAgICByYWlzZSBSdW50aW1lRXJy",
+                  "b3IoZiJ7c2VydmljZX0ge29wZXJhdGlvbn06IHtyZXN1bHQuc3RkZXJyLnN0cmlwKClbLTE1MDA6",
+                  "XX0iKQogICAgcmV0dXJuIGpzb24ubG9hZHMocmVzdWx0LnN0ZG91dCkgaWYgcmVzdWx0LnN0ZG91",
+                  "dC5zdHJpcCgpIGVsc2Uge30KCgpkZWYgY29uZmlndXJlKGNvbnRyYWN0OiBkaWN0LCB2ZXJzaW9u",
+                  "OiBzdHIpIC0+IGRpY3Q6CiAgICBpZiBub3QgcmUuZnVsbG1hdGNoKHIiW2Etel1bYS16MC05LV17",
+                  "Miw0MH0tWzAtOWEtZl17MTJ9IiwgdmVyc2lvbik6CiAgICAgICAgcmFpc2UgVmFsdWVFcnJvcigi",
+                  "aW52YWxpZCByZWxlYXNlIHZlcnNpb24iKQogICAgcm9vdCA9IFBhdGgoY29udHJhY3RbInRhcmdl",
+                  "dFJvb3QiXSkKICAgIHJlbGVhc2UgPSByb290IC8gInJlbGVhc2VzIiAvIHZlcnNpb24KICAgIGlm",
+                  "IChyb290IC8gImN1cnJlbnQiKS5yZXNvbHZlKCkgIT0gcmVsZWFzZS5yZXNvbHZlKCk6CiAgICAg",
+                  "ICAgcmFpc2UgVmFsdWVFcnJvcigicmVxdWVzdGVkIHJlbGVhc2UgaXMgbm90IGFjdGl2ZSIpCiAg",
+                  "ICBtYW5pZmVzdCA9IGpzb24ubG9hZHMoKHJlbGVhc2UgLyAiUkVMRUFTRS5qc29uIikucmVhZF90",
+                  "ZXh0KCkpCiAgICBhZ2VudCA9IG1hbmlmZXN0WyJuYW1lc3BhY2UiXVsiYWdlbnROYW1lIl0KICAg",
+                  "IGlmIG5vdCByZS5mdWxsbWF0Y2gociJbYS16XVthLXowLTlfXXsyLDM5fSIsIGFnZW50KToKICAg",
+                  "ICAgICByYWlzZSBWYWx1ZUVycm9yKCJpbnZhbGlkIGhhcm5lc3MgbmFtZXNwYWNlIikKICAgIHJl",
+                  "Z2lvbiA9IGNvbnRyYWN0WyJyZWdpb24iXQogICAgc3RhdGUgPSBqc29uLmxvYWRzKChyb290IC8g",
+                  "YWdlbnQgLyAiYWdlbnRjb3JlLy5jbGkvZGVwbG95ZWQtc3RhdGUuanNvbiIpLnJlYWRfdGV4dCgp",
+                  "KQogICAgaGFybmVzcyA9IHN0YXRlWyJ0YXJnZXRzIl1bImRlZmF1bHQiXVsicmVzb3VyY2VzIl1b",
+                  "Imhhcm5lc3NlcyJdW2FnZW50XQogICAgYWNjb3VudCA9IGF3cyhyZWdpb24sICJzdHMiLCAiZ2V0",
+                  "LWNhbGxlci1pZGVudGl0eSIpWyJBY2NvdW50Il0KICAgIHJvbGVfYXJuID0gaGFybmVzc1sicm9s",
+                  "ZUFybiJdCiAgICBwYXJ0aXRpb24gPSByb2xlX2Fybi5zcGxpdCgiOiIpWzFdCiAgICByb2xlX25h",
+                  "bWUgPSBmInthZ2VudH1fe2FnZW50fSIKICAgIGlmIHJvbGVfYXJuICE9IGYiYXJuOntwYXJ0aXRp",
+                  "b259OmlhbTo6e2FjY291bnR9OnJvbGUve3JvbGVfbmFtZX0iOgogICAgICAgIHJhaXNlIFZhbHVl",
+                  "RXJyb3IoImhhcm5lc3Mgcm9sZSBpcyBvdXRzaWRlIHRoZSBib3VuZCBXb3Jrc2hvcCBuYW1lc3Bh",
+                  "Y2UvYWNjb3VudCIpCiAgICBsaXZlID0gYXdzKHJlZ2lvbiwgImJlZHJvY2stYWdlbnRjb3JlLWNv",
+                  "bnRyb2wiLCAiZ2V0LWhhcm5lc3MiLCAiLS1oYXJuZXNzLWlkIiwgaGFybmVzc1siaGFybmVzc0lk",
+                  "Il0pWyJoYXJuZXNzIl0KICAgIHJ1bnRpbWVfYXJuID0gaGFybmVzcy5nZXQoImFnZW50UnVudGlt",
+                  "ZUFybiIpIG9yIGxpdmVbImVudmlyb25tZW50Il1bImFnZW50Q29yZVJ1bnRpbWVFbnZpcm9ubWVu",
+                  "dCJdWyJhZ2VudFJ1bnRpbWVBcm4iXQogICAgcnVudGltZSA9IGF3cyhyZWdpb24sICJiZWRyb2Nr",
+                  "LWFnZW50Y29yZS1jb250cm9sIiwgImdldC1hZ2VudC1ydW50aW1lIiwKICAgICAgICAgICAgICAg",
+                  "ICAgIi0tYWdlbnQtcnVudGltZS1pZCIsIHJ1bnRpbWVfYXJuLnJzcGxpdCgiLyIsIDEpWy0xXSkK",
+                  "ICAgIGlmIHJ1bnRpbWVbInJvbGVBcm4iXSAhPSByb2xlX2FybjoKICAgICAgICByYWlzZSBWYWx1",
+                  "ZUVycm9yKCJydW50aW1lIGFuZCBoYXJuZXNzIHJvbGVzIGRpZmZlciIpCiAgICBpbWFnZSA9IHJ1",
+                  "bnRpbWVbImFnZW50UnVudGltZUFydGlmYWN0Il1bImNvbnRhaW5lckNvbmZpZ3VyYXRpb24iXVsi",
+                  "Y29udGFpbmVyVXJpIl0KICAgIHBvbGljeSA9IGltYWdlX3B1bGxfcG9saWN5KGltYWdlLCBwYXJ0",
+                  "aXRpb24pCiAgICBhd3MocmVnaW9uLCAiaWFtIiwgInB1dC1yb2xlLXBvbGljeSIsICItLXJvbGUt",
+                  "bmFtZSIsIHJvbGVfbmFtZSwKICAgICAgICAiLS1wb2xpY3ktbmFtZSIsICJXb3Jrc2hvcEhhcm5l",
+                  "c3NJbWFnZVB1bGwiLCAiLS1wb2xpY3ktZG9jdW1lbnQiLCBqc29uLmR1bXBzKHBvbGljeSkpCiAg",
+                  "ICAjIE1hdGVyaWFsaXplIHRoZSBzZXJ2aWNlLXNlbGVjdGVkIGltYWdlIGFzIGFuIGV4cGxpY2l0",
+                  "IGFydGlmYWN0IGFmdGVyIGdyYW50aW5nIHB1bGwgYWNjZXNzLgogICAgIyBUaGlzIHJlZnJlc2hl",
+                  "cyB0aGUgcnVudGltZSdzIGltYWdlIGNvbmZpZ3VyYXRpb24gYW5kIG1ha2VzIGxhdGVyIENESyBk",
+                  "ZXBsb3ltZW50cyByZXRhaW4gaXQuCiAgICB1cGRhdGVzID0gW10KICAgIGlmIG5vdCAobGl2ZS5n",
+                  "ZXQoImVudmlyb25tZW50QXJ0aWZhY3QiKSBvciB7fSkuZ2V0KCJjb250YWluZXJDb25maWd1cmF0",
+                  "aW9uIik6CiAgICAgICAgdXBkYXRlcy5leHRlbmQoWyItLWVudmlyb25tZW50LWFydGlmYWN0Iiwg",
+                  "anNvbi5kdW1wcyh7Im9wdGlvbmFsVmFsdWUiOiB7ImNvbnRhaW5lckNvbmZpZ3VyYXRpb24iOiB7",
+                  "ImNvbnRhaW5lclVyaSI6IGltYWdlfX19KV0pCiAgICBlbnZpcm9ubWVudCA9IGRpY3QobGl2ZS5n",
+                  "ZXQoImVudmlyb25tZW50VmFyaWFibGVzIikgb3Ige30pCiAgICAjIFRoZSBwaW5uZWQgV29ya3No",
+                  "b3Agc2NyaXB0cyBxdWVyeSBhd3Mvc3BhbnMuIE5ldyBSdW50aW1lIGRlcGxveW1lbnRzIG90aGVy",
+                  "d2lzZSBkZWZhdWx0CiAgICAjIHRvIHVuaWZpZWQgdGVsZW1ldHJ5IGluIHRoZSBydW50aW1lJ3Mg",
+                  "b3duIGxvZyBncm91cC4KICAgIGlmIGVudmlyb25tZW50LmdldCgiVU5JRklFRF9UUkFDRVNfREVT",
+                  "VElOQVRJT05fRU5BQkxFRCIpICE9ICJmYWxzZSI6CiAgICAgICAgZW52aXJvbm1lbnRbIlVOSUZJ",
+                  "RURfVFJBQ0VTX0RFU1RJTkFUSU9OX0VOQUJMRUQiXSA9ICJmYWxzZSIKICAgICAgICB1cGRhdGVz",
+                  "LmV4dGVuZChbIi0tZW52aXJvbm1lbnQtdmFyaWFibGVzIiwganNvbi5kdW1wcyhlbnZpcm9ubWVu",
+                  "dCldKQogICAgaWYgdXBkYXRlczoKICAgICAgICBhd3MocmVnaW9uLCAiYmVkcm9jay1hZ2VudGNv",
+                  "cmUtY29udHJvbCIsICJ1cGRhdGUtaGFybmVzcyIsICItLWhhcm5lc3MtaWQiLCBoYXJuZXNzWyJo",
+                  "YXJuZXNzSWQiXSwgKnVwZGF0ZXMpCiAgICAgICAgZm9yIF8gaW4gcmFuZ2UoNjApOgogICAgICAg",
+                  "ICAgICBsaXZlID0gYXdzKHJlZ2lvbiwgImJlZHJvY2stYWdlbnRjb3JlLWNvbnRyb2wiLCAiZ2V0",
+                  "LWhhcm5lc3MiLCAiLS1oYXJuZXNzLWlkIiwgaGFybmVzc1siaGFybmVzc0lkIl0pWyJoYXJuZXNz",
+                  "Il0KICAgICAgICAgICAgYXBwbGllZF9pbWFnZSA9ICgobGl2ZS5nZXQoImVudmlyb25tZW50QXJ0",
+                  "aWZhY3QiKSBvciB7fSkuZ2V0KCJjb250YWluZXJDb25maWd1cmF0aW9uIikgb3Ige30pLmdldCgi",
+                  "Y29udGFpbmVyVXJpIikKICAgICAgICAgICAgYXBwbGllZF90cmFjZV9tb2RlID0gKGxpdmUuZ2V0",
+                  "KCJlbnZpcm9ubWVudFZhcmlhYmxlcyIpIG9yIHt9KS5nZXQoIlVOSUZJRURfVFJBQ0VTX0RFU1RJ",
+                  "TkFUSU9OX0VOQUJMRUQiKQogICAgICAgICAgICBpZiBsaXZlWyJzdGF0dXMiXSBpbiAoIlJFQURZ",
+                  "IiwgIkFDVElWRSIpIGFuZCBhcHBsaWVkX2ltYWdlID09IGltYWdlIGFuZCBhcHBsaWVkX3RyYWNl",
+                  "X21vZGUgPT0gImZhbHNlIjoKICAgICAgICAgICAgICAgIGJyZWFrCiAgICAgICAgICAgIGlmIGxp",
+                  "dmVbInN0YXR1cyJdIGluICgiRkFJTEVEIiwgIkRFTEVUSU5HIik6CiAgICAgICAgICAgICAgICBy",
+                  "YWlzZSBSdW50aW1lRXJyb3IoImhhcm5lc3MgY291bGQgbm90IGluaXRpYWxpemUgaXRzIGV4cGxp",
+                  "Y2l0IGltYWdlIikKICAgICAgICAgICAgdGltZS5zbGVlcCg1KQogICAgICAgIGVsc2U6CiAgICAg",
+                  "ICAgICAgIHJhaXNlIFJ1bnRpbWVFcnJvcigiaGFybmVzcyBpbWFnZSB1cGRhdGUgZGlkIG5vdCBi",
+                  "ZWNvbWUgcmVhZHkiKQogICAgY29uZmlnX3BhdGggPSByb290IC8gYWdlbnQgLyAiYXBwIiAvIGFn",
+                  "ZW50IC8gImhhcm5lc3MuanNvbiIKICAgIGNvbmZpZyA9IGpzb24ubG9hZHMoY29uZmlnX3BhdGgu",
+                  "cmVhZF90ZXh0KCkpCiAgICBpZiBjb25maWcuZ2V0KCJjb250YWluZXJVcmkiKSBub3QgaW4gKE5v",
+                  "bmUsIGltYWdlKToKICAgICAgICByYWlzZSBWYWx1ZUVycm9yKCJsb2NhbCBoYXJuZXNzIGltYWdl",
+                  "IGRpZmZlcnMgZnJvbSB0aGUgZGVwbG95ZWQgaW1hZ2U7IGRlcGxveSB0aGUgaW50ZW5kZWQgY29u",
+                  "ZmlndXJhdGlvbiBmaXJzdCIpCiAgICBjb25maWdbImNvbnRhaW5lclVyaSJdID0gaW1hZ2UKICAg",
+                  "IGNvbmZpZy5zZXRkZWZhdWx0KCJlbnZpcm9ubWVudFZhcmlhYmxlcyIsIHt9KVsiVU5JRklFRF9U",
+                  "UkFDRVNfREVTVElOQVRJT05fRU5BQkxFRCJdID0gImZhbHNlIgogICAgb3JpZ2luYWxfbW9kZSA9",
+                  "IGNvbmZpZ19wYXRoLnN0YXQoKS5zdF9tb2RlICYgMG83NzcKICAgIHRlbXBvcmFyeSA9IGNvbmZp",
+                  "Z19wYXRoLndpdGhfc3VmZml4KCIucnVudGltZS1wZXJtaXNzaW9ucy50bXAiKQogICAgdGVtcG9y",
+                  "YXJ5LndyaXRlX3RleHQoanNvbi5kdW1wcyhjb25maWcsIGluZGVudD0yKSArICJcbiIpCiAgICB0",
+                  "ZW1wb3JhcnkuY2htb2Qob3JpZ2luYWxfbW9kZSkKICAgIGlmIG9zLmdldGV1aWQoKSA9PSAwIGFu",
+                  "ZCBjb250cmFjdC5nZXQoInVzZXIiKToKICAgICAgICBvcy5jaG93bih0ZW1wb3JhcnksIHB3ZC5n",
+                  "ZXRwd25hbShjb250cmFjdFsidXNlciJdKS5wd191aWQsCiAgICAgICAgICAgICAgICAgZ3JwLmdl",
+                  "dGdybmFtKGNvbnRyYWN0LmdldCgiZ3JvdXAiKSBvciBjb250cmFjdFsidXNlciJdKS5ncl9naWQp",
+                  "CiAgICB0ZW1wb3JhcnkucmVwbGFjZShjb25maWdfcGF0aCkKICAgIHJldHVybiB7InN0YXR1cyI6",
+                  "ICJjb25maWd1cmVkIiwgInJvbGVBcm4iOiByb2xlX2FybiwgImltYWdlIjogaW1hZ2UsCiAgICAg",
+                  "ICAgICAgICJyZXBvc2l0b3J5QXJuIjogcG9saWN5WyJTdGF0ZW1lbnQiXVsxXVsiUmVzb3VyY2Ui",
+                  "XX0KCgpkZWYgbWFpbigpIC0+IE5vbmU6CiAgICBwYXJzZXIgPSBhcmdwYXJzZS5Bcmd1bWVudFBh",
+                  "cnNlcihkZXNjcmlwdGlvbj1fX2RvY19fKQogICAgcGFyc2VyLmFkZF9hcmd1bWVudCgiLS1jb250",
+                  "cmFjdCIsIGRlZmF1bHQ9Ii9ldGMvd29ya3Nob3AtY3VzdG9taXplci90YXJnZXQuanNvbiIpCiAg",
+                  "ICBwYXJzZXIuYWRkX2FyZ3VtZW50KCItLXJlbGVhc2UtdmVyc2lvbiIsIHJlcXVpcmVkPVRydWUp",
+                  "CiAgICBhcmdzID0gcGFyc2VyLnBhcnNlX2FyZ3MoKQogICAgcHJpbnQoanNvbi5kdW1wcyhjb25m",
+                  "aWd1cmUoanNvbi5sb2FkcyhQYXRoKGFyZ3MuY29udHJhY3QpLnJlYWRfdGV4dCgpKSwgYXJncy5y",
+                  "ZWxlYXNlX3ZlcnNpb24pKSkKCgppZiBfX25hbWVfXyA9PSAiX19tYWluX18iOgogICAgbWFpbigp",
+                  "Cg==",
+                  "RUNTIME_PERMISSIONS_EOF",
+                  "base64 -d /opt/workshop-customizer/runtime_permissions.b64 > /opt/workshop-customizer/runtime_permissions.py",
+                  "rm -f /opt/workshop-customizer/runtime_permissions.b64",
+                  "chmod 0755 /opt/workshop-customizer/runtime_permissions.py",
+                  "aws ssm get-parameter --region '{{ Region }}' --name '{{ ContractParameterName }}' --query Parameter.Value --output text > /etc/workshop-customizer/target.json.tmp",
+                  "python3 -c 'import json; json.load(open(\"/etc/workshop-customizer/target.json.tmp\"))'",
+                  "mv -f /etc/workshop-customizer/target.json.tmp /etc/workshop-customizer/target.json",
+                  "chmod 0644 /etc/workshop-customizer/target.json",
+                  "id '{{ TargetUser }}' >/dev/null 2>&1 || useradd -m '{{ TargetUser }}'",
+                  "runuser -u '{{ TargetUser }}' -- /usr/bin/python3.12 -m pip install --user boto3 botocore retrying uv",
+                  "install -d -m 0755 -o '{{ TargetUser }}' -g '{{ TargetGroup }}' '{{ TargetRoot }}' '{{ TargetRoot }}/releases'",
+                  "echo 'workshop-customizer applier installed'"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ApplyReleaseDocument": {
+      "Type": "AWS::SSM::Document",
+      "Properties": {
+        "Name": "WorkshopCustomizerApplyRelease",
+        "DocumentType": "Command",
+        "DocumentFormat": "JSON",
+        "UpdateMethod": "NewVersion",
+        "Content": {
+          "schemaVersion": "2.2",
+          "description": "Workshop Customizer: apply, commit, roll back or inspect a verified release on the workshop EC2. Parameters are typed and pattern-constrained; the document only invokes the applier pre-installed by the WorkshopCustomizerAddons stack and never executes caller-supplied shell.",
+          "parameters": {
+            "Action": {
+              "type": "String",
+              "description": "apply | commit | rollback | status",
+              "allowedValues": [
+                "apply",
+                "commit",
+                "rollback",
+                "status"
+              ],
+              "default": "status"
+            },
+            "SourceUri": {
+              "type": "String",
+              "description": "s3://<workshop-bucket>/customizer-releases/<project>/<version>/release.zip (apply only)",
+              "allowedPattern": "^(|s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]/customizer-releases/[a-z][a-z0-9-]{2,40}/[a-z][a-z0-9-]{2,40}-[0-9a-f]{12}/release\\.zip)$",
+              "default": ""
+            },
+            "ExpectedSha256": {
+              "type": "String",
+              "description": "SHA-256 of release.zip (apply only)",
+              "allowedPattern": "^(|[0-9a-f]{64})$",
+              "default": ""
+            },
+            "ExpectedVersion": {
+              "type": "String",
+              "description": "RELEASE.json version, e.g. it-helpdesk-688e337c86de (apply/commit)",
+              "allowedPattern": "^(|[a-z][a-z0-9-]{2,40}-[0-9a-f]{12})$",
+              "default": ""
+            },
+            "WatchdogMinutes": {
+              "type": "String",
+              "description": "Minutes before an uncommitted release is rolled back automatically (apply only)",
+              "allowedPattern": "^[1-9][0-9]{0,2}$",
+              "default": "20"
+            },
+            "Reason": {
+              "type": "String",
+              "description": "Free-text reason recorded in the deployment manifest (rollback)",
+              "allowedPattern": "^[A-Za-z0-9 ._:-]{0,120}$",
+              "default": "operator request"
+            }
+          },
+          "mainSteps": [
+            {
+              "action": "aws:runShellScript",
+              "name": "applyRelease",
+              "precondition": {
+                "StringEquals": [
+                  "platformType",
+                  "Linux"
+                ]
+              },
+              "inputs": {
+                "timeoutSeconds": "1200",
+                "workingDirectory": "/opt/workshop-customizer",
+                "runCommand": [
+                  "#!/bin/bash",
+                  "set -euo pipefail",
+                  "test -f /opt/workshop-customizer/apply_release.py || { echo 'applier not installed; deploy the WorkshopCustomizerAddons stack first' >&2; exit 90; }",
+                  "test -f /etc/workshop-customizer/target.json || { echo 'target contract missing; refusing' >&2; exit 91; }",
+                  "exec /usr/bin/python3 /opt/workshop-customizer/apply_release.py --action '{{ Action }}' --source '{{ SourceUri }}' --sha256 '{{ ExpectedSha256 }}' --version '{{ ExpectedVersion }}' --watchdog-minutes '{{ WatchdogMinutes }}' --reason '{{ Reason }}'"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "RunStepDocument": {
+      "Type": "AWS::SSM::Document",
+      "Properties": {
+        "Name": "WorkshopCustomizerRunStep",
+        "DocumentType": "Command",
+        "DocumentFormat": "JSON",
+        "UpdateMethod": "NewVersion",
+        "Content": {
+          "schemaVersion": "2.2",
+          "description": "Workshop Customizer: run exactly one allow-listed upstream Workshop Guide step against the active, release-bound tree. The caller cannot supply shell code or paths.",
+          "parameters": {
+            "ReleaseVersion": {
+              "type": "String",
+              "description": "Active verified release version",
+              "allowedPattern": "^[a-z][a-z0-9-]{2,60}-[0-9a-f]{12}$"
+            },
+            "StepId": {
+              "type": "String",
+              "description": "Canonical Workshop Guide step id",
+              "allowedValues": [
+                "setup",
+                "infra",
+                "knowledge-base",
+                "gateway",
+                "skills",
+                "agent",
+                "memory",
+                "conversation",
+                "eval-env",
+                "evaluators",
+                "baseline",
+                "optimize",
+                "cost-latency",
+                "models",
+                "judge-stability"
+              ]
+            },
+            "Script": {
+              "type": "String",
+              "description": "Canonical script paired with StepId; the document verifies the pair before execution",
+              "allowedValues": [
+                "00-setup.sh",
+                "00-deploy-infra.sh",
+                "01-create-kb.sh",
+                "02-create-gateway.sh",
+                "03-configure-skills.sh",
+                "04-deploy.sh",
+                "05-setup-memory.sh",
+                "06-test-conversation.sh",
+                "07-setup-eval-env.sh",
+                "08-create-evaluators.sh",
+                "09-run-eval.sh",
+                "10-optimize-prompt.sh",
+                "11-cost-latency.sh",
+                "12-compare-models.sh",
+                "13-judge-stability.sh"
+              ]
+            }
+          },
+          "mainSteps": [
+            {
+              "action": "aws:runShellScript",
+              "name": "runAllowlistedWorkshopStep",
+              "precondition": {
+                "StringEquals": [
+                  "platformType",
+                  "Linux"
+                ]
+              },
+              "inputs": {
+                "timeoutSeconds": "7200",
+                "workingDirectory": "/opt/workshop-customizer",
+                "runCommand": [
+                  "#!/bin/bash",
+                  "set -euo pipefail",
+                  "CONTRACT=/etc/workshop-customizer/target.json",
+                  "test -f \"$CONTRACT\" || { echo '{\"status\":\"failed\",\"error\":\"target contract missing\"}'; exit 91; }",
+                  "TARGET_ROOT=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"targetRoot\"])' \"$CONTRACT\")\"",
+                  "TARGET_USER=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"user\"])' \"$CONTRACT\")\"",
+                  "TARGET_GROUP=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"group\"])' \"$CONTRACT\")\"",
+                  "TARGET_REGION=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"region\"])' \"$CONTRACT\")\"",
+                  "case '{{ StepId }}' in",
+                  "  setup) EXPECTED_SCRIPT='00-setup.sh' ;;",
+                  "  infra) EXPECTED_SCRIPT='00-deploy-infra.sh' ;;",
+                  "  knowledge-base) EXPECTED_SCRIPT='01-create-kb.sh' ;;",
+                  "  gateway) EXPECTED_SCRIPT='02-create-gateway.sh' ;;",
+                  "  skills) EXPECTED_SCRIPT='03-configure-skills.sh' ;;",
+                  "  agent) EXPECTED_SCRIPT='04-deploy.sh' ;;",
+                  "  memory) EXPECTED_SCRIPT='05-setup-memory.sh' ;;",
+                  "  conversation) EXPECTED_SCRIPT='06-test-conversation.sh' ;;",
+                  "  eval-env) EXPECTED_SCRIPT='07-setup-eval-env.sh' ;;",
+                  "  evaluators) EXPECTED_SCRIPT='08-create-evaluators.sh' ;;",
+                  "  baseline) EXPECTED_SCRIPT='09-run-eval.sh' ;;",
+                  "  optimize) EXPECTED_SCRIPT='10-optimize-prompt.sh' ;;",
+                  "  cost-latency) EXPECTED_SCRIPT='11-cost-latency.sh' ;;",
+                  "  models) EXPECTED_SCRIPT='12-compare-models.sh' ;;",
+                  "  judge-stability) EXPECTED_SCRIPT='13-judge-stability.sh' ;;",
+                  "  *) echo '{\"status\":\"failed\",\"error\":\"step is not allow-listed\"}'; exit 92 ;;",
+                  "esac",
+                  "test \"$EXPECTED_SCRIPT\" = '{{ Script }}' || { echo '{\"status\":\"failed\",\"error\":\"step/script pair mismatch\"}'; exit 93; }",
+                  "RELEASE_DIR=\"$TARGET_ROOT/releases/{{ ReleaseVersion }}\"",
+                  "CURRENT_DIR=\"$(readlink -f \"$TARGET_ROOT/current\" 2>/dev/null || true)\"",
+                  "EXPECTED_DIR=\"$(readlink -f \"$RELEASE_DIR\" 2>/dev/null || true)\"",
+                  "test -n \"$EXPECTED_DIR\" && test \"$CURRENT_DIR\" = \"$EXPECTED_DIR\" || { echo '{\"status\":\"failed\",\"error\":\"requested release is not active\"}'; exit 94; }",
+                  "test -x \"$RELEASE_DIR/$EXPECTED_SCRIPT\" || { echo '{\"status\":\"failed\",\"error\":\"allow-listed script is missing or not executable\"}'; exit 95; }",
+                  "LOG_DIR=\"$TARGET_ROOT/run/{{ ReleaseVersion }}/{{ StepId }}\"",
+                  "install -d -m 0755 -o \"$TARGET_USER\" -g \"$TARGET_GROUP\" \"$LOG_DIR\"",
+                  "rm -f \"$LOG_DIR/l1-compact.json\" \"$LOG_DIR/result.json\"",
+                  "case '{{ StepId }}' in",
+                  "  memory|conversation|eval-env|evaluators|baseline|optimize|cost-latency|models|judge-stability)",
+                  "    python3 /opt/workshop-customizer/runtime_permissions.py --release-version '{{ ReleaseVersion }}' >\"$LOG_DIR/runtime-permissions.json\" ;;",
+                  "esac",
+                  "STDOUT_LOG=\"$LOG_DIR/stdout.log\"",
+                  "STDERR_LOG=\"$LOG_DIR/stderr.log\"",
+                  "HOME_DIR=\"$(getent passwd \"$TARGET_USER\" | cut -d: -f6)\"",
+                  "STEP_ARGS=()",
+                  "COMPARE_PRICE_IN=''; COMPARE_PRICE_OUT=''",
+                  "if [ '{{ StepId }}' = models ]; then",
+                  "  COMPARE_MODEL=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"comparisonModel\"][\"id\"])' \"$CONTRACT\")\"",
+                  "  COMPARE_PRICE_IN=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"comparisonModel\"][\"inputPricePerMillionUsd\"])' \"$CONTRACT\")\"",
+                  "  COMPARE_PRICE_OUT=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"comparisonModel\"][\"outputPricePerMillionUsd\"])' \"$CONTRACT\")\"",
+                  "  STEP_ARGS+=(\"$COMPARE_MODEL\")",
+                  "fi",
+                  "if [ '{{ StepId }}' = baseline ]; then",
+                  "  AGENT_NAME=\"$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[\"namespace\"][\"agentName\"])' \"$RELEASE_DIR/RELEASE.json\")\"",
+                  "  PROMPT_FILE=\"$TARGET_ROOT/$AGENT_NAME/app/$AGENT_NAME/system-prompt.md\"",
+                  "  if ! cmp -s \"$RELEASE_DIR/pack/prompts/baseline.md\" \"$PROMPT_FILE\"; then",
+                  "    install -m 0644 -o \"$TARGET_USER\" -g \"$TARGET_GROUP\" \"$RELEASE_DIR/pack/prompts/baseline.md\" \"$PROMPT_FILE\"",
+                  "    runuser -u \"$TARGET_USER\" -- env HOME=\"$HOME_DIR\" AWS_DEFAULT_REGION=\"$TARGET_REGION\" PATH=\"/opt/workshop-customizer/bin:$HOME_DIR/.local/bin:/usr/local/bin:/usr/bin:/bin\" bash -c 'cd \"$1\" && npx agentcore deploy --yes' workshop-baseline \"$TARGET_ROOT/$AGENT_NAME\" >\"$LOG_DIR/restore-baseline.log\" 2>&1 || { tail -60 \"$LOG_DIR/restore-baseline.log\" >&2; exit 96; }",
+                  "  fi",
+                  "fi",
+                  "SINCE_MS=''",
+                  "case '{{ StepId }}' in",
+                  "  baseline|optimize) SINCE_MS=\"$(($(date +%s) * 1000))\"; printf '%s\\n' \"$SINCE_MS\" >\"$LOG_DIR/since-ms\" ;;",
+                  "  cost-latency) if [ -f \"$TARGET_ROOT/run/{{ ReleaseVersion }}/optimize/since-ms\" ]; then SINCE_MS=\"$(cat \"$TARGET_ROOT/run/{{ ReleaseVersion }}/optimize/since-ms\")\"; fi ;;",
+                  "esac",
+                  "STARTED=$(date +%s)",
+                  "set +e",
+                  "runuser -u \"$TARGET_USER\" -- env HOME=\"$HOME_DIR\" AWS_DEFAULT_REGION=\"$TARGET_REGION\" SINCE_EPOCH_MS=\"$SINCE_MS\" WORKSHOP_EVAL_OUT_DIR=\"$LOG_DIR\" COMPARE_PRICE_IN=\"$COMPARE_PRICE_IN\" COMPARE_PRICE_OUT=\"$COMPARE_PRICE_OUT\" WORKSHOP_NONINTERACTIVE=1 PATH=\"/opt/workshop-customizer/bin:$HOME_DIR/.local/bin:/usr/local/bin:/usr/bin:/bin\" bash -c 'cd \"$1\" && script=\"$2\" && shift 2 && exec \"./$script\" \"$@\"' workshop-step \"$RELEASE_DIR\" \"$EXPECTED_SCRIPT\" \"${STEP_ARGS[@]}\" >\"$STDOUT_LOG\" 2>\"$STDERR_LOG\"",
+                  "RC=$?",
+                  "set -e",
+                  "FINISHED=$(date +%s)",
+                  "python3 - \"$RC\" \"$STDOUT_LOG\" \"$STDERR_LOG\" \"$EXPECTED_SCRIPT\" \"$((FINISHED-STARTED))\" '{{ StepId }}' \"$HOME_DIR/workshop/eval-runs\" <<'PY'",
+                  "import json, os, pathlib, re, stat, sys, tempfile",
+                  "rc, out_path, err_path, script, duration, step_id = int(sys.argv[1]), *sys.argv[2:7]",
+                  "eval_root = sys.argv[7] if len(sys.argv) > 7 else ''",
+                  "LIMIT = 22000",
+                  "ITEM, SID = r'[a-z][a-z0-9-]{1,60}', r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}'",
+                  "log_dir = pathlib.Path(out_path).parent",
+                  "out = pathlib.Path(out_path).read_text(encoding='utf-8', errors='replace')",
+                  "err = pathlib.Path(err_path).read_text(encoding='utf-8', errors='replace')",
+                  "lines = out.splitlines()",
+                  "def read_small(path, limit=262144):",
+                  "    try:",
+                  "        fd = os.open(str(path), os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))",
+                  "    except OSError:",
+                  "        return None",
+                  "    with os.fdopen(fd, 'rb') as fh:",
+                  "        if not stat.S_ISREG(os.fstat(fh.fileno()).st_mode):",
+                  "            return None",
+                  "        data = fh.read(limit + 1)",
+                  "    return data.decode('utf-8', 'replace') if len(data) <= limit else None",
+                  "sessions = {}",
+                  "records = re.findall(r'^\ud83d\udcc1 Run record: (\\S+)\\s*$', out, re.M)",
+                  "if records and eval_root:",
+                  "    root, run_dir = os.path.realpath(eval_root), os.path.realpath(records[-1])",
+                  "    if run_dir.startswith(root + os.sep):",
+                  "        for row in (read_small(os.path.join(run_dir, 'sessions.tsv')) or '').splitlines():",
+                  "            cols = row.split('\\t')",
+                  "            if len(cols) >= 3 and re.fullmatch(ITEM, cols[1]) and re.fullmatch(SID, cols[2]):",
+                  "                sessions.setdefault(cols[1], cols[2])",
+                  "for i in range(len(lines) - 2):",
+                  "    if re.match(r'^\u2500\u2500\u2500 Q\\d+ \\[.*\\] \u2500\u2500\u2500\\s*$', lines[i]):",
+                  "        ms = re.search(r'\\(session: (' + SID + r')\\)\\s*$', lines[i + 1])",
+                  "        mc = re.match(r'^\\s+case: (' + ITEM + r')(\\s|$)', lines[i + 2])",
+                  "        if ms and mc:",
+                  "            sessions.setdefault(mc.group(1), ms.group(1))",
+                  "score_re = re.compile(r'Score:\\s+trace=([^\\s]+)\\s+value=([-+]?[0-9]*\\.?[0-9]+)\\s+\\[([^]]+)\\](?:\\s+case=(' + ITEM + r')(?![a-z0-9-]))?')",
+                  "metric_re = re.compile(r'(?<![A-Za-z0-9])(GR|SP1|SP2|SQC|RP|RQC|SD)\\([^)]*\\)=([0-9]*\\.?[0-9]+)')",
+                  "scores, evaluator, pending = [], 'unknown', None",
+                  "for line in lines:",
+                  "    if pending is not None:",
+                  "        found = metric_re.findall(line)",
+                  "        if found: pending['metrics'] = {k: float(v) for k, v in found}",
+                  "        pending = None",
+                  "    if 'THELMA' in line: evaluator = 'thelma_rag_quality'",
+                  "    elif 'Mind the Goal' in line or '(GSR)' in line: evaluator = 'mtg_goal_success'",
+                  "    match = score_re.search(line)",
+                  "    if match:",
+                  "        row = {'evaluator': evaluator, 'traceId': match.group(1), 'value': float(match.group(2)), 'label': match.group(3)}",
+                  "        if match.group(4):",
+                  "            row['caseId'] = match.group(4)",
+                  "            if match.group(4) in sessions: row['sessionId'] = sessions[match.group(4)]",
+                  "        scores.append(row)",
+                  "        if evaluator == 'thelma_rag_quality': pending = row",
+                  "outputs = {'script': script, 'stepId': step_id, 'exitCode': rc, 'durationSeconds': int(duration), 'stdoutTail': out[-4000:], 'stderrTail': err[-4000:]}",
+                  "if scores: outputs['scores'] = scores",
+                  "summary_row = re.search(r'\u5747\u503c/\u5408\u8ba1\\s+([0-9.]+)\\s+(\\d+)\\s+(\\d+)\\s+([0-9.]+)', out)",
+                  "average = re.search(r'\u5e73\u5747\u6bcf\u6b21\u56de\u7b54\uff1a\u5ef6\u8fdf\\s+([0-9.]+)s\uff0c\u6210\u672c\\s+\\$([0-9.]+)', out)",
+                  "total = re.search(r'(\\d+)\\s+\u6b21\u5408\u8ba1\u6210\u672c\uff1a\\$([0-9.]+)', out)",
+                  "if summary_row or average or total:",
+                  "    metrics = {}",
+                  "    if summary_row: metrics.update({'averageLatencySeconds': float(summary_row.group(1)), 'averageInputTokens': int(summary_row.group(2)), 'averageOutputTokens': int(summary_row.group(3)), 'totalCostUsd': float(summary_row.group(4))})",
+                  "    if average: metrics.update({'averageLatencySeconds': float(average.group(1)), 'averageCostUsd': float(average.group(2))})",
+                  "    if total: metrics.update({'sampleCount': int(total.group(1)), 'totalCostUsd': float(total.group(2))})",
+                  "    outputs['costLatency'] = metrics",
+                  "    model_match = re.search(r'\u6a21\u578b:\\s*(\\S+)', out)",
+                  "    price_match = re.search(r'\u5355\u4ef7:\\s*\u8f93\u5165\\s*\\$([0-9.]+).*\u8f93\u51fa\\s*\\$([0-9.]+)', out)",
+                  "    metrics['estimateOnly'] = True",
+                  "    if model_match: metrics['modelId'] = model_match.group(1)",
+                  "    if price_match: metrics.update({'inputPricePerMillionUsd': float(price_match.group(1)), 'outputPricePerMillionUsd': float(price_match.group(2))})",
+                  "baseline_model = re.search(r'\u57fa\u7ebf\u6a21\u578b[^:\uff1a]*[:\uff1a]\\s*(\\S+)', out)",
+                  "comparison_model = re.search(r'\u5bf9\u6bd4\u6a21\u578b[^:\uff1a]*[:\uff1a]\\s*(\\S+)', out)",
+                  "if baseline_model or comparison_model: outputs['models'] = {'baseline': baseline_model.group(1) if baseline_model else None, 'comparison': comparison_model.group(1) if comparison_model else None}",
+                  "values = [float(value) for value in re.findall(r'value\\s*=\\s*([-+]?[0-9]*\\.?[0-9]+)', out)]",
+                  "stability = re.search(r'\u5747\u503c=([0-9.]+)\\s+\u6807\u51c6\u5dee=([0-9.]+)\\s+\u6781\u5dee=([0-9.]+)', out)",
+                  "if stability: outputs['judgeStability'] = {'values': values, 'mean': float(stability.group(1)), 'std': float(stability.group(2)), 'spread': float(stability.group(3)), 'verdict': 'stable' if '\u2705 \u7a33\u5b9a\uff1a' in out else ('moderate' if '\u26a0\ufe0f \u4e00\u822c\uff1a' in out else 'unstable')}",
+                  "compact_path = log_dir / 'l1-compact.json'",
+                  "if os.path.lexists(str(compact_path)):",
+                  "    try:",
+                  "        compact = json.loads(read_small(compact_path, 65536) or '')",
+                  "    except ValueError:",
+                  "        compact = None",
+                  "    if not isinstance(compact, dict):",
+                  "        outputs['l1Error'] = 'unreadable l1-compact.json'",
+                  "    elif compact.get('schema') != 'workshop-customizer/l1/1' or not isinstance(compact.get('cases'), list) or not isinstance(compact.get('summary'), dict):",
+                  "        outputs['l1Error'] = 'unexpected l1 schema'",
+                  "    else:",
+                  "        outputs['l1'] = compact",
+                  "if step_id == 'conversation':",
+                  "    sid_match, body, inside = re.search(r'Session ID: (' + SID + r')', out), [], False",
+                  "    for line in lines:",
+                  "        if not inside:",
+                  "            inside = line.startswith('\ud83d\udde3\ufe0f')",
+                  "            continue",
+                  "        if re.match(r'^Session: \\S+', line): break",
+                  "        body.append(line)",
+                  "    text = re.sub(r'\\x1b\\[[0-9;]*m', '', '\\n'.join(body)).strip()",
+                  "    if sid_match or text:",
+                  "        outputs['conversation'] = {'schema': 'workshop-customizer/conversation/1', 'sessionId': sid_match.group(1) if sid_match else None, 'response': text[:2000], 'responseChars': len(text), 'truncated': len(text) > 2000}",
+                  "payload = {'status': 'passed' if rc == 0 else 'failed', 'summary': out[-4000:] or (script + ' completed'), 'error': '' if rc == 0 else (err[-4000:] or (script + ' exited ' + str(rc))), 'outputs': outputs}",
+                  "try:",
+                  "    fd, tmp = tempfile.mkstemp(prefix='.result-', suffix='.json', dir=str(log_dir))",
+                  "    os.fchmod(fd, 0o644)",
+                  "    with os.fdopen(fd, 'w', encoding='utf-8') as fh: fh.write(json.dumps(payload, ensure_ascii=False) + '\\n')",
+                  "    os.replace(tmp, str(log_dir / 'result.json'))",
+                  "except OSError:",
+                  "    outputs['resultFileError'] = 'LOG_DIR/result.json could not be written'",
+                  "def size(): return len(json.dumps(payload, ensure_ascii=False).encode('utf-8'))",
+                  "outputs.update(payloadChars=LIMIT, payloadBytes=LIMIT, payloadTrimmed=False)",
+                  "trimmed = False",
+                  "for keep in (2000, 800, 200):",
+                  "    for holder, key in ((payload, 'summary'), (outputs, 'stdoutTail'), (outputs, 'stderrTail'), (payload, 'error')):",
+                  "        if size() > LIMIT and len(holder.get(key) or '') > keep:",
+                  "            holder[key], trimmed = holder[key][-keep:], True",
+                  "if size() > LIMIT and isinstance(outputs.get('l1'), dict) and outputs['l1'].get('cases'):",
+                  "    outputs['l1'], trimmed = dict(outputs['l1'], cases=[], truncated=True), True",
+                  "if size() > LIMIT:",
+                  "    kept = {k: outputs[k] for k in ('script', 'stepId', 'exitCode', 'durationSeconds')}",
+                  "    payload = {'status': 'failed', 'summary': (script + ' output exceeded the step output budget'), 'error': 'step output exceeded the %d-byte budget; the full result is LOG_DIR/result.json on the workshop instance' % LIMIT, 'outputs': dict(kept, budgetExceeded=True)}",
+                  "    outputs, trimmed = payload['outputs'], True",
+                  "for _ in range(4):",
+                  "    line = json.dumps(payload, ensure_ascii=False)",
+                  "    if outputs.get('payloadChars') == len(line): break",
+                  "    outputs.update(payloadChars=len(line), payloadBytes=len(line.encode('utf-8')), payloadTrimmed=trimmed)",
+                  "line = json.dumps(payload, ensure_ascii=False)",
+                  "if len(line.encode('utf-8')) > LIMIT:",
+                  "    payload = {'status': 'failed', 'summary': script + ' output exceeded the step output budget', 'error': 'step output exceeded the %d-byte budget; the full result is LOG_DIR/result.json on the workshop instance' % LIMIT, 'outputs': {k: outputs.get(k) for k in ('script', 'stepId', 'exitCode', 'durationSeconds')}}",
+                  "    payload['outputs'].update(budgetExceeded=True, payloadTrimmed=True)",
+                  "    line = json.dumps(payload, ensure_ascii=False)",
+                  "print(line)",
+                  "PY",
+                  "exit \"$RC\""
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "InstallApplierAssociation": {
+      "Type": "AWS::SSM::Association",
+      "DependsOn": [
+        "TargetContractParameter"
+      ],
+      "Properties": {
+        "AssociationName": {
+          "Fn::Sub": "${AWS::StackName}-install-applier"
+        },
+        "Name": {
+          "Ref": "InstallApplierDocument"
+        },
+        "Targets": [
+          {
+            "Key": "InstanceIds",
+            "Values": [
+              {
+                "Ref": "WorkshopInstanceId"
+              }
+            ]
+          }
+        ],
+        "Parameters": {
+          "TargetRoot": [
+            {
+              "Ref": "TargetRoot"
+            }
+          ],
+          "TargetUser": [
+            {
+              "Ref": "TargetUser"
+            }
+          ],
+          "TargetGroup": [
+            {
+              "Ref": "TargetGroup"
+            }
+          ],
+          "ContractParameterName": [
+            "/workshop-customizer/target-contract"
+          ],
+          "Region": [
+            {
+              "Ref": "AWS::Region"
+            }
+          ]
+        },
+        "MaxErrors": "0"
+      }
+    },
+    "SyncPolicy": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Properties": {
+        "ManagedPolicyName": {
+          "Fn::Sub": "${AWS::StackName}-sync"
+        },
+        "Description": "Least privilege for release sync and Guided Workshop execution on one instance through two fixed documents.",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "Preflight",
+              "Effect": "Allow",
+              "Action": [
+                "sts:GetCallerIdentity",
+                "ssm:DescribeInstanceInformation"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Sid": "ReadStacks",
+              "Effect": "Allow",
+              "Action": [
+                "cloudformation:DescribeStacks"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${WorkshopStackName}/*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*"
+                }
+              ]
+            },
+            {
+              "Sid": "ReadContract",
+              "Effect": "Allow",
+              "Action": [
+                "ssm:GetParameter",
+                "ssm:GetParameters"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/workshop-customizer/target-contract"
+              }
+            },
+            {
+              "Sid": "GuardReadPackParameters",
+              "Effect": "Allow",
+              "Action": [
+                "ssm:GetParameter"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/app/*"
+              }
+            },
+            {
+              "Sid": "GuardListAgentRuntimes",
+              "Effect": "Allow",
+              "Action": [
+                "bedrock-agentcore:ListAgentRuntimes"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Sid": "ListReleasePrefixOnly",
+              "Effect": "Allow",
+              "Action": [
+                "s3:ListBucket"
+              ],
+              "Resource": {
+                "Fn::Sub": [
+                  "arn:${AWS::Partition}:s3:::${WorkshopBucket}",
+                  {
+                    "WorkshopBucket": {
+                      "Fn::ImportValue": {
+                        "Fn::Sub": "${WorkshopStackName}-SkillsBucketName"
+                      }
+                    }
+                  }
+                ]
+              },
+              "Condition": {
+                "StringLike": {
+                  "s3:prefix": [
+                    "customizer-releases/*"
+                  ]
+                }
+              }
+            },
+            {
+              "Sid": "ReleaseObjects",
+              "Effect": "Allow",
+              "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:GetObjectVersion"
+              ],
+              "Resource": {
+                "Fn::Sub": [
+                  "arn:${AWS::Partition}:s3:::${WorkshopBucket}/customizer-releases/*",
+                  {
+                    "WorkshopBucket": {
+                      "Fn::ImportValue": {
+                        "Fn::Sub": "${WorkshopStackName}-SkillsBucketName"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "Sid": "InvokeOnlyFixedDocumentsOnWorkshopInstance",
+              "Effect": "Allow",
+              "Action": [
+                "ssm:SendCommand"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${WorkshopInstanceId}"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/WorkshopCustomizerApplyRelease"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/WorkshopCustomizerRunStep"
+                }
+              ]
+            },
+            {
+              "Sid": "ReadCommandResults",
+              "Effect": "Allow",
+              "Action": [
+                "ssm:GetCommandInvocation",
+                "ssm:ListCommandInvocations",
+                "ssm:ListCommands"
+              ],
+              "Resource": "*"
+            },
+            {
+              "Sid": "DenyEveryOtherDocument",
+              "Effect": "Deny",
+              "Action": [
+                "ssm:SendCommand",
+                "ssm:StartSession",
+                "ssm:CreateAssociation",
+                "ssm:UpdateAssociation",
+                "ssm:StartAutomationExecution"
+              ],
+              "Resource": "arn:*:ssm:*:*:document/*",
+              "Condition": {
+                "ArnNotEquals": {
+                  "ssm:DocumentArn": [
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/WorkshopCustomizerApplyRelease"
+                    },
+                    {
+                      "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/WorkshopCustomizerRunStep"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "Sid": "DenyWritesOutsideReleasePrefix",
+              "Effect": "Deny",
+              "Action": [
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:DeleteObjectVersion",
+                "s3:PutBucketPolicy",
+                "s3:PutBucketAcl",
+                "s3:PutObjectAcl"
+              ],
+              "NotResource": {
+                "Fn::Sub": [
+                  "arn:${AWS::Partition}:s3:::${WorkshopBucket}/customizer-releases/*",
+                  {
+                    "WorkshopBucket": {
+                      "Fn::ImportValue": {
+                        "Fn::Sub": "${WorkshopStackName}-SkillsBucketName"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "Sid": "DenyDestructiveAndIam",
+              "Effect": "Deny",
+              "Action": [
+                "iam:*",
+                "ec2:TerminateInstances",
+                "ec2:StopInstances",
+                "ec2:ModifyInstanceAttribute",
+                "cloudformation:DeleteStack",
+                "cloudformation:UpdateStack",
+                "bedrock-agentcore:Delete*",
+                "lambda:Delete*",
+                "s3:DeleteBucket"
+              ],
+              "Resource": "*"
+            }
+          ]
+        }
+      }
+    },
+    "WorkshopExecutionPolicy": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": {
+          "Fn::Sub": "${AWS::StackName}-execution"
+        },
+        "Roles": [
+          {
+            "Fn::Sub": "workshop-ec2-role-${AWS::Region}"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "AgentCoreWorkshop",
+              "Effect": "Allow",
+              "Action": [
+                "bedrock-agentcore:Create*",
+                "bedrock-agentcore:Get*",
+                "bedrock-agentcore:List*",
+                "bedrock-agentcore:Update*",
+                "bedrock-agentcore:Invoke*",
+                "bedrock-agentcore:Evaluate",
+                "bedrock-agentcore:TagResource",
+                "bedrock-agentcore:UntagResource"
+              ],
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:RequestedRegion": {
+                    "Ref": "AWS::Region"
+                  }
+                }
+              }
+            },
+            {
+              "Sid": "ScenarioLambdas",
+              "Effect": "Allow",
+              "Action": [
+                "lambda:CreateFunction",
+                "lambda:GetFunction",
+                "lambda:GetFunctionConfiguration",
+                "lambda:UpdateFunctionCode",
+                "lambda:UpdateFunctionConfiguration",
+                "lambda:AddPermission",
+                "lambda:GetPolicy",
+                "lambda:InvokeFunction",
+                "lambda:ListTags",
+                "lambda:TagResource"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ToolFunctionName}"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AgentName}-*"
+                }
+              ]
+            },
+            {
+              "Sid": "ScenarioParameters",
+              "Effect": "Allow",
+              "Action": [
+                "ssm:GetParameter",
+                "ssm:PutParameter"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmParameterPrefix}/*"
+              }
+            },
+            {
+              "Sid": "ScenarioVectors",
+              "Effect": "Allow",
+              "Action": [
+                "s3vectors:CreateVectorBucket",
+                "s3vectors:GetVectorBucket",
+                "s3vectors:CreateIndex",
+                "s3vectors:GetIndex",
+                "s3vectors:ListIndexes",
+                "s3vectors:PutVectorBucketPolicy",
+                "s3vectors:GetVectorBucketPolicy",
+                "s3vectors:DeleteIndex",
+                "s3vectors:DeleteVectorBucket"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:s3vectors:${AWS::Region}:${AWS::AccountId}:bucket/${KnowledgeBaseName}-*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:s3vectors:${AWS::Region}:${AWS::AccountId}:vector-bucket/${KnowledgeBaseName}-*"
+                }
+              ]
+            },
+            {
+              "Sid": "WorkshopRoleManagement",
+              "Effect": "Allow",
+              "Action": [
+                "iam:CreateRole",
+                "iam:GetRole",
+                "iam:UpdateAssumeRolePolicy",
+                "iam:PutRolePolicy",
+                "iam:GetRolePolicy",
+                "iam:AttachRolePolicy",
+                "iam:ListRolePolicies",
+                "iam:ListAttachedRolePolicies",
+                "iam:PassRole",
+                "iam:TagRole",
+                "iam:DeleteRolePolicy",
+                "iam:DetachRolePolicy",
+                "iam:DeleteRole"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${AgentName}*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AgentCore-${AgentName}*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${ToolTargetName}*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/AmazonBedrockExecutionRoleForKnowledgeBase_*"
+                }
+              ]
+            },
+            {
+              "Sid": "KnowledgeBasePolicies",
+              "Effect": "Allow",
+              "Action": [
+                "iam:CreatePolicy",
+                "iam:GetPolicy",
+                "iam:GetPolicyVersion",
+                "iam:ListPolicyVersions",
+                "iam:CreatePolicyVersion",
+                "iam:DeletePolicy",
+                "iam:DeletePolicyVersion"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:policy/AmazonBedrock*PolicyForKnowledgeBase_*"
+                }
+              ]
+            },
+            {
+              "Sid": "WorkshopLogs",
+              "Effect": "Allow",
+              "Action": [
+                "logs:FilterLogEvents",
+                "logs:GetLogEvents",
+                "logs:StartQuery",
+                "logs:DescribeLogStreams",
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutRetentionPolicy"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans:*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/application-signals/data:*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AgentName}-*:*"
+                }
+              ]
+            },
+            {
+              "Sid": "EvaluatorLogReplacement",
+              "Effect": "Allow",
+              "Action": [
+                "logs:DeleteLogGroup"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AgentName}-eval-*:*"
+              }
+            },
+            {
+              "Sid": "TransactionSearch",
+              "Effect": "Allow",
+              "Action": [
+                "xray:GetTraceSegmentDestination",
+                "xray:UpdateTraceSegmentDestination",
+                "xray:GetIndexingRules",
+                "xray:UpdateIndexingRule",
+                "logs:DescribeLogGroups",
+                "logs:DescribeResourcePolicies",
+                "logs:PutResourcePolicy",
+                "logs:GetQueryResults"
+              ],
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:RequestedRegion": {
+                    "Ref": "AWS::Region"
+                  }
+                }
+              }
+            },
+            {
+              "Sid": "DeleteScenarioGateway",
+              "Effect": "Allow",
+              "Action": [
+                "bedrock-agentcore:DeleteGateway",
+                "bedrock-agentcore:DeleteGatewayTarget"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:gateway/${GatewayName}-*"
+              }
+            },
+            {
+              "Sid": "DeleteScenarioAgent",
+              "Effect": "Allow",
+              "Action": [
+                "bedrock-agentcore:DeleteHarness",
+                "bedrock-agentcore:DeleteAgentRuntime",
+                "bedrock-agentcore:DeleteMemory",
+                "bedrock-agentcore:DeleteEvaluator"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:harness/${AgentName}_*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/harness_${AgentName}_*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:memory/${AgentName}_*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:evaluator/${AgentName}_*"
+                }
+              ]
+            },
+            {
+              "Sid": "DeleteScenarioParameters",
+              "Effect": "Allow",
+              "Action": [
+                "ssm:DeleteParameter"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmParameterPrefix}/*"
+              }
+            },
+            {
+              "Sid": "ScenarioOnlyCleanupListParameters",
+              "Effect": "Allow",
+              "Action": [
+                "ssm:GetParametersByPath"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmParameterPrefix}"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmParameterPrefix}/*"
+                }
+              ]
+            },
+            {
+              "Sid": "ScenarioOnlyCleanupLambda",
+              "Effect": "Allow",
+              "Action": [
+                "lambda:DeleteFunction"
+              ],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${ToolFunctionName}"
+              }
+            },
+            {
+              "Sid": "ScenarioOnlyCleanupLambdaLogs",
+              "Effect": "Allow",
+              "Action": [
+                "logs:DeleteLogGroup"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ToolFunctionName}"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${ToolFunctionName}:*"
+                }
+              ]
+            },
+            {
+              "Sid": "DeleteScenarioWorkloadIdentities",
+              "Effect": "Allow",
+              "Action": [
+                "bedrock-agentcore:DeleteWorkloadIdentity"
+              ],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/${GatewayName}-*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:workload-identity-directory/default/workload-identity/${AgentName}_*"
+                }
+              ]
+            },
+            {
+              "Sid": "ReadSkillsFileSystem",
+              "Effect": "Allow",
+              "Action": [
+                "s3files:GetFileSystem",
+                "s3files:GetAccessPoint",
+                "s3files:ListMountTargets",
+                "s3files:ListAccessPoints"
+              ],
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "SkillsFileSystem",
+                    "FileSystemArn"
+                  ]
+                },
+                {
+                  "Fn::GetAtt": [
+                    "SkillsFilesAccessPoint",
+                    "AccessPointArn"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "SkillsFilesRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "elasticfilesystem.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnLike": {
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3files:${AWS::Region}:${AWS::AccountId}:file-system/*"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "WorkshopSkillsFiles",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:ListBucket",
+                    "s3:ListBucketVersions"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": [
+                      "arn:${AWS::Partition}:s3:::${WorkshopBucket}",
+                      {
+                        "WorkshopBucket": {
+                          "Fn::ImportValue": {
+                            "Fn::Sub": "${WorkshopStackName}-SkillsBucketName"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "s3:AbortMultipartUpload",
+                    "s3:DeleteObject*",
+                    "s3:GetObject*",
+                    "s3:List*",
+                    "s3:PutObject*"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": [
+                      "arn:${AWS::Partition}:s3:::${WorkshopBucket}/*",
+                      {
+                        "WorkshopBucket": {
+                          "Fn::ImportValue": {
+                            "Fn::Sub": "${WorkshopStackName}-SkillsBucketName"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "events:DeleteRule",
+                    "events:DisableRule",
+                    "events:EnableRule",
+                    "events:PutRule",
+                    "events:PutTargets",
+                    "events:RemoveTargets"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/DO-NOT-DELETE-S3-Files*"
+                  },
+                  "Condition": {
+                    "StringEquals": {
+                      "events:ManagedBy": "elasticfilesystem.amazonaws.com"
+                    }
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "events:DescribeRule",
+                    "events:ListRuleNamesByTarget",
+                    "events:ListRules",
+                    "events:ListTargetsByRule"
+                  ],
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/*"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "SkillsFileSystem": {
+      "Type": "AWS::S3Files::FileSystem",
+      "Properties": {
+        "Bucket": {
+          "Fn::Sub": [
+            "arn:${AWS::Partition}:s3:::${WorkshopBucket}",
+            {
+              "WorkshopBucket": {
+                "Fn::ImportValue": {
+                  "Fn::Sub": "${WorkshopStackName}-SkillsBucketName"
+                }
+              }
+            }
+          ]
+        },
+        "RoleArn": {
+          "Fn::GetAtt": [
+            "SkillsFilesRole",
+            "Arn"
+          ]
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Fn::Sub": "${AWS::StackName}-skills"
+            }
+          }
+        ]
+      }
+    },
+    "SkillsFilesAccessPoint": {
+      "Type": "AWS::S3Files::AccessPoint",
+      "Properties": {
+        "FileSystemId": {
+          "Ref": "SkillsFileSystem"
+        },
+        "PosixUser": {
+          "Uid": "1000",
+          "Gid": "1000"
+        },
+        "RootDirectory": {
+          "Path": "/"
+        }
+      }
+    },
+    "SkillsFilesSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "NFS only from the Workshop harness security group",
+        "VpcId": {
+          "Fn::ImportValue": {
+            "Fn::Sub": "${WorkshopStackName}-VPCId"
+          }
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 2049,
+            "ToPort": 2049,
+            "SourceSecurityGroupId": {
+              "Fn::ImportValue": {
+                "Fn::Sub": "${WorkshopStackName}-SecurityGroupId"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "HarnessSkillsFilesEgress": {
+      "Type": "AWS::EC2::SecurityGroupEgress",
+      "Properties": {
+        "GroupId": {
+          "Fn::ImportValue": {
+            "Fn::Sub": "${WorkshopStackName}-SecurityGroupId"
+          }
+        },
+        "IpProtocol": "tcp",
+        "FromPort": 2049,
+        "ToPort": 2049,
+        "DestinationSecurityGroupId": {
+          "Ref": "SkillsFilesSecurityGroup"
+        }
+      }
+    },
+    "SkillsFilesMountTarget1": {
+      "Type": "AWS::S3Files::MountTarget",
+      "Properties": {
+        "FileSystemId": {
+          "Ref": "SkillsFileSystem"
+        },
+        "SubnetId": {
+          "Fn::Select": [
+            0,
+            {
+              "Fn::Split": [
+                ",",
+                {
+                  "Fn::ImportValue": {
+                    "Fn::Sub": "${WorkshopStackName}-PrivateSubnets"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "SecurityGroups": [
+          {
+            "Ref": "SkillsFilesSecurityGroup"
+          }
+        ],
+        "IpAddressType": "IPV4_ONLY"
+      }
+    },
+    "SkillsFilesMountTarget2": {
+      "Type": "AWS::S3Files::MountTarget",
+      "Properties": {
+        "FileSystemId": {
+          "Ref": "SkillsFileSystem"
+        },
+        "SubnetId": {
+          "Fn::Select": [
+            1,
+            {
+              "Fn::Split": [
+                ",",
+                {
+                  "Fn::ImportValue": {
+                    "Fn::Sub": "${WorkshopStackName}-PrivateSubnets"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "SecurityGroups": [
+          {
+            "Ref": "SkillsFilesSecurityGroup"
+          }
+        ],
+        "IpAddressType": "IPV4_ONLY"
+      }
+    }
+  },
+  "Outputs": {
+    "ApplyDocumentName": {
+      "Value": {
+        "Ref": "ApplyReleaseDocument"
+      }
+    },
+    "RunStepDocumentName": {
+      "Value": {
+        "Ref": "RunStepDocument"
+      }
+    },
+    "RunStepDocumentSha256": {
+      "Value": "8cede4b98c0a4e229f0b483313db67efd71b002f16ca6ff996e466696628bacd",
+      "Description": "Canonical sha256 of the RunStep document content; preflight compares it with the local sync/ssm/WorkshopCustomizerRunStep.json."
+    },
+    "InstallDocumentName": {
+      "Value": {
+        "Ref": "InstallApplierDocument"
+      }
+    },
+    "TargetContractParameter": {
+      "Value": "/workshop-customizer/target-contract"
+    },
+    "ReleasePrefix": {
+      "Value": {
+        "Fn::Sub": [
+          "s3://${WorkshopBucket}/customizer-releases/",
+          {
+            "WorkshopBucket": {
+              "Fn::ImportValue": {
+                "Fn::Sub": "${WorkshopStackName}-SkillsBucketName"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "SyncPolicyArn": {
+      "Value": {
+        "Ref": "SyncPolicy"
+      }
+    },
+    "WorkshopInstanceId": {
+      "Value": {
+        "Ref": "WorkshopInstanceId"
+      }
+    },
+    "SkillsFilesAccessPointArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "SkillsFilesAccessPoint",
+          "AccessPointArn"
+        ]
+      }
+    },
+    "SkillsFileSystemArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "SkillsFileSystem",
+          "FileSystemArn"
+        ]
+      }
+    }
+  }
+}

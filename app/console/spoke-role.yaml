@@ -1,0 +1,503 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  ADLC console spoke role: an ADLC console in another (hub) account works in this account and region (AgentCore agents,
+  knowledge bases, evaluation, Skill Lab, code deployments, governance, the Agent Registry). All it creates is tagged
+  adlc:console=1. Every role it creates is on the IAM path /adlc-console/ with the permissions boundary this stack
+  makes (<RoleName>-boundary), which caps those roles whatever policy they get; roles are created, tagged, passed and
+  deleted on that path only, so a role made by someone else is never taken over, whatever its name. Its S3 bucket,
+  CodeBuild project and ECR repositories are limited by name. Deploy with aws cloudformation deploy --template-file
+  app/console/spoke-role.yaml --stack-name adlc-console-spoke --capabilities CAPABILITY_NAMED_IAM --parameter-overrides
+  HubPrincipalArn=<the console's role or user> ExternalId=<secret> and give the console's workspace the outputs RoleArn
+  and PermissionsBoundaryArn with the same ExternalId.
+
+Parameters:
+  HubPrincipalArn:
+    Type: String
+    AllowedPattern: "^arn:aws:iam::\\d{12}:(role|user)/.+$"
+    Description: The IAM role or user the console runs as (the console's Workspaces page shows it). Only it may assume this role.
+  ExternalId:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    MaxLength: 128
+    AllowedPattern: "^[\\w+=,.@:/-]+$"
+    Description: A secret the console's workspace sends when it assumes the role (guards against the confused deputy).
+  RoleName:
+    Type: String
+    Default: adlc-console-spoke
+    AllowedPattern: "^[\\w+=,.@-]{1,64}$"
+
+Resources:
+  # The most any role the console creates may do: what its Harness, runtime, build, knowledge-base, Gateway, A/B test,
+  # canary and online-evaluation roles are given (engine/workshop_customizer/console: agents.role_policy, kb,
+  # deploy.runtime_role_policy and build_role_policy, direct.online.role_documents, experiments and runtime_canary
+  # role_documents, governance's policy-engine grant, Skill Lab's library and task-file grants). S3 is the console's bucket only and
+  # images are the console's repositories (and the AgentCore Harness image): a knowledge-base source or a skill in
+  # another bucket, or an image from another repository, works only once this account's owner adds it here.
+  ConsoleRoleBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub ${RoleName}-boundary
+      Description: ADLC console - the permissions boundary of every role the console creates (it caps them; it grants nothing)
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # Agents call models (Harnesses, runtimes, Claude Code on Bedrock), evaluators judge with them.
+          - Sid: Models
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource: "*"
+          - Sid: KnowledgeBases
+            Effect: Allow
+            Action:
+              - bedrock:Retrieve
+              - bedrock:GetKnowledgeBase
+            Resource: !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*
+          - Sid: AgenticRetrieve
+            Effect: Allow
+            Action: bedrock:AgenticRetrieveStream
+            Resource: "*"
+          # The AgentCore data plane the console's roles use: invoking runtimes and Harnesses (a Gateway's A/B arms),
+          # Gateways (an agent's tools), memory, workload identity, what A/B routing and online evaluation read, and a
+          # policy engine's decisions. Nothing that creates or deletes AgentCore resources.
+          - Sid: AgentCore
+            Effect: Allow
+            Action:
+              - bedrock-agentcore:InvokeAgentRuntime
+              - bedrock-agentcore:InvokeAgentRuntimeForUser
+              - bedrock-agentcore:InvokeHarness
+              - bedrock-agentcore:InvokeGateway
+              - bedrock-agentcore:CreateEvent
+              - bedrock-agentcore:DeleteEvent
+              - bedrock-agentcore:GetEvent
+              - bedrock-agentcore:GetMemory
+              - bedrock-agentcore:GetMemoryRecord
+              - bedrock-agentcore:ListActors
+              - bedrock-agentcore:ListEvents
+              - bedrock-agentcore:ListMemoryRecords
+              - bedrock-agentcore:ListSessions
+              - bedrock-agentcore:RetrieveMemoryRecords
+              - bedrock-agentcore:DeleteMemoryRecord
+              - bedrock-agentcore:GetWorkloadAccessToken
+              - bedrock-agentcore:GetWorkloadAccessTokenForJWT
+              - bedrock-agentcore:GetWorkloadAccessTokenForUserId
+              - bedrock-agentcore:GetGateway
+              - bedrock-agentcore:GetGatewayTarget
+              - bedrock-agentcore:ListGatewayTargets
+              - bedrock-agentcore:UpdateGateway
+              - bedrock-agentcore:CreateGatewayRule
+              - bedrock-agentcore:GetGatewayRule
+              - bedrock-agentcore:UpdateGatewayRule
+              - bedrock-agentcore:DeleteGatewayRule
+              - bedrock-agentcore:ListGatewayRules
+              - bedrock-agentcore:GetOnlineEvaluationConfig
+              - bedrock-agentcore:GetEvaluator
+              - bedrock-agentcore:GetABTest
+              - bedrock-agentcore:GetPolicyEngine
+              - bedrock-agentcore:AuthorizeAction
+              - bedrock-agentcore:PartiallyAuthorizeActions
+            Resource: !Sub arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*
+          # Logs: the AgentCore runtimes', evaluations' and the console build project's groups, and the aws/spans index.
+          - Sid: Logs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              - logs:DescribeLogStreams
+              - logs:GetLogEvents
+              - logs:StartQuery
+            Resource:
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/*
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/adlc-console-*
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans:*
+          - Sid: SpansIndex
+            Effect: Allow
+            Action:
+              - logs:DescribeIndexPolicies
+              - logs:PutIndexPolicy
+            Resource:
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans
+              - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans:*
+          - Sid: LogQueries
+            Effect: Allow
+            Action:
+              - logs:DescribeLogGroups
+              - logs:GetQueryResults
+              - cloudwatch:GenerateQuery
+              - cloudwatch:GenerateQueryResultsSummary
+            Resource: "*"
+          - Sid: Telemetry
+            Effect: Allow
+            Action:
+              - xray:PutTraceSegments
+              - xray:PutTelemetryRecords
+              - xray:GetSamplingRules
+              - xray:GetSamplingTargets
+              - cloudwatch:PutMetricData
+            Resource: "*"
+          # The console's bucket: knowledge-base uploads (kb/), the skill library (skills/), Skill Lab's task files
+          # (skill-lab/assets/, which a Claude Agent SDK runtime reads for a call's inputs), deployment sources and the
+          # bundles builds write (deployments/).
+          - Sid: ConsoleBucketRead
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::adlc-console-${AWS::AccountId}-${AWS::Region}/kb/*
+              - !Sub arn:${AWS::Partition}:s3:::adlc-console-${AWS::AccountId}-${AWS::Region}/skills/*
+              - !Sub arn:${AWS::Partition}:s3:::adlc-console-${AWS::AccountId}-${AWS::Region}/skill-lab/assets/*
+              - !Sub arn:${AWS::Partition}:s3:::adlc-console-${AWS::AccountId}-${AWS::Region}/deployments/*
+          - Sid: ConsoleBucketWrite
+            Effect: Allow
+            Action: s3:PutObject
+            Resource: !Sub arn:${AWS::Partition}:s3:::adlc-console-${AWS::AccountId}-${AWS::Region}/deployments/*
+          - Sid: ConsoleBucketList
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+              - s3:GetBucketAcl
+            Resource: !Sub arn:${AWS::Partition}:s3:::adlc-console-${AWS::AccountId}-${AWS::Region}
+          - Sid: ImageToken
+            Effect: Allow
+            Action: ecr:GetAuthorizationToken
+            Resource: "*"
+          # Pulling: the console's repositories and the AgentCore Harness image (account 796669927364).
+          - Sid: ImagePull
+            Effect: Allow
+            Action:
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchCheckLayerAvailability
+            Resource:
+              - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/adlc-console/*
+              - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:796669927364:repository/*
+          # Pushing (the build project): the console's repositories only.
+          - Sid: ImagePush
+            Effect: Allow
+            Action:
+              - ecr:InitiateLayerUpload
+              - ecr:UploadLayerPart
+              - ecr:CompleteLayerUpload
+              - ecr:PutImage
+            Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/adlc-console/*
+          # Code-based evaluators an online evaluation runs (the agentcore CLI deploys them as <project>-eval-<name>).
+          - Sid: CodeEvaluators
+            Effect: Allow
+            Action:
+              - lambda:GetFunction
+              - lambda:InvokeFunction
+            Resource: !Sub arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:*-eval-*
+
+  SpokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: ADLC console (hub) access to AgentCore in this account
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref HubPrincipalArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      Tags:
+        - Key: adlc:console
+          Value: "1"
+      Policies:
+        - PolicyName: adlc-console
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # AgentCore: Harnesses, Runtimes and endpoints, Gateways and targets, memory, evaluators and online
+              # evaluation, A/B tests and configuration bundles, policy engines; the data plane for invoke and Evaluate.
+              - Sid: AgentCore
+                Effect: Allow
+                Action: bedrock-agentcore:*
+                Resource: "*"
+              - Sid: AgentRegistry
+                Effect: Allow
+                Action: agent-registry:*
+                Resource: "*"
+              # Managed knowledge bases (create, sources, ingestion, retrieval playground) and the models Skill Lab's
+              # judge and optimizer call.
+              - Sid: KnowledgeBases
+                Effect: Allow
+                Action:
+                  - bedrock:CreateKnowledgeBase
+                  - bedrock:GetKnowledgeBase
+                  - bedrock:ListKnowledgeBases
+                  - bedrock:UpdateKnowledgeBase
+                  - bedrock:DeleteKnowledgeBase
+                  - bedrock:CreateDataSource
+                  - bedrock:GetDataSource
+                  - bedrock:ListDataSources
+                  - bedrock:UpdateDataSource
+                  - bedrock:DeleteDataSource
+                  - bedrock:StartIngestionJob
+                  - bedrock:GetIngestionJob
+                  - bedrock:ListIngestionJobs
+                  - bedrock:ListKnowledgeBaseDocuments
+                  - bedrock:GetKnowledgeBaseDocuments
+                  - bedrock:Retrieve
+                  - bedrock:TagResource
+                  - bedrock:UntagResource
+                  - bedrock:ListTagsForResource
+                Resource: "*"
+              - Sid: Models
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:ListFoundationModels
+                  - bedrock:ListInferenceProfiles
+                  - bedrock:GetInferenceProfile
+                Resource: "*"
+              # The roles the console creates (Harness roles, the KB and KB Gateway roles, deployment runtime and build
+              # roles, A/B test and canary roles, online-evaluation roles), all on the console's own IAM path
+              # /adlc-console/ (role names are unique in the account whatever the path): created only there and only
+              # with the boundary, and their policies changed only while they carry it (iam:PermissionsBoundary is the
+              # boundary of the role being changed). PutRolePermissionsBoundary sets this boundary on a console role made
+              # before it had one. These statements, and the tags, trust, delete and PassRole ones below, reach no role
+              # off the path, whatever its name or tags.
+              - Sid: ConsoleRoles
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePermissionsBoundary
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/adlc-console/*
+                Condition:
+                  StringEquals:
+                    iam:PermissionsBoundary: !Ref ConsoleRoleBoundary
+              - Sid: ConsoleRoleReads
+                Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:ListRoleTags
+                  - iam:GetRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/adlc-console/*
+              # CreateRole with tags needs TagRole. TagRole takes no boundary key, so it is held to the path: a role
+              # someone else made elsewhere can never be tagged adlc:console=1 here (and then passed, below).
+              - Sid: ConsoleRoleTags
+                Effect: Allow
+                Action: iam:TagRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/adlc-console/*
+              # A role's trust is changed, and a role deleted, only on the path, while it carries the boundary
+              # (UpdateAssumeRolePolicy and DeleteRole both take iam:PermissionsBoundary: AWS's service reference, checked
+              # 2026-10-02) and is tagged adlc:console=1: a trust rewritten on an unbounded role would let its new
+              # principal use all of it.
+              - Sid: ConsoleRoleTrust
+                Effect: Allow
+                Action:
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:DeleteRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/adlc-console/*
+                Condition:
+                  StringEquals:
+                    iam:ResourceTag/adlc:console: "1"
+                    iam:PermissionsBoundary: !Ref ConsoleRoleBoundary
+              # Adding a console grant (KB Gateway, skill library) to another agent's role, on any path, works only when
+              # that role is tagged adlc:console=1 and carries the boundary; otherwise the console shows the statement
+              # for the account's owner to add.
+              - Sid: TaggedAgentRoles
+                Effect: Allow
+                Action:
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*
+                Condition:
+                  StringEquals:
+                    iam:ResourceTag/adlc:console: "1"
+                    iam:PermissionsBoundary: !Ref ConsoleRoleBoundary
+              - Sid: ReadRoles
+                Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:ListRoleTags
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*
+              # PassRole takes no boundary key either: it is held to the path, the tag and the services, so an agent never
+              # runs with a role the console did not create there.
+              - Sid: PassConsoleRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/adlc-console/*
+                Condition:
+                  StringEquals:
+                    iam:PassedToService:
+                      - bedrock-agentcore.amazonaws.com
+                      - bedrock.amazonaws.com
+                      - codebuild.amazonaws.com
+                    iam:ResourceTag/adlc:console: "1"
+              - Sid: NotItself
+                Effect: Deny
+                Action: iam:*
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${RoleName}
+              # The boundary stays: it is never taken off a role, never replaced by another policy, never edited.
+              - Sid: KeepTheBoundary
+                Effect: Deny
+                Action: iam:DeleteRolePermissionsBoundary
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*
+              - Sid: OnlyThisBoundary
+                Effect: Deny
+                Action: iam:PutRolePermissionsBoundary
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/*
+                Condition:
+                  StringNotEquals:
+                    iam:PermissionsBoundary: !Ref ConsoleRoleBoundary
+              - Sid: BoundaryUnchanged
+                Effect: Deny
+                Action:
+                  - iam:CreatePolicyVersion
+                  - iam:DeletePolicyVersion
+                  - iam:SetDefaultPolicyVersion
+                  - iam:DeletePolicy
+                Resource: !Ref ConsoleRoleBoundary
+              # The console's bucket: KB sources and uploads (kb/), the skill library (skills/), deployment sources.
+              - Sid: ConsoleBucket
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:ListBucket
+                  - s3:ListBucketVersions
+                  - s3:GetBucketLocation
+                  - s3:GetBucketTagging
+                  - s3:PutBucketTagging
+                  - s3:PutBucketVersioning
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:PutEncryptionConfiguration
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:DeleteObjectVersion
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::adlc-console-${AWS::AccountId}-${AWS::Region}
+                  - !Sub arn:${AWS::Partition}:s3:::adlc-console-${AWS::AccountId}-${AWS::Region}/*
+              # Importing a skill (Skill Lab, Registry) reads one SKILL.md from wherever it is.
+              - Sid: ReadSkillFiles
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::*/*SKILL.md
+              - Sid: Builds
+                Effect: Allow
+                Action:
+                  - codebuild:CreateProject
+                  - codebuild:UpdateProject
+                  - codebuild:BatchGetProjects
+                  - codebuild:DeleteProject
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource: !Sub arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/adlc-console-*
+              # The console's image repositories scan on push: a deployment waits for the scan and gates on it. A canary's
+              # cleanup deletes the image its own build pushed (never one a production version runs).
+              - Sid: Images
+                Effect: Allow
+                Action:
+                  - ecr:CreateRepository
+                  - ecr:DeleteRepository
+                  - ecr:TagResource
+                  - ecr:ListImages
+                  - ecr:BatchDeleteImage
+                  - ecr:PutImageScanningConfiguration
+                Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/adlc-console/*
+              - Sid: ReadImages
+                Effect: Allow
+                Action:
+                  - ecr:DescribeRepositories
+                  - ecr:DescribeImages
+                  - ecr:DescribeImageScanFindings
+                  - ecr:ListTagsForResource
+                Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/*
+              # A deployment in VPC mode is checked first: its subnets and security groups exist, in one VPC (read only).
+              # AgentCore itself makes the ENIs with its service-linked role AWSServiceRoleForBedrockAgentCoreNetwork,
+              # which must exist in this account (an admin's first VPC runtime creates it).
+              - Sid: ReadNetwork
+                Effect: Allow
+                Action:
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeVpcs
+                Resource: "*"
+              # Observability and evaluation results (metrics, Logs Insights over runtime logs, spans and results).
+              - Sid: Observe
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                  - logs:StartQuery
+                  - logs:GetQueryResults
+                  - logs:StopQuery
+                  - logs:FilterLogEvents
+                  - logs:GetLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                  - xray:GetTraceSummaries
+                  - xray:BatchGetTraces
+                Resource: "*"
+              # An A/B test's or canary's arm: its endpoint's log group is made before its online evaluation (which
+              # refuses a group that does not exist yet); cleanup deletes the arms' and the evaluations' result groups,
+              # and removing the build project its log group.
+              - Sid: ConsoleLogGroups
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:TagResource
+                  - logs:ListTagsForResource
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/evaluations/results/*
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/adlc-console-*
+              # Governance: turning on a Gateway's decision log (vended log delivery into a tagged log group).
+              - Sid: DecisionLogGroups
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:PutRetentionPolicy
+                  - logs:TagResource
+                  - logs:ListTagsForResource
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/vendedlogs/bedrock-agentcore/*
+              - Sid: LogDelivery
+                Effect: Allow
+                Action:
+                  - logs:PutDeliverySource
+                  - logs:GetDeliverySource
+                  - logs:DescribeDeliverySources
+                  - logs:DeleteDeliverySource
+                  - logs:PutDeliveryDestination
+                  - logs:GetDeliveryDestination
+                  - logs:DescribeDeliveryDestinations
+                  - logs:DeleteDeliveryDestination
+                  - logs:CreateDelivery
+                  - logs:GetDelivery
+                  - logs:DescribeDeliveries
+                  - logs:DeleteDelivery
+                  - logs:TagResource
+                  - logs:ListTagsForResource
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                Resource: "*"
+
+Outputs:
+  RoleArn:
+    Description: Give this to the console's workspace (the cross-account role ARN field), with the same ExternalId.
+    Value: !GetAtt SpokeRole.Arn
+  PermissionsBoundaryArn:
+    Description: Give this to the console's workspace (the permissions boundary ARN field) - every role the console creates here carries it.
+    Value: !Ref ConsoleRoleBoundary

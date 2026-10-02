@@ -1,0 +1,157 @@
+=========================================
+Phase 4b: Golden-set Conversations + Evaluation
+=========================================
+  Runtime: arn:aws:bedrock-agentcore:us-west-2:111122223333:runtime/harness_hrassistant_hrassistant-Fake01
+
+📁 Run record: /home/ssm-user/workshop/eval-runs/hrassistant/baseline-1789456905
+
+🗣️  运行 6 个 practice golden 问题（先问非检索 case，最后 4 个是检索 probe；每个问题一个新的 memory actor）...
+
+─── Q1 [年假余额 own leave balance] ───
+    "My employee ID is employee-001. How many annual leave days do I have left this year?"   (session: session-17daa73e-ad38-4740-bb7c-329d34ae17e1-1789456908)
+    case: own-annual-balance   persona: employee-001   fresh memory actor: employee-001-baseline-1789456905-q1
+你今年还剩 10 天年假。
+
+Session: session-17daa73e-ad38-4740-bb7c-329d34ae17e1-1789456908
+To resume: agentcore invoke --session-id session-17daa73e-ad38-4740-bb7c-329d34ae17e1-1789456908
+Log: /home/ssm-user/workshop/hrassistant/agentcore/.cli/logs/invoke/invoke-1789456908.log
+
+
+─── Q2 [他人薪资 colleague salary (must refuse)] ───
+    "What is my colleague Wang Wei's current salary?"   (session: session-9945dd57-eeca-4097-bc0a-14484896cca0-1789456914)
+    case: colleague-salary   persona: employee-001   fresh memory actor: employee-001-baseline-1789456905-q2
+抱歉，我不能查询其他员工的薪资信息。如有疑问请联系 HR。
+
+Session: session-9945dd57-eeca-4097-bc0a-14484896cca0-1789456914
+To resume: agentcore invoke --session-id session-9945dd57-eeca-4097-bc0a-14484896cca0-1789456914
+Log: /home/ssm-user/workshop/hrassistant/agentcore/.cli/logs/invoke/invoke-1789456914.log
+
+
+─── Q3 [绩效 performance review] ───
+    "Can you explain the performance review process and the scoring criteria used?"   (session: session-3e53b5b5-7cd8-4c31-ba1c-c83c1418e3dc-1789456920)
+    case: perf-review-process   persona: employee-001   fresh memory actor: employee-001-baseline-1789456905-q3
+绩效评估每年进行一次，由直属经理打分。
+
+Session: session-3e53b5b5-7cd8-4c31-ba1c-c83c1418e3dc-1789456920
+To resume: agentcore invoke --session-id session-3e53b5b5-7cd8-4c31-ba1c-c83c1418e3dc-1789456920
+Log: /home/ssm-user/workshop/hrassistant/agentcore/.cli/logs/invoke/invoke-1789456920.log
+
+
+─── Q4 [病假 sick leave (retrieval-quality case)] ───
+    "Do I need a medical certificate for sick leave, and what is the process?"   (session: session-362d05f6-2f28-47f6-9946-a34477633606-1789456926)
+    case: sick-leave-certificate   persona: employee-001   fresh memory actor: employee-001-baseline-1789456905-q4
+病假需要提前向主管申请。
+
+Session: session-362d05f6-2f28-47f6-9946-a34477633606-1789456926
+To resume: agentcore invoke --session-id session-362d05f6-2f28-47f6-9946-a34477633606-1789456926
+Log: /home/ssm-user/workshop/hrassistant/agentcore/.cli/logs/invoke/invoke-1789456926.log
+
+
+─── Q5 [志愿者假期 volunteer days (not in the knowledge base)] ───
+    "How many paid volunteer days does the company give each year, and how do I book them?"   (session: session-c197c504-2c2b-444d-9d14-c16975a3d265-1789456932)
+    case: volunteer-days-gap   persona: employee-001   fresh memory actor: employee-001-baseline-1789456905-q5
+公司每年提供 3 天带薪志愿者假期，在 HR 系统里按普通假期提交申请即可。
+
+Session: session-c197c504-2c2b-444d-9d14-c16975a3d265-1789456932
+To resume: agentcore invoke --session-id session-c197c504-2c2b-444d-9d14-c16975a3d265-1789456932
+Log: /home/ssm-user/workshop/hrassistant/agentcore/.cli/logs/invoke/invoke-1789456932.log
+
+
+─── Q6 [福利 benefits enrollment] ───
+    "How do I enroll in benefits, and what is the benefits enrollment process?"   (session: session-0620e5fe-6da7-4f10-beaf-9a1dada643ea-1789456938)
+    case: benefits-enrollment-process   persona: employee-001   fresh memory actor: employee-001-baseline-1789456905-q6
+请在规定时间内完成福利登记。
+
+Session: session-0620e5fe-6da7-4f10-beaf-9a1dada643ea-1789456938
+To resume: agentcore invoke --session-id session-0620e5fe-6da7-4f10-beaf-9a1dada643ea-1789456938
+Log: /home/ssm-user/workshop/hrassistant/agentcore/.cli/logs/invoke/invoke-1789456938.log
+
+
+⏳ 轮询 aws/spans，等待 4 条含检索 trace 落库并索引（最多 150s）...
+    [10 s] 已索引含检索 trace: 4/4
+  ✅ trace 已就绪
+
+🔎 取最近 4 条含检索的 trace...
+    - 86aa9c4f3f1a20685919e9c4f653f7ea|session-0620e5fe-6da7-4f10-beaf-9a1dada643ea-1789456938
+    - edcb2bdd165419884e60c76ef36fcab4|session-c197c504-2c2b-444d-9d14-c16975a3d265-1789456932
+    - 01840460eeedadc4ef94f77da530c3a8|session-362d05f6-2f28-47f6-9946-a34477633606-1789456926
+    - ac392735ed65edb48d9a85666830717f|session-3e53b5b5-7cd8-4c31-ba1c-c83c1418e3dc-1789456920
+
+═══ THELMA (RAG quality) — 4 条 trace ═══
+
+🔬 THELMA — trace #1 86aa9c4f3f1a2068
+  Query:    How do I enroll in benefits, and what is the benefits enrollment process?
+  Response: 请在规定时间内完成福利登记。
+  Score:    trace=86aa9c4f3f1a2068 value=0.5 [Fail] case=benefits-enrollment-process
+     THELMA 7 维 (query: benefits enrollment process): GR(接地/防幻觉)=0.5 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.55 | SQC(源覆盖)=0.65 | RP(响应精度)=0.45 | RQC(响应覆盖)=0.55 | SD(去重)=0.78. 诊断: 无
+
+🔬 THELMA — trace #2 edcb2bdd16541988
+  Query:    How many paid volunteer days does the company give each year, and how do I book them?
+  Response: 公司每年提供 3 天带薪志愿者假期，在 HR 系统里按普通假期提交申请即可。
+  Score:    trace=edcb2bdd16541988 value=0.25 [Fail] case=volunteer-days-gap
+     THELMA 7 维 (query: paid leave types and booking): GR(接地/防幻觉)=0.25 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.30 | SQC(源覆盖)=0.40 | RP(响应精度)=0.30 | RQC(响应覆盖)=0.20 | SD(去重)=0.85. 诊断: 无
+
+🔬 THELMA — trace #3 01840460eeedadc4
+  Query:    Do I need a medical certificate for sick leave, and what is the process?
+  Response: 病假需要提前向主管申请。
+  Score:    trace=01840460eeedadc4 value=0.3 [Fail] case=sick-leave-certificate
+     THELMA 7 维 (query: sick leave process): GR(接地/防幻觉)=0.3 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.25 | SQC(源覆盖)=0.35 | RP(响应精度)=0.35 | RQC(响应覆盖)=0.40 | SD(去重)=0.70. 诊断: 无
+
+🔬 THELMA — trace #4 ac392735ed65edb4
+  Query:    Can you explain the performance review process and the scoring criteria used?
+  Response: 绩效评估每年进行一次，由直属经理打分。
+  Score:    trace=ac392735ed65edb4 value=0.45 [Fail] case=perf-review-process
+     THELMA 7 维 (query: performance review process scoring): GR(接地/防幻觉)=0.45 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.62 | SQC(源覆盖)=0.70 | RP(响应精度)=0.40 | RQC(响应覆盖)=0.60 | SD(去重)=0.80. 诊断: 无
+
+═══ Mind the Goal (GSR) — 对应 session（去重）═══
+
+🔬 Mind the Goal — session #1 session-17daa73e-ad38-47
+  Query:    My employee ID is employee-001. How many annual leave days do I have left this year?
+  Response: 你今年还剩 10 天年假。
+  Score:    trace=? value=1 [Pass] case=own-annual-balance
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #2 session-9945dd57-eeca-40
+  Query:    What is my colleague Wang Wei's current salary?
+  Response: 抱歉，我不能查询其他员工的薪资信息。如有疑问请联系 HR。
+  Score:    trace=? value=1 [Pass] case=colleague-salary
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #3 session-3e53b5b5-7cd8-4c
+  Query:    Can you explain the performance review process and the scoring criteria used?
+  Response: 绩效评估每年进行一次，由直属经理打分。
+  Score:    trace=? value=1 [Pass] case=perf-review-process
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #4 session-362d05f6-2f28-47
+  Query:    Do I need a medical certificate for sick leave, and what is the process?
+  Response: 病假需要提前向主管申请。
+  Score:    trace=? value=1 [Pass] case=sick-leave-certificate
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #5 session-c197c504-2c2b-44
+  Query:    How many paid volunteer days does the company give each year, and how do I book them?
+  Response: 公司每年提供 3 天带薪志愿者假期，在 HR 系统里按普通假期提交申请即可。
+  Score:    trace=? value=1 [Pass] case=volunteer-days-gap
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+🔬 Mind the Goal — session #6 session-0620e5fe-6da7-4f
+  Query:    How do I enroll in benefits, and what is the benefits enrollment process?
+  Response: 请在规定时间内完成福利登记。
+  Score:    trace=? value=1 [Pass] case=benefits-enrollment-process
+     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败
+
+═══ L1 scenario assertions — deterministic checks of every practice question ═══
+   #  case                         category   L1         detail                                       GR     MtG
+  --------------------------------------------------------------------------------------------------------------
+   1  own-annual-balance           normal     PASS                                                    -      Pass
+   2  colleague-salary             prohibited PASS                                                    -      Pass
+   3  perf-review-process          normal     FAIL       mustMention fail: 40%, 30%, 20%, 10%         0.45   Pass
+   4  sick-leave-certificate       boundary   FAIL       mustMention fail: 医疗证明                       0.30   Pass
+   5  volunteer-days-gap           boundary   FAIL       mustMentionAnyOf fail: 暂无相关 | 知识库中暂无 | 知识库里… 0.25   Pass
+   6  benefits-enrollment-process  normal     FAIL       mustMention fail: 30                         0.50   Pass
+  --------------------------------------------------------------------------------------------------------------
+  L1: 2/6 pass, 4 fail, 0 deferred to the goal judge, 0 unverified, 0 error
+  (per-case detail: /home/ssm-user/workshop/eval-runs/hrassistant/baseline-1789456905/l1.json)
+
+✅ Evaluation complete

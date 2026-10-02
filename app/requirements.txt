@@ -1,0 +1,7 @@
+# What the App's backend and the scripts it runs import beyond the Python standard library. KiroCrew installs these
+# for the App on install (pip --target, first on the backend's PYTHONPATH), so a registry install needs no checkout
+# venv: retrying is what the release's knowledge-base/create_kb.py imports for direct rehearsals.
+boto3==1.43.90
+jsonschema==4.26.0
+PyYAML==6.0.3
+retrying==1.4.2

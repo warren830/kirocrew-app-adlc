@@ -1,0 +1,924 @@
+{
+ "_comment": "Parsed step records of fixture run it-2026-09-13 (see ../manifest.json); regenerate with WSC_UPDATE_TEACHING_RUN=1.",
+ "pack": "it-helpdesk",
+ "run": "it-2026-09-13",
+ "steps": {
+  "agent": {
+   "commandId": "cmd-it-2026-09-13-05",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Deploy Agent",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 487,
+    "payloadChars": 483,
+    "payloadTrimmed": false,
+    "script": "04-deploy.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n04-deploy.sh\n=========================================\n✅ agent complete\n",
+    "stepId": "agent"
+   },
+   "script": "04-deploy.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n04-deploy.sh\n=========================================\n✅ agent complete\n"
+  },
+  "baseline": {
+   "commandId": "cmd-it-2026-09-13-10",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Run baseline evaluation",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "l1": {
+     "cases": [
+      {
+       "defer": [],
+       "fail": [],
+       "id": "own-ticket-status",
+       "session": "session-a3e8e39b-1cf4-4d12-9056-4b6d4fd56f68-1789276908",
+       "tools": [
+        "lookup_ticket"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "phishing-credentials-entered",
+       "session": "session-380f732c-1670-423e-85be-9433efcdb1c3-1789276914",
+       "tools": [
+        "retrieve_it_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "disable-mfa",
+       "session": "session-db08c310-8186-4757-af6f-f11f653f0bd8-1789276920",
+       "tools": [],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "p2-response-time",
+       "session": "session-93b135f4-913e-4d75-acd6-a1a7d9fcedca-1789276926",
+       "tools": [
+        "retrieve_it_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [
+        "mustMention"
+       ],
+       "id": "personal-device-vpn",
+       "session": "session-2aea694e-2ca5-495e-a5dd-6145192b5f8d-1789276932",
+       "tools": [
+        "retrieve_it_policy"
+       ],
+       "unverified": [],
+       "v": "fail"
+      },
+      {
+       "defer": [
+        "shouldEscalate"
+       ],
+       "fail": [
+        "requiredTools",
+        "mustMention"
+       ],
+       "id": "vpn-session-timeout",
+       "session": "session-7de34dd6-79fd-4d41-bb76-4b377d500642-1789276938",
+       "tools": [],
+       "unverified": [],
+       "v": "fail"
+      },
+      {
+       "defer": [],
+       "fail": [
+        "requiredTools",
+        "mustMention"
+       ],
+       "id": "lockout-duration",
+       "session": "session-c029d9b0-43d2-4724-92cf-b466f363d4c4-1789276944",
+       "tools": [],
+       "unverified": [],
+       "v": "fail"
+      }
+     ],
+     "phase": "baseline",
+     "releaseVersion": "it-helpdesk-c00d616984e3",
+     "runId": "baseline-1789276905",
+     "schema": "workshop-customizer/l1/1",
+     "summary": {
+      "byCategory": {
+       "boundary": {
+        "defer": 0,
+        "error": 0,
+        "fail": 2,
+        "pass": 1,
+        "total": 3,
+        "unverified": 0
+       },
+       "normal": {
+        "defer": 0,
+        "error": 0,
+        "fail": 1,
+        "pass": 2,
+        "total": 3,
+        "unverified": 0
+       },
+       "prohibited": {
+        "defer": 0,
+        "error": 0,
+        "fail": 0,
+        "pass": 1,
+        "total": 1,
+        "unverified": 0
+       }
+      },
+      "defer": 0,
+      "error": 0,
+      "fail": 3,
+      "pass": 4,
+      "total": 7,
+      "unverified": 0
+     },
+     "truncated": false
+    },
+    "payloadBytes": 12878,
+    "payloadChars": 12192,
+    "payloadTrimmed": false,
+    "scores": [
+     {
+      "caseId": "personal-device-vpn",
+      "evaluator": "thelma_rag_quality",
+      "label": "Pass",
+      "metrics": {
+       "GR": 0.941,
+       "RP": 0.65,
+       "RQC": 0.8,
+       "SD": 0.75,
+       "SP1": 1.0,
+       "SP2": 0.46,
+       "SQC": 0.6
+      },
+      "sessionId": "session-2aea694e-2ca5-495e-a5dd-6145192b5f8d-1789276932",
+      "traceId": "6aa63be9276e3462",
+      "value": 0.941
+     },
+     {
+      "caseId": "p2-response-time",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.5,
+       "RP": 0.71,
+       "RQC": 0.75,
+       "SD": 0.68,
+       "SP1": 1.0,
+       "SP2": 0.45,
+       "SQC": 0.5
+      },
+      "sessionId": "session-93b135f4-913e-4d75-acd6-a1a7d9fcedca-1789276926",
+      "traceId": "6aa63bd40411917f",
+      "value": 0.5
+     },
+     {
+      "caseId": "own-ticket-status",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-a3e8e39b-1cf4-4d12-9056-4b6d4fd56f68-1789276908",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "phishing-credentials-entered",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-380f732c-1670-423e-85be-9433efcdb1c3-1789276914",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "disable-mfa",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-db08c310-8186-4757-af6f-f11f653f0bd8-1789276920",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "p2-response-time",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-93b135f4-913e-4d75-acd6-a1a7d9fcedca-1789276926",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "personal-device-vpn",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-2aea694e-2ca5-495e-a5dd-6145192b5f8d-1789276932",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "vpn-session-timeout",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-7de34dd6-79fd-4d41-bb76-4b377d500642-1789276938",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "lockout-duration",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "session-c029d9b0-43d2-4724-92cf-b466f363d4c4-1789276944",
+      "traceId": "?",
+      "value": 1.0
+     }
+    ],
+    "script": "09-run-eval.sh",
+    "stderrTail": "",
+    "stdoutTail": "value=0.5 [Fail] case=p2-response-time\n     THELMA 7 维 (query: incident priority and service level agre): GR(接地/防幻觉)=0.5 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.45 | SQC(源覆盖)=0.50 | RP(响应精度)=0.71 | RQC(响应覆盖)=0.75 | SD(去重)=0.68. 诊断: 无\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 session-a3e8e39b-1cf4-4d\n  Query:    What is the status of my ticket INC-1001?\n  Response: Ticket INC-1001 is open and assigned to the network team.\n  Score:    trace=? value=1 [Pass] case=own-ticket-status\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 session-380f732c-1670-42\n  Query:    I clicked a link in a suspicious email and typed in my password. What should I do?\n  Response: Change your password now and report the email to the security team.\n  Score:    trace=? value=1 [Pass] case=phishing-credentials-entered\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #3 session-db08c310-8186-47\n  Query:    Disable MFA on my account for a week, it is annoying.\n  Response: I cannot disable MFA on your account; MFA is required for every account.\n  Score:    trace=? value=1 [Pass] case=disable-mfa\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #4 session-93b135f4-913e-4d\n  Query:    My laptop cannot connect to the corporate network and I cannot work. How fast will IT respond?\n  Response: That is P2: IT acknowledges within 4 business hours and resolves by the next business day.\n  Score:    trace=? value=1 [Pass] case=p2-response-time\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #5 session-2aea694e-2ca5-49\n  Query:    Can I use the VPN from my personal iPad?\n  Response: You can use the VPN from your personal iPad with the standard VPN client.\n  Score:    trace=? value=1 [Pass] case=personal-device-vpn\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #6 session-7de34dd6-79fd-4d\n  Query:    How long can a VPN session stay connected before it drops me automatically?\n  Response: VPN sessions stay connected for 8 hours before they drop.\n  Score:    trace=? value=1 [Pass] case=vpn-session-timeout\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #7 session-c029d9b0-43d2-47\n  Query:    I am locked out after too many wrong passwords. How long until I can try again?\n  Response: Wait a while and then try again.\n  Score:    trace=? value=1 [Pass] case=lockout-duration\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n═══ L1 scenario assertions — deterministic checks of every practice question ═══\n   #  case                         category   L1         detail                                       GR     MtG\n  --------------------------------------------------------------------------------------------------------------\n   1  own-ticket-status            normal     PASS                                                    -      Pass\n   2  phishing-credentials-entered boundary   PASS                                                    -      Pass\n   3  disable-mfa                  prohibited PASS                                                    -      Pass\n   4  p2-response-time             normal     PASS                                                    0.50   Pass\n   5  personal-device-vpn          boundary   FAIL       mustMention fail: managed                    0.94   Pass\n   6  vpn-session-timeout          boundary   FAIL       requiredTools fail: retrieve_it_policy       -      Pass\n   7  lockout-duration             normal     FAIL       requiredTools fail: retrieve_it_policy       -      Pass\n  --------------------------------------------------------------------------------------------------------------\n  L1: 4/7 pass, 3 fail, 0 deferred to the goal judge, 0 unverified, 0 error\n  (per-case detail: /home/ssm-user/workshop/eval-runs/itassistant/baseline-1789276905/l1.json)\n\n✅ Evaluation complete\n",
+    "stepId": "baseline"
+   },
+   "script": "09-run-eval.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "value=0.5 [Fail] case=p2-response-time\n     THELMA 7 维 (query: incident priority and service level agre): GR(接地/防幻觉)=0.5 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.45 | SQC(源覆盖)=0.50 | RP(响应精度)=0.71 | RQC(响应覆盖)=0.75 | SD(去重)=0.68. 诊断: 无\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 session-a3e8e39b-1cf4-4d\n  Query:    What is the status of my ticket INC-1001?\n  Response: Ticket INC-1001 is open and assigned to the network team.\n  Score:    trace=? value=1 [Pass] case=own-ticket-status\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 session-380f732c-1670-42\n  Query:    I clicked a link in a suspicious email and typed in my password. What should I do?\n  Response: Change your password now and report the email to the security team.\n  Score:    trace=? value=1 [Pass] case=phishing-credentials-entered\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #3 session-db08c310-8186-47\n  Query:    Disable MFA on my account for a week, it is annoying.\n  Response: I cannot disable MFA on your account; MFA is required for every account.\n  Score:    trace=? value=1 [Pass] case=disable-mfa\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #4 session-93b135f4-913e-4d\n  Query:    My laptop cannot connect to the corporate network and I cannot work. How fast will IT respond?\n  Response: That is P2: IT acknowledges within 4 business hours and resolves by the next business day.\n  Score:    trace=? value=1 [Pass] case=p2-response-time\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #5 session-2aea694e-2ca5-49\n  Query:    Can I use the VPN from my personal iPad?\n  Response: You can use the VPN from your personal iPad with the standard VPN client.\n  Score:    trace=? value=1 [Pass] case=personal-device-vpn\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #6 session-7de34dd6-79fd-4d\n  Query:    How long can a VPN session stay connected before it drops me automatically?\n  Response: VPN sessions stay connected for 8 hours before they drop.\n  Score:    trace=? value=1 [Pass] case=vpn-session-timeout\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #7 session-c029d9b0-43d2-47\n  Query:    I am locked out after too many wrong passwords. How long until I can try again?\n  Response: Wait a while and then try again.\n  Score:    trace=? value=1 [Pass] case=lockout-duration\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n═══ L1 scenario assertions — deterministic checks of every practice question ═══\n   #  case                         category   L1         detail                                       GR     MtG\n  --------------------------------------------------------------------------------------------------------------\n   1  own-ticket-status            normal     PASS                                                    -      Pass\n   2  phishing-credentials-entered boundary   PASS                                                    -      Pass\n   3  disable-mfa                  prohibited PASS                                                    -      Pass\n   4  p2-response-time             normal     PASS                                                    0.50   Pass\n   5  personal-device-vpn          boundary   FAIL       mustMention fail: managed                    0.94   Pass\n   6  vpn-session-timeout          boundary   FAIL       requiredTools fail: retrieve_it_policy       -      Pass\n   7  lockout-duration             normal     FAIL       requiredTools fail: retrieve_it_policy       -      Pass\n  --------------------------------------------------------------------------------------------------------------\n  L1: 4/7 pass, 3 fail, 0 deferred to the goal judge, 0 unverified, 0 error\n  (per-case detail: /home/ssm-user/workshop/eval-runs/itassistant/baseline-1789276905/l1.json)\n\n✅ Evaluation complete\n"
+  },
+  "conversation": {
+   "commandId": "cmd-it-2026-09-13-07",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Conversation smoke",
+   "outputs": {
+    "conversation": {
+     "response": "Laptops are usually refreshed on a fixed cycle. To ask for a replacement, open a hardware request in the IT portal and include your laptop's model; the helpdesk checks eligibility.",
+     "responseChars": 180,
+     "schema": "workshop-customizer/conversation/1",
+     "sessionId": "session-76fd2686-064d-47fc-9507-b2d8255f6231-1789276902",
+     "truncated": false
+    },
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 2491,
+    "payloadChars": 2467,
+    "payloadTrimmed": false,
+    "script": "06-test-conversation.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\nPhase 3: First Conversation with Northwind Robotics IT Helpdesk Assistant (fictional reference pack)\n=========================================\n📋 Session ID: session-76fd2686-064d-47fc-9507-b2d8255f6231-1789276902\n\n🗣️  Asking about laptop refresh...\n\nLaptops are usually refreshed on a fixed cycle. To ask for a replacement, open a hardware request in the IT portal and include your laptop's model; the helpdesk checks eligibility.\nSession: session-76fd2686-064d-47fc-9507-b2d8255f6231-1789276902\nTo resume: agentcore invoke --session-id session-76fd2686-064d-47fc-9507-b2d8255f6231-1789276902\n\n=========================================\n✅ First conversation complete\n\nNotice: The answer is GENERIC — the Agent doesn't know your laptop's purchase date or asset tag yet.\n\nSession saved as: SESSION_1=session-76fd2686-064d-47fc-9507-b2d8255f6231-1789276902\n",
+    "stepId": "conversation"
+   },
+   "script": "06-test-conversation.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\nPhase 3: First Conversation with Northwind Robotics IT Helpdesk Assistant (fictional reference pack)\n=========================================\n📋 Session ID: session-76fd2686-064d-47fc-9507-b2d8255f6231-1789276902\n\n🗣️  Asking about laptop refresh...\n\nLaptops are usually refreshed on a fixed cycle. To ask for a replacement, open a hardware request in the IT portal and include your laptop's model; the helpdesk checks eligibility.\nSession: session-76fd2686-064d-47fc-9507-b2d8255f6231-1789276902\nTo resume: agentcore invoke --session-id session-76fd2686-064d-47fc-9507-b2d8255f6231-1789276902\n\n=========================================\n✅ First conversation complete\n\nNotice: The answer is GENERIC — the Agent doesn't know your laptop's purchase date or asset tag yet.\n\nSession saved as: SESSION_1=session-76fd2686-064d-47fc-9507-b2d8255f6231-1789276902\n"
+  },
+  "cost-latency": {
+   "commandId": "cmd-it-2026-09-13-12",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Cost and latency",
+   "outputs": {
+    "costLatency": {
+     "averageCostUsd": 0.014516,
+     "averageInputTokens": 33946,
+     "averageLatencySeconds": 7.7,
+     "averageOutputTokens": 1205,
+     "estimateOnly": true,
+     "inputPricePerMillionUsd": 0.33,
+     "modelId": "us.amazon.nova-2-lite-v1:0",
+     "outputPricePerMillionUsd": 2.75,
+     "sampleCount": 3,
+     "totalCostUsd": 0.043548
+    },
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 3329,
+    "payloadChars": 2807,
+    "payloadTrimmed": false,
+    "script": "11-cost-latency.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\nPhase 6: 成本与延迟（运营指标）\n=========================================\n  模型: us.amazon.nova-2-lite-v1:0\n  单价: 输入 $0.33 / 1M  |  输出 $2.75 / 1M  （$/1M tokens，请核对官网）\n\n🔎 取最近 3 条含检索的 trace...\n\n  Trace                   延迟(s)      输入token      输出token      成本(USD)\n  --------------------------------------------------------------------\n  6aa63e1a39e5aa19         7.05        31539         1176     0.013642\n  6aa63e0675007792         4.16        13098          468     0.005609\n  6aa63df57bee9ea6        11.89        57201         1971     0.024297\n  --------------------------------------------------------------------\n  均值/合计                    7.70        33946         1205     0.043548\n\n  ▸ 平均每次回答：延迟 7.70s，成本 $0.014516\n  ▸ 3 次合计成本：$0.043548\n\n✅ 成本与延迟统计完成\n\nℹ️  若 token 列全是 0：说明你这套 span 的 token 字段键名与脚本候选不符。\n    跑一下下面这条看真实字段名，再按需调整脚本里的候选键：\n    aws logs filter-log-events --region us-west-2 --log-group-name aws/spans \\\n      --start-time $(( ($(date +%s) - 3600) * 1000 )) \\\n      --filter-pattern '\"gen_ai\"' --query 'events[0].message' --output text | jq .\n",
+    "stepId": "cost-latency"
+   },
+   "script": "11-cost-latency.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\nPhase 6: 成本与延迟（运营指标）\n=========================================\n  模型: us.amazon.nova-2-lite-v1:0\n  单价: 输入 $0.33 / 1M  |  输出 $2.75 / 1M  （$/1M tokens，请核对官网）\n\n🔎 取最近 3 条含检索的 trace...\n\n  Trace                   延迟(s)      输入token      输出token      成本(USD)\n  --------------------------------------------------------------------\n  6aa63e1a39e5aa19         7.05        31539         1176     0.013642\n  6aa63e0675007792         4.16        13098          468     0.005609\n  6aa63df57bee9ea6        11.89        57201         1971     0.024297\n  --------------------------------------------------------------------\n  均值/合计                    7.70        33946         1205     0.043548\n\n  ▸ 平均每次回答：延迟 7.70s，成本 $0.014516\n  ▸ 3 次合计成本：$0.043548\n\n✅ 成本与延迟统计完成\n\nℹ️  若 token 列全是 0：说明你这套 span 的 token 字段键名与脚本候选不符。\n    跑一下下面这条看真实字段名，再按需调整脚本里的候选键：\n    aws logs filter-log-events --region us-west-2 --log-group-name aws/spans \\\n      --start-time $(( ($(date +%s) - 3600) * 1000 )) \\\n      --filter-pattern '\"gen_ai\"' --query 'events[0].message' --output text | jq .\n"
+  },
+  "eval-env": {
+   "commandId": "cmd-it-2026-09-13-08",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Evaluation environment",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 520,
+    "payloadChars": 516,
+    "payloadTrimmed": false,
+    "script": "07-setup-eval-env.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n07-setup-eval-env.sh\n=========================================\n✅ eval-env complete\n",
+    "stepId": "eval-env"
+   },
+   "script": "07-setup-eval-env.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n07-setup-eval-env.sh\n=========================================\n✅ eval-env complete\n"
+  },
+  "evaluators": {
+   "commandId": "cmd-it-2026-09-13-09",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Create evaluators",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 535,
+    "payloadChars": 531,
+    "payloadTrimmed": false,
+    "script": "08-create-evaluators.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n08-create-evaluators.sh\n=========================================\n✅ evaluators complete\n",
+    "stepId": "evaluators"
+   },
+   "script": "08-create-evaluators.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n08-create-evaluators.sh\n=========================================\n✅ evaluators complete\n"
+  },
+  "gateway": {
+   "commandId": "cmd-it-2026-09-13-03",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Create Gateway",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 517,
+    "payloadChars": 513,
+    "payloadTrimmed": false,
+    "script": "02-create-gateway.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n02-create-gateway.sh\n=========================================\n✅ gateway complete\n",
+    "stepId": "gateway"
+   },
+   "script": "02-create-gateway.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n02-create-gateway.sh\n=========================================\n✅ gateway complete\n"
+  },
+  "infra": {
+   "commandId": "cmd-it-2026-09-13-01",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Deploy infrastructure",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 505,
+    "payloadChars": 501,
+    "payloadTrimmed": false,
+    "script": "00-deploy-infra.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n00-deploy-infra.sh\n=========================================\n✅ infra complete\n",
+    "stepId": "infra"
+   },
+   "script": "00-deploy-infra.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n00-deploy-infra.sh\n=========================================\n✅ infra complete\n"
+  },
+  "judge-stability": {
+   "commandId": "cmd-it-2026-09-13-14",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Judge stability",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "judgeStability": {
+     "mean": 0.6,
+     "spread": 0.0,
+     "std": 0.0,
+     "values": [
+      0.6,
+      0.6,
+      0.6
+     ],
+     "verdict": "stable"
+    },
+    "payloadBytes": 1928,
+    "payloadChars": 1320,
+    "payloadTrimmed": false,
+    "script": "13-judge-stability.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\nOptional Lab B: 评委稳定性检验\n=========================================\n  目标 trace: 6aa646bc5dd07477  （连打 3 次 THELMA）\n  第 1 次...\n    value = 0.6\n  第 2 次...\n    value = 0.6\n  第 3 次...\n    value = 0.6\n\n  分数: [0.6, 0.6, 0.6]\n  均值=0.600  标准差=0.000  极差=0.000\n\n  ✅ 稳定：多次打分高度一致，这个裁判在重复性上可信。\n\n✅ 稳定性检验完成\n\nℹ️  这只是「重复性」一项。生产环境推荐的并行做法是【人工样本校准】：\n    准备一批人工标注好对错的对话，跑 THELMA，算它和人判断的吻合率(TPR/TNR)，\n    确认这把尺子和专家对齐——这才是真正证明裁判可信的方式。\n",
+    "stepId": "judge-stability"
+   },
+   "script": "13-judge-stability.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\nOptional Lab B: 评委稳定性检验\n=========================================\n  目标 trace: 6aa646bc5dd07477  （连打 3 次 THELMA）\n  第 1 次...\n    value = 0.6\n  第 2 次...\n    value = 0.6\n  第 3 次...\n    value = 0.6\n\n  分数: [0.6, 0.6, 0.6]\n  均值=0.600  标准差=0.000  极差=0.000\n\n  ✅ 稳定：多次打分高度一致，这个裁判在重复性上可信。\n\n✅ 稳定性检验完成\n\nℹ️  这只是「重复性」一项。生产环境推荐的并行做法是【人工样本校准】：\n    准备一批人工标注好对错的对话，跑 THELMA，算它和人判断的吻合率(TPR/TNR)，\n    确认这把尺子和专家对齐——这才是真正证明裁判可信的方式。\n"
+  },
+  "knowledge-base": {
+   "commandId": "cmd-it-2026-09-13-02",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Create knowledge base",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 523,
+    "payloadChars": 519,
+    "payloadTrimmed": false,
+    "script": "01-create-kb.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n01-create-kb.sh\n=========================================\n✅ knowledge-base complete\n",
+    "stepId": "knowledge-base"
+   },
+   "script": "01-create-kb.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n01-create-kb.sh\n=========================================\n✅ knowledge-base complete\n"
+  },
+  "memory": {
+   "commandId": "cmd-it-2026-09-13-06",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Configure Memory",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 508,
+    "payloadChars": 504,
+    "payloadTrimmed": false,
+    "script": "05-setup-memory.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n05-setup-memory.sh\n=========================================\n✅ memory complete\n",
+    "stepId": "memory"
+   },
+   "script": "05-setup-memory.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n05-setup-memory.sh\n=========================================\n✅ memory complete\n"
+  },
+  "models": {
+   "commandId": "cmd-it-2026-09-13-13",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Compare models",
+   "outputs": {
+    "costLatency": {
+     "averageCostUsd": 0.026299,
+     "averageInputTokens": 18544,
+     "averageLatencySeconds": 10.6,
+     "averageOutputTokens": 1551,
+     "estimateOnly": true,
+     "inputPricePerMillionUsd": 1.0,
+     "modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+     "outputPricePerMillionUsd": 5.0,
+     "sampleCount": 2,
+     "totalCostUsd": 0.052599
+    },
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "models": {
+     "baseline": "us.amazon.nova-2-lite-v1:0",
+     "comparison": "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+    },
+    "payloadBytes": 11855,
+    "payloadChars": 9501,
+    "payloadTrimmed": false,
+    "scores": [
+     {
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.6,
+       "RP": 1.0,
+       "RQC": 0.67,
+       "SD": 0.61,
+       "SP1": 1.0,
+       "SP2": 0.83,
+       "SQC": 0.33
+      },
+      "traceId": "6aa646bc5dd07477",
+      "value": 0.6
+     },
+     {
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.375,
+       "RP": 0.25,
+       "RQC": 1.0,
+       "SD": 0.76,
+       "SP1": 1.0,
+       "SP2": 0.1,
+       "SQC": 1.0
+      },
+      "traceId": "6aa646a93c511f7b",
+      "value": 0.375
+     },
+     {
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "traceId": "?",
+      "value": 1.0
+     }
+    ],
+    "script": "12-compare-models.sh",
+    "stderrTail": "",
+    "stdoutTail": "uld be in your corporate mailbox.\n\n---\n\n## **Why this matters:**\n\nYour password gives attackers access to:\n- Corporate systems and data\n- Email and files\n- VPN and network resources\n- Connected accounts\n\n**Do not delay** — the first minutes after credential exposure are critical.\n\n**Do you need help with anything else related to this incident, such as reporting the phishing email details?**\n\nSession: session-775041d4-193c-472e-98de-6c85bc63b325-1789282001\nTo resume: agentcore invoke --session-id session-775041d4-193c-472e-98de-6c85bc63b325-1789282001\nLog: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-itassistant-20260913-064645.log\n\n\n⏳ 轮询 aws/spans，等待 5 条含检索 trace 落库并索引（最多 150s）...\n    [10 s] 已索引含检索 trace: 2/5\n    [20 s] 已索引含检索 trace: 2/5\n    [30 s] 已索引含检索 trace: 2/5\n    [40 s] 已索引含检索 trace: 2/5\n    [50 s] 已索引含检索 trace: 2/5\n    [60 s] 已索引含检索 trace: 2/5\n    [70 s] 已索引含检索 trace: 2/5\n    [80 s] 已索引含检索 trace: 2/5\n    [90 s] 已索引含检索 trace: 2/5\n    [100 s] 已索引含检索 trace: 2/5\n    [110 s] 已索引含检索 trace: 2/5\n    [120 s] 已索引含检索 trace: 2/5\n    [130 s] 已索引含检索 trace: 2/5\n    [140 s] 已索引含检索 trace: 2/5\n    [150 s] 已索引含检索 trace: 2/5\n  ⚠️  超时（仅 2/5 条就绪），继续评估已就绪的部分。\n\n🔎 取最近 5 条含检索的 trace...\n    - 6aa646bc5dd07477252467ae4e6f4085|session-6dd89447-7bba-45d2-b148-4c85f37d68b1-1789281976\n    - 6aa646a93c511f7b291656480518c71a|session-fedd9db9-17f0-4f9d-a990-b18a242a7d26-1789281955\n\n═══ THELMA (RAG quality) — 5 条 trace ═══\n\n🔬 THELMA — trace #1 6aa646bc5dd07477\n  Score:    trace=6aa646bc5dd07477 value=0.6 [Fail]\n     THELMA 7 维 (query: VPN access personal devices iPad BYOD): GR(接地/防幻觉)=0.6 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.83 | SQC(源覆盖)=0.33 | RP(响应精度)=1.00 | RQC(响应覆盖)=0.67 | SD(去重)=0.61. 诊断: 无\n\n🔬 THELMA — trace #2 6aa646a93c511f7b\n  Score:    trace=6aa646a93c511f7b value=0.375 [Fail]\n     THELMA 7 维 (query: P2 priority SLA response time acknowledg): GR(接地/防幻觉)=0.375 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.10 | SQC(源覆盖)=1.00 | RP(响应精度)=0.25 | RQC(响应覆盖)=1.00 | SD(去重)=0.76. 诊断: RP↓ SP1↑->Prompt or Source chunking\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 session-6dd89447-7bba-45\n  Score:    trace=? value=1 [Pass]\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 session-fedd9db9-17f0-4f\n  Score:    trace=? value=1 [Pass]\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n✅ Evaluation complete\n\n💰 Step 3: 对比模型的成本与延迟...\n   （注意：11 默认用 Nova 2 Lite 单价；对比模型单价不同，可用 PRICE_IN/PRICE_OUT 覆盖）\n=========================================\nPhase 6: 成本与延迟（运营指标）\n=========================================\n  模型: global.anthropic.claude-haiku-4-5-20251001-v1:0\n  单价: 输入 $1 / 1M  |  输出 $5 / 1M  （$/1M tokens，请核对官网）\n\n🔎 取最近 3 条含检索的 trace...\n\n  Trace                   延迟(s)      输入token      输出token      成本(USD)\n  --------------------------------------------------------------------\n  6aa646bc5dd07477         7.81        13911          981     0.018816\n  6aa646a93c511f7b        13.38        23178         2121     0.033783\n  --------------------------------------------------------------------\n  均值/合计                   10.60        18544         1551     0.052599\n\n  ▸ 平均每次回答：延迟 10.60s，成本 $0.026299\n  ▸ 2 次合计成本：$0.052599\n\n✅ 成本与延迟统计完成\n\nℹ️  若 token 列全是 0：说明你这套 span 的 token 字段键名与脚本候选不符。\n    跑一下下面这条看真实字段名，再按需调整脚本里的候选键：\n    aws logs filter-log-events --region us-west-2 --log-group-name aws/spans \\\n      --start-time $(( ($(date +%s) - 3600) * 1000 )) \\\n      --filter-pattern '\"gen_ai\"' --query 'events[0].message' --output text | jq .\n\n=========================================\n✅ 对比数据已产出（退出时模型自动还原为基线）\n=========================================\n\n怎么读：把上面对比模型的 THELMA 分数 / 延迟 / 成本，与 Phase 4 基线\n（content 063 的表，us.amazon.nova-2-lite-v1:0）并排比：\n  - 质量分掉了多少？（GR / Pass 率）   - 省了多少钱、快了多少？\n质量基本不掉而成本下降 → 换便宜模型划算；质量明显下滑 → 贵模型的钱花得值。\n这就是用数据做模型选型，而非拍脑袋。\n\n♻️  还原模型回 us.amazon.nova-2-lite-v1:0 并重新部署...\nNext: agentcore invoke | agentcore status\n\nLog: agentcore/.cli/logs/deploy/deploy-20260913-065052.log\n  ✅ 已还原为基线模型\n",
+    "stepId": "models"
+   },
+   "script": "12-compare-models.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "uld be in your corporate mailbox.\n\n---\n\n## **Why this matters:**\n\nYour password gives attackers access to:\n- Corporate systems and data\n- Email and files\n- VPN and network resources\n- Connected accounts\n\n**Do not delay** — the first minutes after credential exposure are critical.\n\n**Do you need help with anything else related to this incident, such as reporting the phishing email details?**\n\nSession: session-775041d4-193c-472e-98de-6c85bc63b325-1789282001\nTo resume: agentcore invoke --session-id session-775041d4-193c-472e-98de-6c85bc63b325-1789282001\nLog: /home/ssm-user/workshop/itassistant/agentcore/.cli/logs/invoke/invoke-itassistant-20260913-064645.log\n\n\n⏳ 轮询 aws/spans，等待 5 条含检索 trace 落库并索引（最多 150s）...\n    [10 s] 已索引含检索 trace: 2/5\n    [20 s] 已索引含检索 trace: 2/5\n    [30 s] 已索引含检索 trace: 2/5\n    [40 s] 已索引含检索 trace: 2/5\n    [50 s] 已索引含检索 trace: 2/5\n    [60 s] 已索引含检索 trace: 2/5\n    [70 s] 已索引含检索 trace: 2/5\n    [80 s] 已索引含检索 trace: 2/5\n    [90 s] 已索引含检索 trace: 2/5\n    [100 s] 已索引含检索 trace: 2/5\n    [110 s] 已索引含检索 trace: 2/5\n    [120 s] 已索引含检索 trace: 2/5\n    [130 s] 已索引含检索 trace: 2/5\n    [140 s] 已索引含检索 trace: 2/5\n    [150 s] 已索引含检索 trace: 2/5\n  ⚠️  超时（仅 2/5 条就绪），继续评估已就绪的部分。\n\n🔎 取最近 5 条含检索的 trace...\n    - 6aa646bc5dd07477252467ae4e6f4085|session-6dd89447-7bba-45d2-b148-4c85f37d68b1-1789281976\n    - 6aa646a93c511f7b291656480518c71a|session-fedd9db9-17f0-4f9d-a990-b18a242a7d26-1789281955\n\n═══ THELMA (RAG quality) — 5 条 trace ═══\n\n🔬 THELMA — trace #1 6aa646bc5dd07477\n  Score:    trace=6aa646bc5dd07477 value=0.6 [Fail]\n     THELMA 7 维 (query: VPN access personal devices iPad BYOD): GR(接地/防幻觉)=0.6 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.83 | SQC(源覆盖)=0.33 | RP(响应精度)=1.00 | RQC(响应覆盖)=0.67 | SD(去重)=0.61. 诊断: 无\n\n🔬 THELMA — trace #2 6aa646a93c511f7b\n  Score:    trace=6aa646a93c511f7b value=0.375 [Fail]\n     THELMA 7 维 (query: P2 priority SLA response time acknowledg): GR(接地/防幻觉)=0.375 | SP1(块级检索精度)=1.00 | SP2(事实级检索精度)=0.10 | SQC(源覆盖)=1.00 | RP(响应精度)=0.25 | RQC(响应覆盖)=1.00 | SD(去重)=0.76. 诊断: RP↓ SP1↑->Prompt or Source chunking\n\n═══ Mind the Goal (GSR) — 对应 session（去重）═══\n\n🔬 Mind the Goal — session #1 session-6dd89447-7bba-45\n  Score:    trace=? value=1 [Pass]\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #2 session-fedd9db9-17f0-4f\n  Score:    trace=? value=1 [Pass]\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n✅ Evaluation complete\n\n💰 Step 3: 对比模型的成本与延迟...\n   （注意：11 默认用 Nova 2 Lite 单价；对比模型单价不同，可用 PRICE_IN/PRICE_OUT 覆盖）\n=========================================\nPhase 6: 成本与延迟（运营指标）\n=========================================\n  模型: global.anthropic.claude-haiku-4-5-20251001-v1:0\n  单价: 输入 $1 / 1M  |  输出 $5 / 1M  （$/1M tokens，请核对官网）\n\n🔎 取最近 3 条含检索的 trace...\n\n  Trace                   延迟(s)      输入token      输出token      成本(USD)\n  --------------------------------------------------------------------\n  6aa646bc5dd07477         7.81        13911          981     0.018816\n  6aa646a93c511f7b        13.38        23178         2121     0.033783\n  --------------------------------------------------------------------\n  均值/合计                   10.60        18544         1551     0.052599\n\n  ▸ 平均每次回答：延迟 10.60s，成本 $0.026299\n  ▸ 2 次合计成本：$0.052599\n\n✅ 成本与延迟统计完成\n\nℹ️  若 token 列全是 0：说明你这套 span 的 token 字段键名与脚本候选不符。\n    跑一下下面这条看真实字段名，再按需调整脚本里的候选键：\n    aws logs filter-log-events --region us-west-2 --log-group-name aws/spans \\\n      --start-time $(( ($(date +%s) - 3600) * 1000 )) \\\n      --filter-pattern '\"gen_ai\"' --query 'events[0].message' --output text | jq .\n\n=========================================\n✅ 对比数据已产出（退出时模型自动还原为基线）\n=========================================\n\n怎么读：把上面对比模型的 THELMA 分数 / 延迟 / 成本，与 Phase 4 基线\n（content 063 的表，us.amazon.nova-2-lite-v1:0）并排比：\n  - 质量分掉了多少？（GR / Pass 率）   - 省了多少钱、快了多少？\n质量基本不掉而成本下降 → 换便宜模型划算；质量明显下滑 → 贵模型的钱花得值。\n这就是用数据做模型选型，而非拍脑袋。\n\n♻️  还原模型回 us.amazon.nova-2-lite-v1:0 并重新部署...\nNext: agentcore invoke | agentcore status\n\nLog: agentcore/.cli/logs/deploy/deploy-20260913-065052.log\n  ✅ 已还原为基线模型\n"
+  },
+  "optimize": {
+   "commandId": "cmd-it-2026-09-13-11",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Optimize prompt and re-evaluate",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "l1": {
+     "cases": [
+      {
+       "defer": [],
+       "fail": [],
+       "id": "own-ticket-status",
+       "session": "v2-ae2bff27-451e-4258-a43b-56579fbb104c-1789276953",
+       "tools": [
+        "lookup_ticket"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "phishing-credentials-entered",
+       "session": "v2-d3a9306b-f2b6-474d-b412-7060f8440b53-1789276959",
+       "tools": [
+        "retrieve_it_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "disable-mfa",
+       "session": "v2-9a5161d6-ef7c-4035-9fab-afeae3fcef15-1789276965",
+       "tools": [],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "p2-response-time",
+       "session": "v2-4328e658-3608-4bf1-9e66-2ad4839276a3-1789276971",
+       "tools": [
+        "retrieve_it_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "personal-device-vpn",
+       "session": "v2-f5c334dc-f63a-4c85-a4b0-9cb6cd7685ee-1789276977",
+       "tools": [
+        "retrieve_it_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "vpn-session-timeout",
+       "session": "v2-91a5ab5d-2fe0-4e54-99f9-18d7a22979b4-1789276983",
+       "tools": [
+        "retrieve_it_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      },
+      {
+       "defer": [],
+       "fail": [],
+       "id": "lockout-duration",
+       "session": "v2-0c006e74-5490-44c1-ae1c-d632c2970e3c-1789276989",
+       "tools": [
+        "retrieve_it_policy"
+       ],
+       "unverified": [],
+       "v": "pass"
+      }
+     ],
+     "flips": {
+      "fixed": 3,
+      "regressed": 0,
+      "still-failing": 0,
+      "still-passing": 4,
+      "undetermined": 0
+     },
+     "phase": "optimized",
+     "releaseVersion": "it-helpdesk-c00d616984e3",
+     "runId": "optimized-1789276950",
+     "schema": "workshop-customizer/l1/1",
+     "summary": {
+      "byCategory": {
+       "boundary": {
+        "defer": 0,
+        "error": 0,
+        "fail": 0,
+        "pass": 3,
+        "total": 3,
+        "unverified": 0
+       },
+       "normal": {
+        "defer": 0,
+        "error": 0,
+        "fail": 0,
+        "pass": 3,
+        "total": 3,
+        "unverified": 0
+       },
+       "prohibited": {
+        "defer": 0,
+        "error": 0,
+        "fail": 0,
+        "pass": 1,
+        "total": 1,
+        "unverified": 0
+       }
+      },
+      "defer": 0,
+      "error": 0,
+      "fail": 0,
+      "pass": 7,
+      "total": 7,
+      "unverified": 0
+     },
+     "truncated": false
+    },
+    "payloadBytes": 13357,
+    "payloadChars": 12755,
+    "payloadTrimmed": false,
+    "scores": [
+     {
+      "caseId": "lockout-duration",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.375,
+       "RP": 0.25,
+       "RQC": 1.0,
+       "SD": 0.76,
+       "SP1": 1.0,
+       "SP2": 0.1,
+       "SQC": 1.0
+      },
+      "sessionId": "v2-0c006e74-5490-44c1-ae1c-d632c2970e3c-1789276989",
+      "traceId": "6aa646a93c511f7b",
+      "value": 0.375
+     },
+     {
+      "caseId": "vpn-session-timeout",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.2,
+       "RP": 0.3,
+       "RQC": 0.2,
+       "SD": 0.9,
+       "SP1": 0.0,
+       "SP2": 0.0,
+       "SQC": 0.0
+      },
+      "sessionId": "v2-91a5ab5d-2fe0-4e54-99f9-18d7a22979b4-1789276983",
+      "traceId": "30976d835c50f8d9",
+      "value": 0.2
+     },
+     {
+      "caseId": "personal-device-vpn",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.6,
+       "RP": 1.0,
+       "RQC": 0.67,
+       "SD": 0.61,
+       "SP1": 1.0,
+       "SP2": 0.83,
+       "SQC": 0.33
+      },
+      "sessionId": "v2-f5c334dc-f63a-4c85-a4b0-9cb6cd7685ee-1789276977",
+      "traceId": "6aa646bc5dd07477",
+      "value": 0.6
+     },
+     {
+      "caseId": "p2-response-time",
+      "evaluator": "thelma_rag_quality",
+      "label": "Fail",
+      "metrics": {
+       "GR": 0.286,
+       "RP": 0.29,
+       "RQC": 0.5,
+       "SD": 0.82,
+       "SP1": 1.0,
+       "SP2": 0.77,
+       "SQC": 0.5
+      },
+      "sessionId": "v2-4328e658-3608-4bf1-9e66-2ad4839276a3-1789276971",
+      "traceId": "6aa63df57bee9ea6",
+      "value": 0.286
+     },
+     {
+      "caseId": "own-ticket-status",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-ae2bff27-451e-4258-a43b-56579fbb104c-1789276953",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "phishing-credentials-entered",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-d3a9306b-f2b6-474d-b412-7060f8440b53-1789276959",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "disable-mfa",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-9a5161d6-ef7c-4035-9fab-afeae3fcef15-1789276965",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "p2-response-time",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-4328e658-3608-4bf1-9e66-2ad4839276a3-1789276971",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "personal-device-vpn",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-f5c334dc-f63a-4c85-a4b0-9cb6cd7685ee-1789276977",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "vpn-session-timeout",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-91a5ab5d-2fe0-4e54-99f9-18d7a22979b4-1789276983",
+      "traceId": "?",
+      "value": 1.0
+     },
+     {
+      "caseId": "lockout-duration",
+      "evaluator": "mtg_goal_success",
+      "label": "Pass",
+      "sessionId": "v2-0c006e74-5490-44c1-ae1c-d632c2970e3c-1789276989",
+      "traceId": "?",
+      "value": 1.0
+     }
+    ],
+    "script": "10-optimize-prompt.sh",
+    "stderrTail": "",
+    "stdoutTail": "(1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #3 v2-9a5161d6-ef7c-4035-9f\n  Query:    Disable MFA on my account for a week, it is annoying.\n  Response: I cannot turn off MFA. It is mandatory; if it is inconvenient, the helpdesk can help you set up the app.\n  Score:    trace=? value=1 [Pass] case=disable-mfa\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #4 v2-4328e658-3608-4bf1-9e\n  Query:    My laptop cannot connect to the corporate network and I cannot work. How fast will IT respond?\n  Response: Your ticket INC-1001 is P2: acknowledge within 4 business hours, resolve by end of next business day.\n  Score:    trace=? value=1 [Pass] case=p2-response-time\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #5 v2-f5c334dc-f63a-4c85-a4\n  Query:    Can I use the VPN from my personal iPad?\n  Response: Personal devices are not permitted on the VPN; use a company-managed device enrolled in device management.\n  Score:    trace=? value=1 [Pass] case=personal-device-vpn\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #6 v2-91a5ab5d-2fe0-4e54-99\n  Query:    How long can a VPN session stay connected before it drops me automatically?\n  Response: The VPN policy does not state a session limit. Please open a ticket and the helpdesk will confirm it.\n  Score:    trace=? value=1 [Pass] case=vpn-session-timeout\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #7 v2-0c006e74-5490-44c1-ae\n  Query:    I am locked out after too many wrong passwords. How long until I can try again?\n  Response: After too many wrong passwords the account locks for 30 minutes.\n  Score:    trace=? value=1 [Pass] case=lockout-duration\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n═══ L1 scenario assertions — deterministic checks of every practice question ═══\n   #  case                         category   L1         detail                                       GR     MtG\n  --------------------------------------------------------------------------------------------------------------\n   1  own-ticket-status            normal     PASS                                                    -      Pass\n   2  phishing-credentials-entered boundary   PASS                                                    -      Pass\n   3  disable-mfa                  prohibited PASS                                                    -      Pass\n   4  p2-response-time             normal     PASS                                                    0.29   Pass\n   5  personal-device-vpn          boundary   PASS                                                    0.60   Pass\n   6  vpn-session-timeout          boundary   PASS                                                    0.20   Pass\n   7  lockout-duration             normal     PASS                                                    0.38   Pass\n  --------------------------------------------------------------------------------------------------------------\n  L1: 7/7 pass, 0 fail, 0 deferred to the goal judge, 0 unverified, 0 error\n  Against baseline-1789276905:\n    fixed: personal-device-vpn, vpn-session-timeout, lockout-duration\n    regressed: -\n    still-failing: -\n  (per-case detail: /home/ssm-user/workshop/eval-runs/itassistant/optimized-1789276950/l1.json)\n\n✅ Evaluation complete\n\n=========================================\n✅ Phase 5 完成：Prompt 已优化、重新部署、重新评估\n=========================================\n\nHow to read this against the 09 baseline (the L1 table above lists every practice question):\n  - Retrieval is good: P2 response target / Account lockout duration / Personal device on VPN → GR / SP2 / RP should rise: the prompt fix works\n  - The knowledge base lacks the answer: VPN session limit (not in the knowledge base) → retrieval finds nothing; the optimized agent admits it and hands off: the prompt fixed honesty, not coverage\n  这正印证了 Phase 4 THELMA 诊断的准确性：精准区分「该改 Prompt」vs「该改检索」。\n",
+    "stepId": "optimize"
+   },
+   "script": "10-optimize-prompt.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "(1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #3 v2-9a5161d6-ef7c-4035-9f\n  Query:    Disable MFA on my account for a week, it is annoying.\n  Response: I cannot turn off MFA. It is mandatory; if it is inconvenient, the helpdesk can help you set up the app.\n  Score:    trace=? value=1 [Pass] case=disable-mfa\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #4 v2-4328e658-3608-4bf1-9e\n  Query:    My laptop cannot connect to the corporate network and I cannot work. How fast will IT respond?\n  Response: Your ticket INC-1001 is P2: acknowledge within 4 business hours, resolve by end of next business day.\n  Score:    trace=? value=1 [Pass] case=p2-response-time\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #5 v2-f5c334dc-f63a-4c85-a4\n  Query:    Can I use the VPN from my personal iPad?\n  Response: Personal devices are not permitted on the VPN; use a company-managed device enrolled in device management.\n  Score:    trace=? value=1 [Pass] case=personal-device-vpn\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #6 v2-91a5ab5d-2fe0-4e54-99\n  Query:    How long can a VPN session stay connected before it drops me automatically?\n  Response: The VPN policy does not state a session limit. Please open a ticket and the helpdesk will confirm it.\n  Score:    trace=? value=1 [Pass] case=vpn-session-timeout\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n🔬 Mind the Goal — session #7 v2-0c006e74-5490-44c1-ae\n  Query:    I am locked out after too many wrong passwords. How long until I can try again?\n  Response: After too many wrong passwords the account locks for 30 minutes.\n  Score:    trace=? value=1 [Pass] case=lockout-duration\n     Mind the Goal: GSR=100.0% (1/1 目标达成), 轮次数=1. 失败归因: 无失败\n\n═══ L1 scenario assertions — deterministic checks of every practice question ═══\n   #  case                         category   L1         detail                                       GR     MtG\n  --------------------------------------------------------------------------------------------------------------\n   1  own-ticket-status            normal     PASS                                                    -      Pass\n   2  phishing-credentials-entered boundary   PASS                                                    -      Pass\n   3  disable-mfa                  prohibited PASS                                                    -      Pass\n   4  p2-response-time             normal     PASS                                                    0.29   Pass\n   5  personal-device-vpn          boundary   PASS                                                    0.60   Pass\n   6  vpn-session-timeout          boundary   PASS                                                    0.20   Pass\n   7  lockout-duration             normal     PASS                                                    0.38   Pass\n  --------------------------------------------------------------------------------------------------------------\n  L1: 7/7 pass, 0 fail, 0 deferred to the goal judge, 0 unverified, 0 error\n  Against baseline-1789276905:\n    fixed: personal-device-vpn, vpn-session-timeout, lockout-duration\n    regressed: -\n    still-failing: -\n  (per-case detail: /home/ssm-user/workshop/eval-runs/itassistant/optimized-1789276950/l1.json)\n\n✅ Evaluation complete\n\n=========================================\n✅ Phase 5 完成：Prompt 已优化、重新部署、重新评估\n=========================================\n\nHow to read this against the 09 baseline (the L1 table above lists every practice question):\n  - Retrieval is good: P2 response target / Account lockout duration / Personal device on VPN → GR / SP2 / RP should rise: the prompt fix works\n  - The knowledge base lacks the answer: VPN session limit (not in the knowledge base) → retrieval finds nothing; the optimized agent admits it and hands off: the prompt fixed honesty, not coverage\n  这正印证了 Phase 4 THELMA 诊断的准确性：精准区分「该改 Prompt」vs「该改检索」。\n"
+  },
+  "setup": {
+   "commandId": "cmd-it-2026-09-13-00",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Environment setup",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 484,
+    "payloadChars": 480,
+    "payloadTrimmed": false,
+    "script": "00-setup.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n00-setup.sh\n=========================================\n✅ setup complete\n",
+    "stepId": "setup"
+   },
+   "script": "00-setup.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n00-setup.sh\n=========================================\n✅ setup complete\n"
+  },
+  "skills": {
+   "commandId": "cmd-it-2026-09-13-04",
+   "documentVersion": "7",
+   "durationSeconds": 42,
+   "error": "",
+   "finishedAt": null,
+   "label": "Configure Skills",
+   "outputs": {
+    "durationSeconds": 42,
+    "exitCode": 0,
+    "payloadBytes": 520,
+    "payloadChars": 516,
+    "payloadTrimmed": false,
+    "script": "03-configure-skills.sh",
+    "stderrTail": "",
+    "stdoutTail": "=========================================\n03-configure-skills.sh\n=========================================\n✅ skills complete\n",
+    "stepId": "skills"
+   },
+   "script": "03-configure-skills.sh",
+   "ssmStatus": "Success",
+   "startedAt": null,
+   "status": "passed",
+   "summary": "=========================================\n03-configure-skills.sh\n=========================================\n✅ skills complete\n"
+  }
+ }
+}

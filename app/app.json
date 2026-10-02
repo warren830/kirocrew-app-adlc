@@ -1,0 +1,68 @@
+{
+  "name": "workshop-customizer",
+  "version": "0.4.0",
+  "displayName": "Workshop Customizer",
+  "description": "The ADLC platform for SAs in KiroCrew: the ADLC console (agents, knowledge bases, evaluation, A/B tests, registry, governance, Autopilot) served by this App's backend, and the Workshop customizer, where KiroCrew turns a raw customer scenario into a reviewable Scenario Pack draft, the deterministic engine validates and renders it, and a controlled AWS CLI profile syncs the approved release to the workshop EC2 before Workshop day.",
+  "author": "warren830",
+  "license": "MIT-0",
+  "iconPath": "assets/icon.svg",
+  "tags": [
+    "workshop",
+    "kiro",
+    "agentcore",
+    "evaluation",
+    "scenario-pack",
+    "sa-tooling"
+  ],
+  "agents": [
+    "agents/workshop-customizer.json"
+  ],
+  "skills": [
+    "skills/workshop-customization"
+  ],
+  "backend": {
+    "entryPoint": "backend/server.py",
+    "type": "python",
+    "port": "auto",
+    "healthCheck": "/health",
+    "routes": "/api/apps/workshop-customizer",
+    "hooks": {
+      "routes": "backend.routes:register_routes"
+    }
+  },
+  "ui": {
+    "entry": "dist/platform.mjs",
+    "sidebar": {
+      "section": "Apps"
+    },
+    "pages": [
+      {
+        "route": "/apps/workshop-customizer",
+        "label": "ADLC 控制台",
+        "icon": "Layers"
+      }
+    ]
+  },
+  "permissions": {
+    "api": [
+      "/api/apps/workshop-customizer",
+      "/apps/workshop-customizer/api"
+    ],
+    "storage": true,
+    "network": true,
+    "memory": "",
+    "cron": false,
+    "spawn": true,
+    "jobs": false,
+    "mcpTools": []
+  },
+  "setup": {
+    "steps": [
+      {
+        "id": "engine",
+        "title": "Engine location",
+        "description": "KiroCrew generation uses this App's restricted agent through the logged-in Kiro CLI. The deterministic backend imports the Scenario Pack engine from the sibling ./engine directory (or WORKSHOP_CUSTOMIZER_ENGINE). No model API key or AWS credential value is stored."
+      }
+    ]
+  }
+}

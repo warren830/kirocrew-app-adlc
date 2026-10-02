@@ -1,0 +1,17 @@
+=========================================
+Phase 3: First Conversation with Enterprise HR Q&A Agent (reference pack)
+=========================================
+📋 Session ID: session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902
+
+🗣️  Asking about annual leave policy...
+
+Annual leave entitlements usually depend on your tenure. Most employees receive between 5 and 15 days a year; to apply, submit a leave request in the HR system at least three working days in advance.
+Session: session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902
+To resume: agentcore invoke --session-id session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902
+
+=========================================
+✅ First conversation complete
+
+Notice: The answer is GENERIC — the Agent doesn't know your tenure, department, or specific leave balance yet.
+
+Session saved as: SESSION_1=session-a70c3895-af03-4b16-913a-26ac3dd99042-1789456902

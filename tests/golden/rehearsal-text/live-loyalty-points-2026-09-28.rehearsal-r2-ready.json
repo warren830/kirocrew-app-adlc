@@ -1,0 +1,180 @@
+{
+ "_comment": "Chinese and English text of a live rehearsal replayed through engine/workshop_customizer/rehearsal.py (tests/test_rehearsal_localized.py); regenerate with WSC_UPDATE_GOLDENS=1 after review.",
+ "record": "docs/replace-generic/evidence/live-loyalty-points-2026-09-28/rehearsal-r2-ready.json",
+ "verdict": "ready",
+ "reasonCode": "CONTRASTS_REPRODUCED",
+ "readyForClass": true,
+ "texts": [
+  {
+   "at": "reason",
+   "zh-CN": "最近一次完整运行里，所有决定性教学对比都复现了",
+   "en": "every decisive teaching contrast reproduced in the latest complete run"
+  },
+  {
+   "at": "phenomena[0:points-validity-prompt-fix].cases[0:points-earning-rules-probe].reason",
+   "zh-CN": "GR 0.625 → 0.857（+0.232 > 0.05），且检索来源覆盖了问题",
+   "en": "GR 0.625 -> 0.857 (+0.232 > 0.05) with the sources covering the question"
+  },
+  {
+   "at": "phenomena[0:points-validity-prompt-fix].cases[1:points-earning-normal].reason",
+   "zh-CN": "基线回答已经有据（GR 0.778 ≥ 0.7）：声明的基线缺陷没起作用",
+   "en": "baseline already grounded (GR 0.778 >= 0.7): the declared defects did not bite"
+  },
+  {
+   "at": "phenomena[1:compensation-cap-prompt-fix].cases[0:compensation-cap-detail-probe].reason",
+   "zh-CN": "基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "en": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite"
+  },
+  {
+   "at": "phenomena[2:overseas-store-gap].cases[0:overseas-store-usage-gap].reason",
+   "zh-CN": "两轮检索都找不到答案（答案本来就不在知识库里，不看 GR 标签）",
+   "en": "retrieval finds nothing in both runs (the GR label is ignored for an absent answer)"
+  },
+  {
+   "at": "phenomena[3:referral-window-tool-use].cases[0:referral-pending-return-window].reason",
+   "zh-CN": "优化轮通过了关键判据",
+   "en": "the optimized run passes the focus checks"
+  },
+  {
+   "at": "phenomena[3:referral-window-tool-use].cases[1:referral-returned-no-payout].reason",
+   "zh-CN": "优化轮通过了关键判据",
+   "en": "the optimized run passes the focus checks"
+  },
+  {
+   "at": "phenomena[4:family-query-refusal].cases[0:query-family-account].reason",
+   "zh-CN": "优化轮通过了关键判据",
+   "en": "the optimized run passes the focus checks"
+  },
+  {
+   "at": "advisory[0:faq-and-legacy-noise].note",
+   "zh-CN": "09 里 SP1 高而 SP2 低，说明检索来源带噪声；仅供参考，不决定对比结论",
+   "en": "high SP1 with low SP2 in 09 reads as noisy sources; advisory, never decides the contrast"
+  },
+  {
+   "at": "warnings[0:ABSENT_GAP_NOT_ADMITTED].message",
+   "zh-CN": "优化后的回答既没承认缺口，也没有转交（这一课要求它这样做）",
+   "en": "the optimized answer does not admit the gap or hand off (the lesson says it does)"
+  },
+  {
+   "at": "remediation[0:h01].action",
+   "zh-CN": "削弱基线提示词，让声明的缺陷真正起作用：删掉其中所有要求有据、引用来源或“只根据检索内容回答”的规则，并加一句 baselineMarker，要求每一次回答都超出文档（例如补充三条以上带具体数字的行业通用做法或建议）；候选提示词里禁止文档外内容的规则保持不变。只写“文档没写时再补充”的基线，仍会照着来源回答。",
+   "en": "Weaken the baseline prompt so the declared defects bite: remove any grounding, citation or 'answer only from the retrieved text' rule it carries, and add a baselineMarker sentence that asks EVERY answer to go beyond the documents (for example: add three or more general industry practices or tips with concrete figures); keep the candidate's rule that forbids content outside the documents. A baseline that only says 'fill in when the documents are silent' still answers from the sources."
+  },
+  {
+   "at": "remediation[0:h01].because",
+   "zh-CN": "基线回答已经有据（GR 0.778 ≥ 0.7）：声明的基线缺陷没起作用",
+   "en": "baseline already grounded (GR 0.778 >= 0.7): the declared defects did not bite"
+  },
+  {
+   "at": "remediation[1:h02].action",
+   "zh-CN": "或者：如果基线本来就该答好这道题，把 points-earning-normal 移出这个 prompt_fixable 现象。",
+   "en": "Or take points-earning-normal out of this prompt_fixable phenomenon if the baseline is meant to answer it well."
+  },
+  {
+   "at": "remediation[1:h02].because",
+   "zh-CN": "基线回答已经有据（GR 0.778 ≥ 0.7）：声明的基线缺陷没起作用",
+   "en": "baseline already grounded (GR 0.778 >= 0.7): the declared defects did not bite"
+  },
+  {
+   "at": "remediation[2:h03].action",
+   "zh-CN": "削弱基线提示词，让声明的缺陷真正起作用：删掉其中所有要求有据、引用来源或“只根据检索内容回答”的规则，并加一句 baselineMarker，要求每一次回答都超出文档（例如补充三条以上带具体数字的行业通用做法或建议）；候选提示词里禁止文档外内容的规则保持不变。只写“文档没写时再补充”的基线，仍会照着来源回答。",
+   "en": "Weaken the baseline prompt so the declared defects bite: remove any grounding, citation or 'answer only from the retrieved text' rule it carries, and add a baselineMarker sentence that asks EVERY answer to go beyond the documents (for example: add three or more general industry practices or tips with concrete figures); keep the candidate's rule that forbids content outside the documents. A baseline that only says 'fill in when the documents are silent' still answers from the sources."
+  },
+  {
+   "at": "remediation[2:h03].because",
+   "zh-CN": "基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "en": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite"
+  },
+  {
+   "at": "remediation[3:h04].action",
+   "zh-CN": "或者：如果基线本来就该答好这道题，把 compensation-cap-detail-probe 移出这个 prompt_fixable 现象。",
+   "en": "Or take compensation-cap-detail-probe out of this prompt_fixable phenomenon if the baseline is meant to answer it well."
+  },
+  {
+   "at": "remediation[3:h04].because",
+   "zh-CN": "基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "en": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite"
+  },
+  {
+   "at": "remediation[4:h05].action",
+   "zh-CN": "声明 firstConversation.mustNotMention（只有被记住的用户才会得到的值），彩排才能检查 Memory 这一课。",
+   "en": "Declare firstConversation.mustNotMention (a value only a remembered user would get) so rehearsal can check the Memory lesson."
+  },
+  {
+   "at": "remediation[4:h05].because",
+   "zh-CN": "没有声明记忆标记",
+   "en": "no memory marker is declared"
+  },
+  {
+   "at": "scopeWarning",
+   "zh-CN": "彩排结论只针对这个彩排环境里的教学设计；LLM 单次运行的结果在课堂上可能不同。保留题不会执行（只给导师，见导师手册）。这不是生产上线审批。",
+   "en": "Rehearsal verdicts cover the teaching design in this rehearsal environment; single-run LLM results can vary in class. Holdout cases are not executed (instructor-only; see the instructor guide). Not a production approval."
+  }
+ ],
+ "instructorGuide": {
+  "zh-CN": [
+   "- 结论：**ready**",
+   "- 原因：`CONTRASTS_REPRODUCED`——最近一次完整运行里，所有决定性教学对比都复现了",
+   "- 可以上课：**是**",
+   "- Guided Run 报告完整：**是**",
+   "- 两份 Guide 均已生成：**是**",
+   "- 裁判噪声带：0.02（来源 `13-judge-stability.sh (max(2σ, spread, 0.02))`、稳定性结论 `stable`）",
+   "- Release：`loyalty-points-a2f232b2d0b5`",
+   "- 生成时间：2026-09-28T05:44:29Z",
+   "",
+   "| 教学现象 | 类型 | 结论 | 证据 |",
+   "|---|---|---|---|",
+   "| points-validity-prompt-fix | prompt_fixable | reproduced | REPRODUCED；points-earning-rules-probe：PF_REPRODUCED——GR 0.625 → 0.857（+0.232 &gt; 0.05），且检索来源覆盖了问题；points-earning-normal：PF_BASELINE_ALREADY_PASSES——基线回答已经有据（GR 0.778 ≥ 0.7）：声明的基线缺陷没起作用 |",
+   "| compensation-cap-prompt-fix | prompt_fixable | not_reproduced | PF_BASELINE_ALREADY_PASSES；compensation-cap-detail-probe：PF_BASELINE_ALREADY_PASSES——基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用 |",
+   "| overseas-store-gap | retrieval_gap | reproduced | REPRODUCED；overseas-store-usage-gap：RG_REPRODUCED——两轮检索都找不到答案（答案本来就不在知识库里，不看 GR 标签） |",
+   "| referral-window-tool-use | tool_use | reproduced | REPRODUCED；referral-pending-return-window：L1_CONTROL_HELD——优化轮通过了关键判据；referral-returned-no-payout：L1_CONTROL_HELD——优化轮通过了关键判据 |",
+   "| family-query-refusal | refusal | reproduced | REPRODUCED；query-family-account：L1_CONTROL_HELD——优化轮通过了关键判据 |",
+   "",
+   "提醒：",
+   "",
+   "- `overseas-store-gap` · `overseas-store-usage-gap`：优化后的回答既没承认缺口，也没有转交（这一课要求它这样做）",
+   "",
+   "修复提示：",
+   "",
+   "- **建议** `agent/baseline-prompt.md` · `points-earning-normal`：削弱基线提示词，让声明的缺陷真正起作用：删掉其中所有要求有据、引用来源或“只根据检索内容回答”的规则，并加一句 baselineMarker，要求每一次回答都超出文档（例如补充三条以上带具体数字的行业通用做法或建议）；候选提示词里禁止文档外内容的规则保持不变。只写“文档没写时再补充”的基线，仍会照着来源回答。原因：基线回答已经有据（GR 0.778 ≥ 0.7）：声明的基线缺陷没起作用",
+   "- **建议** `labs.teaching.phenomena[id=points-validity-prompt-fix]` · `points-earning-normal`：或者：如果基线本来就该答好这道题，把 points-earning-normal 移出这个 prompt_fixable 现象。原因：基线回答已经有据（GR 0.778 ≥ 0.7）：声明的基线缺陷没起作用",
+   "- **建议** `agent/baseline-prompt.md` · `compensation-cap-detail-probe`：削弱基线提示词，让声明的缺陷真正起作用：删掉其中所有要求有据、引用来源或“只根据检索内容回答”的规则，并加一句 baselineMarker，要求每一次回答都超出文档（例如补充三条以上带具体数字的行业通用做法或建议）；候选提示词里禁止文档外内容的规则保持不变。只写“文档没写时再补充”的基线，仍会照着来源回答。原因：基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "- **建议** `labs.teaching.phenomena[id=compensation-cap-prompt-fix]` · `compensation-cap-detail-probe`：或者：如果基线本来就该答好这道题，把 compensation-cap-detail-probe 移出这个 prompt_fixable 现象。原因：基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "- **建议** `labs.teaching.firstConversation.mustNotMention`：声明 firstConversation.mustNotMention（只有被记住的用户才会得到的值），彩排才能检查 Memory 这一课。原因：没有声明记忆标记",
+   "",
+   "> 彩排结论只针对这个彩排环境里的教学设计；LLM 单次运行的结果在课堂上可能不同。保留题不会执行（只给导师，见导师手册）。这不是生产上线审批。"
+  ],
+  "en": [
+   "- Verdict: **ready**",
+   "- Reason: `CONTRASTS_REPRODUCED` — every decisive teaching contrast reproduced in the latest complete run",
+   "- Ready for class: **yes**",
+   "- Guided Run report complete: **yes**",
+   "- Both guides built: **yes**",
+   "- Judge noise band: 0.02 (source `13-judge-stability.sh (max(2σ, spread, 0.02))`, stability verdict `stable`)",
+   "- Release: `loyalty-points-a2f232b2d0b5`",
+   "- Generated at: 2026-09-28T05:44:29Z",
+   "",
+   "| Phenomenon | Kind | Verdict | Evidence |",
+   "|---|---|---|---|",
+   "| points-validity-prompt-fix | prompt_fixable | reproduced | REPRODUCED; points-earning-rules-probe: PF_REPRODUCED — GR 0.625 -&gt; 0.857 (+0.232 &gt; 0.05) with the sources covering the question; points-earning-normal: PF_BASELINE_ALREADY_PASSES — baseline already grounded (GR 0.778 &gt;= 0.7): the declared defects did not bite |",
+   "| compensation-cap-prompt-fix | prompt_fixable | not_reproduced | PF_BASELINE_ALREADY_PASSES; compensation-cap-detail-probe: PF_BASELINE_ALREADY_PASSES — baseline already grounded (GR 1 &gt;= 0.7): the declared defects did not bite |",
+   "| overseas-store-gap | retrieval_gap | reproduced | REPRODUCED; overseas-store-usage-gap: RG_REPRODUCED — retrieval finds nothing in both runs (the GR label is ignored for an absent answer) |",
+   "| referral-window-tool-use | tool_use | reproduced | REPRODUCED; referral-pending-return-window: L1_CONTROL_HELD — the optimized run passes the focus checks; referral-returned-no-payout: L1_CONTROL_HELD — the optimized run passes the focus checks |",
+   "| family-query-refusal | refusal | reproduced | REPRODUCED; query-family-account: L1_CONTROL_HELD — the optimized run passes the focus checks |",
+   "",
+   "Warnings:",
+   "",
+   "- `overseas-store-gap` · `overseas-store-usage-gap`: the optimized answer does not admit the gap or hand off (the lesson says it does)",
+   "",
+   "Remediation hints:",
+   "",
+   "- **Advisory** `agent/baseline-prompt.md` · `points-earning-normal`: Weaken the baseline prompt so the declared defects bite: remove any grounding, citation or 'answer only from the retrieved text' rule it carries, and add a baselineMarker sentence that asks EVERY answer to go beyond the documents (for example: add three or more general industry practices or tips with concrete figures); keep the candidate's rule that forbids content outside the documents. A baseline that only says 'fill in when the documents are silent' still answers from the sources. (baseline already grounded (GR 0.778 &gt;= 0.7): the declared defects did not bite)",
+   "- **Advisory** `labs.teaching.phenomena[id=points-validity-prompt-fix]` · `points-earning-normal`: Or take points-earning-normal out of this prompt_fixable phenomenon if the baseline is meant to answer it well. (baseline already grounded (GR 0.778 &gt;= 0.7): the declared defects did not bite)",
+   "- **Advisory** `agent/baseline-prompt.md` · `compensation-cap-detail-probe`: Weaken the baseline prompt so the declared defects bite: remove any grounding, citation or 'answer only from the retrieved text' rule it carries, and add a baselineMarker sentence that asks EVERY answer to go beyond the documents (for example: add three or more general industry practices or tips with concrete figures); keep the candidate's rule that forbids content outside the documents. A baseline that only says 'fill in when the documents are silent' still answers from the sources. (baseline already grounded (GR 1 &gt;= 0.7): the declared defects did not bite)",
+   "- **Advisory** `labs.teaching.phenomena[id=compensation-cap-prompt-fix]` · `compensation-cap-detail-probe`: Or take compensation-cap-detail-probe out of this prompt_fixable phenomenon if the baseline is meant to answer it well. (baseline already grounded (GR 1 &gt;= 0.7): the declared defects did not bite)",
+   "- **Advisory** `labs.teaching.firstConversation.mustNotMention`: Declare firstConversation.mustNotMention (a value only a remembered user would get) so rehearsal can check the Memory lesson. (no memory marker is declared)",
+   "",
+   "> Rehearsal verdicts cover the teaching design in this rehearsal environment; single-run LLM results can vary in class. Holdout cases are not executed (instructor-only; see the instructor guide). Not a production approval."
+  ]
+ }
+}

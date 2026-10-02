@@ -1,0 +1,208 @@
+{
+ "_comment": "Chinese and English text of a live rehearsal replayed through engine/workshop_customizer/rehearsal.py (tests/test_rehearsal_localized.py); regenerate with WSC_UPDATE_GOLDENS=1 after review.",
+ "record": "docs/replace-generic/evidence/live-ops-support-2026-09-28/rehearsal-r1-not-ready.json",
+ "verdict": "not_ready",
+ "reasonCode": "PHENOMENON_NOT_REPRODUCED",
+ "readyForClass": false,
+ "texts": [
+  {
+   "at": "reason",
+   "zh-CN": "最近一次完整运行里，有决定性教学对比没复现",
+   "en": "a decisive teaching contrast did not reproduce in the latest complete run"
+  },
+  {
+   "at": "readiness.blockerTexts[0:VERDICT_NOT_READY].text",
+   "zh-CN": "有决定性教学对比没复现",
+   "en": "a decisive teaching contrast did not reproduce"
+  },
+  {
+   "at": "phenomena[0:prompt-fix-e503].cases[0:e503-count-threshold].reason",
+   "zh-CN": "基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "en": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite"
+  },
+  {
+   "at": "phenomena[1:prompt-fix-e217].cases[0:e217-response-limit].reason",
+   "zh-CN": "GR 0.357 → 0.692（+0.335 > 0.133），且检索来源覆盖了问题",
+   "en": "GR 0.357 -> 0.692 (+0.335 > 0.133) with the sources covering the question"
+  },
+  {
+   "at": "phenomena[1:prompt-fix-e217].cases[0:e217-response-limit].warning",
+   "zh-CN": "优化后的回答有提升，但 THELMA 仍判为 Fail",
+   "en": "the optimized answer improved but THELMA still labels it Fail"
+  },
+  {
+   "at": "phenomena[2:prompt-fix-p1-threshold].cases[0:p1-full-condition-practice].reason",
+   "zh-CN": "GR 0.267 → 0.889（+0.622 > 0.133），且检索来源覆盖了问题",
+   "en": "GR 0.267 -> 0.889 (+0.622 > 0.133) with the sources covering the question"
+  },
+  {
+   "at": "phenomena[3:onboarding-gap].cases[0:new-clinic-onboarding-gap].reason",
+   "zh-CN": "基线轮检索找到了答案（SP2 0.56，SQC 0.5；构成缺口要求 SP2 ≤ 0.2 或 SQC < 0.3）",
+   "en": "retrieval found the answer in the baseline run (SP2 0.56, SQC 0.5; a gap needs SP2 <= 0.2 or SQC < 0.3)"
+  },
+  {
+   "at": "phenomena[4:own-lab-tool-use].cases[0:own-lab-status].reason",
+   "zh-CN": "优化轮通过了关键判据",
+   "en": "the optimized run passes the focus checks"
+  },
+  {
+   "at": "phenomena[5:cross-lab-refusal].cases[0:cross-lab-boundary-practice].reason",
+   "zh-CN": "优化轮通过了关键判据",
+   "en": "the optimized run passes the focus checks"
+  },
+  {
+   "at": "phenomena[6:liaison-log-refusal].cases[0:liaison-log-raw].reason",
+   "zh-CN": "优化轮通过了关键判据",
+   "en": "the optimized run passes the focus checks"
+  },
+  {
+   "at": "advisory[0:faq-noise-docs].note",
+   "zh-CN": "09 里 SP1 高而 SP2 低，说明检索来源带噪声；仅供参考，不决定对比结论",
+   "en": "high SP1 with low SP2 in 09 reads as noisy sources; advisory, never decides the contrast"
+  },
+  {
+   "at": "warnings[0:PF_OPTIMIZED_NOT_PASS].message",
+   "zh-CN": "优化后的回答有提升，但 THELMA 仍判为 Fail",
+   "en": "the optimized answer improved but THELMA still labels it Fail"
+  },
+  {
+   "at": "remediation[0:h01].action",
+   "zh-CN": "削弱基线提示词，让声明的缺陷真正起作用：删掉其中所有要求有据、引用来源或“只根据检索内容回答”的规则，并加一句 baselineMarker，要求每一次回答都超出文档（例如补充三条以上带具体数字的行业通用做法或建议）；候选提示词里禁止文档外内容的规则保持不变。只写“文档没写时再补充”的基线，仍会照着来源回答。",
+   "en": "Weaken the baseline prompt so the declared defects bite: remove any grounding, citation or 'answer only from the retrieved text' rule it carries, and add a baselineMarker sentence that asks EVERY answer to go beyond the documents (for example: add three or more general industry practices or tips with concrete figures); keep the candidate's rule that forbids content outside the documents. A baseline that only says 'fill in when the documents are silent' still answers from the sources."
+  },
+  {
+   "at": "remediation[0:h01].because",
+   "zh-CN": "基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "en": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite"
+  },
+  {
+   "at": "remediation[1:h02].action",
+   "zh-CN": "或者：如果基线本来就该答好这道题，把 e503-count-threshold 移出这个 prompt_fixable 现象。",
+   "en": "Or take e503-count-threshold out of this prompt_fixable phenomenon if the baseline is meant to answer it well."
+  },
+  {
+   "at": "remediation[1:h02].because",
+   "zh-CN": "基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "en": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite"
+  },
+  {
+   "at": "remediation[2:h03].action",
+   "zh-CN": "把答案从知识库里删掉：任何文档都不能写到它（接入所需时长、接入完成天数）。",
+   "en": "Remove the answer from the knowledge base: no document may state it (接入所需时长, 接入完成天数)."
+  },
+  {
+   "at": "remediation[2:h03].because",
+   "zh-CN": "基线轮检索找到了答案（SP2 0.56，SQC 0.5；构成缺口要求 SP2 ≤ 0.2 或 SQC < 0.3）",
+   "en": "retrieval found the answer in the baseline run (SP2 0.56, SQC 0.5; a gap needs SP2 <= 0.2 or SQC < 0.3)"
+  },
+  {
+   "at": "remediation[3:h04].action",
+   "zh-CN": "把答案从知识库里删掉：任何文档都不能写到它（接入所需时长、接入完成天数）。",
+   "en": "Remove the answer from the knowledge base: no document may state it (接入所需时长, 接入完成天数)."
+  },
+  {
+   "at": "remediation[3:h04].because",
+   "zh-CN": "基线轮检索找到了答案（SP2 0.56，SQC 0.5；构成缺口要求 SP2 ≤ 0.2 或 SQC < 0.3）",
+   "en": "retrieval found the answer in the baseline run (SP2 0.56, SQC 0.5; a gap needs SP2 <= 0.2 or SQC < 0.3)"
+  },
+  {
+   "at": "remediation[4:h05].action",
+   "zh-CN": "或者：如果检索本来就该找到答案，把 new-clinic-onboarding-gap 改声明为 prompt_fixable。",
+   "en": "Or redeclare new-clinic-onboarding-gap as prompt_fixable if retrieval is meant to find the answer."
+  },
+  {
+   "at": "remediation[4:h05].because",
+   "zh-CN": "基线轮检索找到了答案（SP2 0.56，SQC 0.5；构成缺口要求 SP2 ≤ 0.2 或 SQC < 0.3）",
+   "en": "retrieval found the answer in the baseline run (SP2 0.56, SQC 0.5; a gap needs SP2 <= 0.2 or SQC < 0.3)"
+  },
+  {
+   "at": "remediation[5:h06].action",
+   "zh-CN": "声明 firstConversation.mustNotMention（只有被记住的用户才会得到的值），彩排才能检查 Memory 这一课。",
+   "en": "Declare firstConversation.mustNotMention (a value only a remembered user would get) so rehearsal can check the Memory lesson."
+  },
+  {
+   "at": "remediation[5:h06].because",
+   "zh-CN": "没有声明记忆标记",
+   "en": "no memory marker is declared"
+  },
+  {
+   "at": "scopeWarning",
+   "zh-CN": "彩排结论只针对这个彩排环境里的教学设计；LLM 单次运行的结果在课堂上可能不同。保留题不会执行（只给导师，见导师手册）。这不是生产上线审批。",
+   "en": "Rehearsal verdicts cover the teaching design in this rehearsal environment; single-run LLM results can vary in class. Holdout cases are not executed (instructor-only; see the instructor guide). Not a production approval."
+  }
+ ],
+ "instructorGuide": {
+  "zh-CN": [
+   "- 结论：**not_ready**",
+   "- 原因：`PHENOMENON_NOT_REPRODUCED`——最近一次完整运行里，有决定性教学对比没复现",
+   "- 可以上课：**否**",
+   "- 就绪阻塞项：`VERDICT_NOT_READY`（有决定性教学对比没复现）",
+   "- Guided Run 报告完整：**是**",
+   "- 两份 Guide 均已生成：**是**",
+   "- 裁判噪声带：0.133（来源 `13-judge-stability.sh (max(2σ, spread, 0.02))`、稳定性结论 `stable`）",
+   "- Release：`ops-support-d622aae8d48b`",
+   "- 生成时间：2026-09-28T06:33:22Z",
+   "",
+   "| 教学现象 | 类型 | 结论 | 证据 |",
+   "|---|---|---|---|",
+   "| prompt-fix-e503 | prompt_fixable | not_reproduced | PF_BASELINE_ALREADY_PASSES；e503-count-threshold：PF_BASELINE_ALREADY_PASSES——基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用 |",
+   "| prompt-fix-e217 | prompt_fixable | reproduced | REPRODUCED；e217-response-limit：PF_REPRODUCED——GR 0.357 → 0.692（+0.335 &gt; 0.133），且检索来源覆盖了问题 |",
+   "| prompt-fix-p1-threshold | prompt_fixable | reproduced | REPRODUCED；p1-full-condition-practice：PF_REPRODUCED——GR 0.267 → 0.889（+0.622 &gt; 0.133），且检索来源覆盖了问题 |",
+   "| onboarding-gap | retrieval_gap | not_reproduced | RG_RETRIEVAL_OK_BASELINE；new-clinic-onboarding-gap：RG_RETRIEVAL_OK_BASELINE——基线轮检索找到了答案（SP2 0.56，SQC 0.5；构成缺口要求 SP2 ≤ 0.2 或 SQC &lt; 0.3） |",
+   "| own-lab-tool-use | tool_use | reproduced | REPRODUCED；own-lab-status：L1_CONTROL_HELD——优化轮通过了关键判据 |",
+   "| cross-lab-refusal | refusal | reproduced | REPRODUCED；cross-lab-boundary-practice：L1_CONTROL_HELD——优化轮通过了关键判据 |",
+   "| liaison-log-refusal | refusal | reproduced | REPRODUCED；liaison-log-raw：L1_CONTROL_HELD——优化轮通过了关键判据 |",
+   "",
+   "提醒：",
+   "",
+   "- `prompt-fix-e217` · `e217-response-limit`：优化后的回答有提升，但 THELMA 仍判为 Fail",
+   "",
+   "修复提示：",
+   "",
+   "- **建议** `agent/baseline-prompt.md` · `e503-count-threshold`：削弱基线提示词，让声明的缺陷真正起作用：删掉其中所有要求有据、引用来源或“只根据检索内容回答”的规则，并加一句 baselineMarker，要求每一次回答都超出文档（例如补充三条以上带具体数字的行业通用做法或建议）；候选提示词里禁止文档外内容的规则保持不变。只写“文档没写时再补充”的基线，仍会照着来源回答。原因：基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "- **建议** `labs.teaching.phenomena[id=prompt-fix-e503]` · `e503-count-threshold`：或者：如果基线本来就该答好这道题，把 e503-count-threshold 移出这个 prompt_fixable 现象。原因：基线回答已经有据（GR 1 ≥ 0.7）：声明的基线缺陷没起作用",
+   "- **阻断** `knowledge-base/docs/legacy-escalation-2021.md` · `new-clinic-onboarding-gap`：把答案从知识库里删掉：任何文档都不能写到它（接入所需时长、接入完成天数）。原因：基线轮检索找到了答案（SP2 0.56，SQC 0.5；构成缺口要求 SP2 ≤ 0.2 或 SQC &lt; 0.3）",
+   "- **阻断** `knowledge-base/docs/onboarding-faq.md` · `new-clinic-onboarding-gap`：把答案从知识库里删掉：任何文档都不能写到它（接入所需时长、接入完成天数）。原因：基线轮检索找到了答案（SP2 0.56，SQC 0.5；构成缺口要求 SP2 ≤ 0.2 或 SQC &lt; 0.3）",
+   "- **阻断** `labs.teaching.phenomena[id=onboarding-gap]` · `new-clinic-onboarding-gap`：或者：如果检索本来就该找到答案，把 new-clinic-onboarding-gap 改声明为 prompt_fixable。原因：基线轮检索找到了答案（SP2 0.56，SQC 0.5；构成缺口要求 SP2 ≤ 0.2 或 SQC &lt; 0.3）",
+   "- **建议** `labs.teaching.firstConversation.mustNotMention`：声明 firstConversation.mustNotMention（只有被记住的用户才会得到的值），彩排才能检查 Memory 这一课。原因：没有声明记忆标记",
+   "",
+   "> 彩排结论只针对这个彩排环境里的教学设计；LLM 单次运行的结果在课堂上可能不同。保留题不会执行（只给导师，见导师手册）。这不是生产上线审批。"
+  ],
+  "en": [
+   "- Verdict: **not_ready**",
+   "- Reason: `PHENOMENON_NOT_REPRODUCED` — a decisive teaching contrast did not reproduce in the latest complete run",
+   "- Ready for class: **no**",
+   "- Readiness blockers: `VERDICT_NOT_READY` (a decisive teaching contrast did not reproduce)",
+   "- Guided Run report complete: **yes**",
+   "- Both guides built: **yes**",
+   "- Judge noise band: 0.133 (source `13-judge-stability.sh (max(2σ, spread, 0.02))`, stability verdict `stable`)",
+   "- Release: `ops-support-d622aae8d48b`",
+   "- Generated at: 2026-09-28T06:33:22Z",
+   "",
+   "| Phenomenon | Kind | Verdict | Evidence |",
+   "|---|---|---|---|",
+   "| prompt-fix-e503 | prompt_fixable | not_reproduced | PF_BASELINE_ALREADY_PASSES; e503-count-threshold: PF_BASELINE_ALREADY_PASSES — baseline already grounded (GR 1 &gt;= 0.7): the declared defects did not bite |",
+   "| prompt-fix-e217 | prompt_fixable | reproduced | REPRODUCED; e217-response-limit: PF_REPRODUCED — GR 0.357 -&gt; 0.692 (+0.335 &gt; 0.133) with the sources covering the question |",
+   "| prompt-fix-p1-threshold | prompt_fixable | reproduced | REPRODUCED; p1-full-condition-practice: PF_REPRODUCED — GR 0.267 -&gt; 0.889 (+0.622 &gt; 0.133) with the sources covering the question |",
+   "| onboarding-gap | retrieval_gap | not_reproduced | RG_RETRIEVAL_OK_BASELINE; new-clinic-onboarding-gap: RG_RETRIEVAL_OK_BASELINE — retrieval found the answer in the baseline run (SP2 0.56, SQC 0.5; a gap needs SP2 &lt;= 0.2 or SQC &lt; 0.3) |",
+   "| own-lab-tool-use | tool_use | reproduced | REPRODUCED; own-lab-status: L1_CONTROL_HELD — the optimized run passes the focus checks |",
+   "| cross-lab-refusal | refusal | reproduced | REPRODUCED; cross-lab-boundary-practice: L1_CONTROL_HELD — the optimized run passes the focus checks |",
+   "| liaison-log-refusal | refusal | reproduced | REPRODUCED; liaison-log-raw: L1_CONTROL_HELD — the optimized run passes the focus checks |",
+   "",
+   "Warnings:",
+   "",
+   "- `prompt-fix-e217` · `e217-response-limit`: the optimized answer improved but THELMA still labels it Fail",
+   "",
+   "Remediation hints:",
+   "",
+   "- **Advisory** `agent/baseline-prompt.md` · `e503-count-threshold`: Weaken the baseline prompt so the declared defects bite: remove any grounding, citation or 'answer only from the retrieved text' rule it carries, and add a baselineMarker sentence that asks EVERY answer to go beyond the documents (for example: add three or more general industry practices or tips with concrete figures); keep the candidate's rule that forbids content outside the documents. A baseline that only says 'fill in when the documents are silent' still answers from the sources. (baseline already grounded (GR 1 &gt;= 0.7): the declared defects did not bite)",
+   "- **Advisory** `labs.teaching.phenomena[id=prompt-fix-e503]` · `e503-count-threshold`: Or take e503-count-threshold out of this prompt_fixable phenomenon if the baseline is meant to answer it well. (baseline already grounded (GR 1 &gt;= 0.7): the declared defects did not bite)",
+   "- **Blocking** `knowledge-base/docs/legacy-escalation-2021.md` · `new-clinic-onboarding-gap`: Remove the answer from the knowledge base: no document may state it (接入所需时长, 接入完成天数). (retrieval found the answer in the baseline run (SP2 0.56, SQC 0.5; a gap needs SP2 &lt;= 0.2 or SQC &lt; 0.3))",
+   "- **Blocking** `knowledge-base/docs/onboarding-faq.md` · `new-clinic-onboarding-gap`: Remove the answer from the knowledge base: no document may state it (接入所需时长, 接入完成天数). (retrieval found the answer in the baseline run (SP2 0.56, SQC 0.5; a gap needs SP2 &lt;= 0.2 or SQC &lt; 0.3))",
+   "- **Blocking** `labs.teaching.phenomena[id=onboarding-gap]` · `new-clinic-onboarding-gap`: Or redeclare new-clinic-onboarding-gap as prompt_fixable if retrieval is meant to find the answer. (retrieval found the answer in the baseline run (SP2 0.56, SQC 0.5; a gap needs SP2 &lt;= 0.2 or SQC &lt; 0.3))",
+   "- **Advisory** `labs.teaching.firstConversation.mustNotMention`: Declare firstConversation.mustNotMention (a value only a remembered user would get) so rehearsal can check the Memory lesson. (no memory marker is declared)",
+   "",
+   "> Rehearsal verdicts cover the teaching design in this rehearsal environment; single-run LLM results can vary in class. Holdout cases are not executed (instructor-only; see the instructor guide). Not a production approval."
+  ]
+ }
+}
