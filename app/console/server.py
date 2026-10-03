@@ -907,10 +907,11 @@ class Mount:
 
         def checkout_python() -> tuple[Any, ...]:
             # Direct rehearsals' scripts, the judges and Autopilot's loop run on the checkout's interpreter (its packages).
-            from workshop_customizer.direct.aws import tools_python
+            from workshop_customizer.direct.aws import tools_python, with_vendor
 
             python = tools_python()
-            done = run([python, "-c", "import sys, boto3, retrying; print(sys.version.split()[0])"], capture_output=True, text=True, timeout=60)
+            done = run([python, "-c", "import sys, boto3, retrying; print(sys.version.split()[0])"], capture_output=True, text=True, timeout=60,
+                       env=with_vendor(os.environ))
             if done.returncode != 0:
                 tail = (done.stderr or done.stdout).strip()[-400:]
                 return False, f"{python} 退出码 {done.returncode}：{tail}", "Operation not permitted" in tail

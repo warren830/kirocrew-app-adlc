@@ -504,3 +504,20 @@ def test_a_failed_panel_is_reported_and_never_decides():
 
     lines = panel.render_markdown({"evaluators": ["Builtin.Nope"], "error": "ValueError: unknown AgentCore evaluator(s): Builtin.Nope"}, [])
     assert lines[-1] == "The panel failed and was left out: ValueError: unknown AgentCore evaluator(s): Builtin.Nope"
+
+
+def test_the_release_scripts_find_the_vendored_retrying_without_any_installed_package():
+    """KiroCrew's desktop app installs no packages for a registry App, and its bundled Python lacks retrying, which the
+    release's create_kb.py imports: engine/vendor carries it, put on the scripts' PYTHONPATH (after their own)."""
+    import os
+    import subprocess
+    import sys
+
+    from workshop_customizer.direct import aws
+
+    env = aws.with_vendor({"PATH": os.environ.get("PATH", ""), "PYTHONPATH": "/somewhere/first"})
+    assert env["PYTHONPATH"].split(os.pathsep) == ["/somewhere/first", str(aws.VENDOR)]
+    assert aws.with_vendor({})["PYTHONPATH"] == str(aws.VENDOR)
+    done = subprocess.run([sys.executable, "-S", "-c", "import retrying; print(retrying.__file__)"],  # -S: no site-packages at all
+                          env=aws.with_vendor({}), capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0 and done.stdout.strip() == str(aws.VENDOR / "retrying.py"), done.stderr

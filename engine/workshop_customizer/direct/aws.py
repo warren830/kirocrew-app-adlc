@@ -52,6 +52,19 @@ def tools_python() -> str:
     return str(CHECKOUT_PYTHON) if CHECKOUT_PYTHON.is_file() and os.access(CHECKOUT_PYTHON, os.X_OK) else sys.executable
 
 
+#: Pure-Python modules the release's scripts import (``retrying``, for create_kb.py), shipped with the checkout: the
+#: KiroCrew desktop app installs no packages for an App installed from a registry, and its bundled interpreter lacks
+#: them (``engine/vendor/README.md``).
+VENDOR = Path(__file__).resolve().parents[3] / "engine" / "vendor"
+
+
+def with_vendor(env: Mapping[str, str]) -> dict[str, str]:
+    """``env`` with :data:`VENDOR` last on ``PYTHONPATH``: a checkout's venv keeps its own copies first."""
+    out = dict(env)
+    out["PYTHONPATH"] = os.pathsep.join(p for p in (out.get("PYTHONPATH"), str(VENDOR)) if p)
+    return out
+
+
 def client(session: Any, name: str, region: str | None = None) -> Any:
     """A boto3 client for direct mode: standard retries, and a read timeout a Harness stream fits in (300 s)."""
     from botocore.config import Config
@@ -188,7 +201,7 @@ class Provisioner:
             "kb.synchronize_data(kb_id, ds_id)\n"
             "print('DIRECT_KB ' + json.dumps({'id': kb_id, 'dataSource': ds_id}))\n"
         )
-        env = {**os.environ, **RETRY_ENV, "AWS_DEFAULT_REGION": self.region, "AWS_REGION": self.region, "PYTHONDONTWRITEBYTECODE": "1"}
+        env = with_vendor({**os.environ, **RETRY_ENV, "AWS_DEFAULT_REGION": self.region, "AWS_REGION": self.region, "PYTHONDONTWRITEBYTECODE": "1"})
         if profile:
             env["AWS_PROFILE"] = profile
         done = subprocess.run([tools_python(), "-c", script, str(self.release_dir / "knowledge-base" / "create_kb.py"), self.names.knowledge_base,

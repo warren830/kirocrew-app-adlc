@@ -11,7 +11,13 @@ The App is licensed under MIT No Attribution (see `LICENSE`).
 - Vendored commit: `245092299e97219e53cc6645d8a7b397e4e7222a` (Merge pull request #6 from phoenixyy/fix/english-doc-proofreading)
 - The copy is unchanged; `template-lock.json` pins it, and the engine renders scenario packs onto it.
 
-## Python packages
+## Vendored Python module
 
-`app/requirements.txt` lists what KiroCrew installs for the App's backend: boto3 and botocore (Apache-2.0),
-jsonschema (MIT), PyYAML (MIT), retrying (Apache-2.0). They are installed from PyPI and are not part of this repository.
+`engine/vendor/retrying.py` is **retrying 1.4.2** by Ray Holder and contributors, unchanged, licensed under the
+**Apache License 2.0** (`engine/vendor/retrying-LICENSE.txt`, `engine/vendor/retrying-NOTICE.txt`;
+https://github.com/groodt/retrying). The release's `knowledge-base/create_kb.py` imports it.
+
+## Python packages used from KiroCrew
+
+boto3 and botocore (Apache-2.0), jsonschema (MIT) and PyYAML (MIT) come with KiroCrew's own Python; they are not part
+of this repository.

@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .aws import RETRY_ENV, client, tools_python
+from .aws import RETRY_ENV, client, tools_python, with_vendor
 from .names import DirectNames
 
 
@@ -80,7 +80,7 @@ def cleanup(session: Any, names: DirectNames, *, release_dir: Path, region: str,
                   "spec = importlib.util.spec_from_file_location('create_kb', sys.argv[1]); m = importlib.util.module_from_spec(spec)\n"
                   "spec.loader.exec_module(m)\n"
                   "m.KnowledgeBasesForAmazonBedrock().delete_kb(sys.argv[2], delete_s3_bucket=False, delete_iam_roles_and_policies=True)\n")
-        env = {**os.environ, **RETRY_ENV, "AWS_DEFAULT_REGION": region, "AWS_REGION": region, "PYTHONDONTWRITEBYTECODE": "1"}
+        env = with_vendor({**os.environ, **RETRY_ENV, "AWS_DEFAULT_REGION": region, "AWS_REGION": region, "PYTHONDONTWRITEBYTECODE": "1"})
         if profile:
             env["AWS_PROFILE"] = profile
         out = subprocess.run([tools_python(), "-c", script, str(release_dir / "knowledge-base" / "create_kb.py"), names.knowledge_base],

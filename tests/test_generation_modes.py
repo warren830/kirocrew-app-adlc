@@ -726,4 +726,4 @@ def test_agent_prompt_matches_forced_provenance_origin_and_modes():
                    "FULL scenario plus only new or changed files", "changes[]", "Replace personal names from materials with roles"):
         assert needle in prompt, needle
     # The version bump makes KiroCrew re-materialize the changed agent and skill.
-    assert json.loads((REPO / "app" / "app.json").read_text(encoding="utf-8"))["version"] == "0.4.0"
+    assert json.loads((REPO / "app" / "app.json").read_text(encoding="utf-8"))["version"] == "0.4.1"
