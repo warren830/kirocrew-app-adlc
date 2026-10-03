@@ -4,17 +4,10 @@
 import React from 'react'
 import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, useJob, Tabs, JOB_TONE,
   JOB_LABEL } from '../ui.mjs'
+import { ws, listUnder } from './shared.mjs'
 
 const { useState, useEffect, createElement: h, Fragment } = React
-const ws = (wid, path) => `/workspaces/${wid}${path}`
-
-function useList(wid, path, key, deps = []) {
-  const [list, setList] = useState(null)
-  const [error, setError] = useState(null)
-  const load = () => call('GET', ws(wid, path)).then((r) => { setList(listOf(r[key])); setError(null) }).catch(setError)
-  useEffect(() => { if (wid) load() }, [wid, ...deps])
-  return [list, load, error]
-}
+const useList = listUnder(ws)
 
 function useAgents(wid) {
   const [agents] = useList(wid, '/agents', 'agents')

@@ -12,16 +12,13 @@ import re
 import secrets
 import threading
 import traceback
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from .common import now as _now
+
 JOB_ID = re.compile(r"^[a-z][a-z0-9-]{1,40}-[0-9a-f]{10}$")
 MAX_LOG = 400
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class JobLog:

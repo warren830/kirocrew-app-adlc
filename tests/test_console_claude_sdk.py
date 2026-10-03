@@ -932,8 +932,7 @@ def test_the_template_previews_bundles_and_deploys_through_the_pipeline_with_the
     [update] = aws.named("bedrock-agentcore-control", "update_agent_runtime")
     assert update["filesystemConfigurations"] == [{"sessionStorage": {"mountPath": "/mnt/workspace"}}] and update["environmentVariables"] == {
         "AGENT_WORKSPACE": "/mnt/workspace"}
-    assert client.call("GET", f"{C}/agents/{NAME}")[1]["spec"]["systemPrompt"] == "你是积分客服，回答更简短。"
-    assert client.call("GET", f"{C}/agents/nobody")[0] == 404
+    assert client.call("GET", f"{C}/agents")[1]["agents"][0]["spec"]["systemPrompt"] == "你是积分客服，回答更简短。"
 
 
 def test_a_blocked_image_stops_the_template_deploy_and_only_admins_deploy(server):

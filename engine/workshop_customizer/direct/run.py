@@ -485,7 +485,7 @@ def sweep_summary(entry: Mapping[str, Any], baseline_model: str, steps: Mapping[
         return (round(statistics.mean(r["value"] for r in values), 3) if values else None,
                 round(statistics.mean(sqc), 3) if sqc else None, len(values))
     gr, sqc, n = means(entry["scores"])
-    base_gr, base_sqc, base_n = means((steps.get("optimize") or {}).get("outputs", {}).get("scores") or [])
+    base_gr, base_sqc, _ = means((steps.get("optimize") or {}).get("outputs", {}).get("scores") or [])
     cost = entry.get("costLatency") or {}
     return {"model": entry["model"], "meanGR": gr, "meanSQC": sqc, "scored": n, "candidateOn": baseline_model, "candidateMeanGR": base_gr,
             "candidateMeanSQC": base_sqc, "averageLatencySeconds": cost.get("averageLatencySeconds"),

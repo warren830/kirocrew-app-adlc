@@ -173,8 +173,8 @@ def test_a_file_name_shared_by_two_documents_is_not_one_document():
 
 
 def test_the_contract_asks_for_the_fact_source_the_fold_reads():
-    task = " ".join(gen._build_task(project_id="basis-pack", display_name="Basis", pack_kind="reference", customer="",
-                                    brief="A cold-chain incident assistant for warehouse operators.").split())
+    task = " ".join(gen._compose_task(project_id="basis-pack", display_name="Basis", pack_kind="reference", customer="",
+                                      brief="A cold-chain incident assistant for warehouse operators.")[0].split())
     assert ('facts[]: id, statement, criticality=blocking|advisory, provenance, origin, source (the knowledge document '
             'file that states it, e.g. "knowledge-base/docs/x.md (Section)"') in task
     assert "A case that rests on a document cites the facts whose source is that document" in task

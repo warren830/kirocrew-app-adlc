@@ -20,9 +20,9 @@ from __future__ import annotations
 import re
 import threading
 import time
-from datetime import datetime, timezone
 from typing import Any, Callable
 
+from .common import now as _now
 from .store import Store
 
 WORKSPACE_ID = re.compile(r"^[a-z][a-z0-9-]{1,39}$")
@@ -48,10 +48,6 @@ def _client(session: Any, name: str) -> Any:
         return client(session, name)
     except TypeError:  # a test double without the config keyword
         return session.client(name)
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def check(body: dict[str, Any]) -> dict[str, Any]:

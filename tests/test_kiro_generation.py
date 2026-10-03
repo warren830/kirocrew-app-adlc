@@ -59,7 +59,7 @@ def _project(data_dir: Path, project_id: str = "cold-chain-test", pack_kind: str
 
 
 def test_generation_task_uses_kirocrew_not_bedrock_generation():
-    task = gen._build_task(project_id="cold-chain-test", display_name="Cold Chain Test", pack_kind="customer", customer="Fictional Foods", brief="A cold-chain incident assistant for warehouse operators.")
+    task = gen._compose_task(project_id="cold-chain-test", display_name="Cold Chain Test", pack_kind="customer", customer="Fictional Foods", brief="A cold-chain incident assistant for warehouse operators.")[0]
     assert "Kiro reasoning only" in task
     assert "Do not call tools, Bedrock, AWS" in task
     assert "WORKSHOP_PACK_JSON_BEGIN" in task

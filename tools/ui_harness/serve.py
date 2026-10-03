@@ -190,51 +190,28 @@ class Handler(SimpleHTTPRequestHandler):
         return body
 
     def _generation(self):
-        """The in-gateway generation routes of routes.register_routes, over the same functions."""
+        """The in-gateway generation routes, through the same ``routes.generation_route`` as register_routes."""
         g = gen()
-        parts = [p for p in urlsplit(self.path).path.split("/") if p][4:]  # after api/apps/<app>/generations
+        parts = [p for p in urlsplit(self.path).path.split("/") if p][3:]  # after api/apps/<app>
         root = data_dir()
-        try:
-            if self.command == "POST" and parts == []:
-                try:
-                    record, task = g.prepare_generation(root, self._body(), runner="kirocrew-spawn")
-                except g.GenerationConflict as exc:
-                    payload = {"error": str(exc)}
-                    if exc.record is not None:
-                        payload["generation"] = g._public_record(exc.record)
-                    return self._send_json(409, payload)
-                except g.GenerationTooLarge as exc:
-                    return self._send_json(413, {"error": str(exc)})
-                except (g.GenerationError, json.JSONDecodeError) as exc:
-                    return self._send_json(400, {"error": str(exc)})
-                g.mark_running(root, record, spawn_id="harness-simulated-spawn")
-                threading.Thread(target=_complete_later, args=(dict(record), task), daemon=True).start()
-                return self._send_json(202, g._public_record(record))
-            if self.command == "GET" and len(parts) == 2 and parts[0] == "latest":
-                g._project_dir(root, parts[1])
-                candidates = g._project_records(root, parts[1])
-                if not candidates:
-                    return self._send_json(200, {"generation": None})
-                record = max(candidates, key=lambda item: str(item.get("createdAt") or ""))
-                return self._send_json(200, {"generation": g._public_record(g._settle(record, request=None, data_dir=root))})
-            if self.command == "GET" and len(parts) == 1:
-                record = g._settle(g._read_record(root, parts[0]), request=None, data_dir=root)
-                return self._send_json(200, g._public_record(record))
-            if self.command == "POST" and len(parts) == 2 and parts[1] == "apply":
+        body: dict = {}
+        if self.command == "POST":
+            try:
                 body = self._body()
-                record = g._read_record(root, parts[0])
-                legacy = "acknowledged" not in body and str(record.get("mode") or "draft") == "draft"
-                ack = {**body, "acknowledged": True, "acknowledgement": "legacy-implicit"} if legacy else body
-                result = g.apply_generation(record, root, ack)
-                if legacy:
-                    result["acknowledgement"] = "legacy-implicit"
-                return self._send_json(200, result)
-            if self.command == "POST" and len(parts) == 2 and parts[1] == "revert":
-                return self._send_json(200, g.revert_generation(parts[0], root, self._body()))
-        except g.GenerationError as exc:
-            status = 404 if self.command == "GET" else 409
-            return self._send_json(status, {"error": str(exc)})
-        return self._send_json(404, {"error": "no generation route"})
+            except (g.GenerationError, json.JSONDecodeError) as exc:
+                status, payload = g.start_refused(exc) if parts == ["generations"] else (409, {"error": str(exc)})
+                return self._send_json(status, payload)
+
+        def start(body: dict) -> tuple[int, dict]:
+            try:
+                record, task = g.prepare_generation(root, body, runner="kirocrew-spawn")
+            except g.GenerationError as exc:
+                return g.start_refused(exc)
+            g.mark_running(root, record, spawn_id="harness-simulated-spawn")
+            threading.Thread(target=_complete_later, args=(dict(record), task), daemon=True).start()
+            return 202, g._public_record(record)
+
+        return self._send_json(*g.generation_route(self.command, parts, body, root, start=start))
 
     def _proxy(self, target_path: str | None = None):
         length = int(self.headers.get("Content-Length") or 0)

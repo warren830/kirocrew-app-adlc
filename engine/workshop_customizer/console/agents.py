@@ -29,6 +29,8 @@ from typing import Any, Iterator, Mapping, Sequence
 
 from ..direct.aws import HARNESS_ENVIRONMENT, HARNESS_IMAGE_ACCOUNT, HARNESS_LIMITS, client
 
+from .common import pages as _pages
+
 CONSOLE_TAG = {"adlc:console": "1"}
 #: The IAM path of every role the console creates (``arn:aws:iam::<account>:role/adlc-console/<name>``): the spoke role
 #: (``app/console/spoke-role.yaml``) creates, changes, tags, passes and deletes roles on this path only, so a role
@@ -40,16 +42,6 @@ SESSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{32,99}$")
 
 class AgentError(ValueError):
     pass
-
-
-def _pages(call: Any, key: str, **kwargs: Any) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    while True:
-        page = call(**kwargs)
-        out += page.get(key) or []
-        if not page.get("nextToken"):
-            return out
-        kwargs["nextToken"] = page["nextToken"]
 
 
 def list_agents(session: Any, region: str) -> list[dict[str, Any]]:
@@ -220,28 +212,35 @@ def passable(iam: Any, arn: str, *, account: str, boundary: str | None, error: t
     return str(found["Arn"])
 
 
-def _ensure_role(session: Any, name: str, account: str, region: str, policy: Mapping[str, Any], *, boundary: str | None = None) -> str:
-    """The Harness's role, created on the console's path (with the workspace's boundary) or adopted (:func:`adopt`);
-    its ARN as IAM gives it."""
+def ensure_role(session: Any, name: str, trust: Mapping[str, Any], policy_name: str, policy: Mapping[str, Any], *, description: str,
+                boundary: str | None = None, error: type[Exception] = AgentError) -> str:
+    """A console role (a Harness's, the KB's, the KB Gateway's) and its inline policy: created on the console's path
+    with the workspace's permissions boundary, or an existing one the console may adopt (:func:`adopt`, ``error``
+    otherwise), given the boundary first when it was made before; its ARN as IAM gives it."""
     iam = client(session, "iam")
-    trust = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "bedrock-agentcore.amazonaws.com"},
-                                                      "Action": "sts:AssumeRole", "Condition": {
-                                                          "StringEquals": {"aws:SourceAccount": account},
-                                                          "ArnLike": {"aws:SourceArn": f"arn:aws:bedrock-agentcore:{region}:{account}:*"}}}]}
     try:
         role = iam.get_role(RoleName=name)["Role"]
     except Exception as exc:  # noqa: BLE001
         if "NoSuchEntity" not in str(exc):
             raise
-        arn = iam.create_role(RoleName=name, AssumeRolePolicyDocument=json.dumps(trust), Description="ADLC console Harness role",
+        arn = iam.create_role(RoleName=name, AssumeRolePolicyDocument=json.dumps(trust), Description=description,
                               Tags=[{"Key": k, "Value": v} for k, v in CONSOLE_TAG.items()], **role_args(boundary))["Role"]["Arn"]
-        time.sleep(10)  # IAM propagation: a fresh role is refused by CreateHarness for a few seconds
+        time.sleep(10)  # IAM propagation: a fresh role is refused (by CreateHarness, …) for a few seconds
     else:
-        role, tags = adopt(iam, name, boundary, role)
+        role, tags = adopt(iam, name, boundary, role, error=error)
         arn = role["Arn"]
         ensure_boundary(iam, name, boundary, role, tags)
-    iam.put_role_policy(RoleName=name, PolicyName="harness-execution", PolicyDocument=json.dumps(policy))
+    iam.put_role_policy(RoleName=name, PolicyName=policy_name, PolicyDocument=json.dumps(policy))
     return arn
+
+
+def _ensure_role(session: Any, name: str, account: str, region: str, policy: Mapping[str, Any], *, boundary: str | None = None) -> str:
+    """The Harness's role (:func:`ensure_role`)."""
+    trust = {"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "bedrock-agentcore.amazonaws.com"},
+                                                      "Action": "sts:AssumeRole", "Condition": {
+                                                          "StringEquals": {"aws:SourceAccount": account},
+                                                          "ArnLike": {"aws:SourceArn": f"arn:aws:bedrock-agentcore:{region}:{account}:*"}}}]}
+    return ensure_role(session, name, trust, "harness-execution", policy, description="ADLC console Harness role", boundary=boundary)
 
 
 def put_inline_policy(session: Any, role: str, name: str, document: Mapping[str, Any], *, what: str, boundary: str | None = None) -> None:

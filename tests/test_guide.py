@@ -36,6 +36,14 @@ PACKS = ("hr-default", "it-helpdesk", "maintenance")
 GOLDEN_DIR = Path(__file__).resolve().parent / "golden" / "guides"
 UPDATE = os.environ.get("WSC_UPDATE_GOLDENS") == "1"
 
+#: Chinese text the template's unmodified scripts and evaluators print; an English guide quotes it
+#: verbatim (the only CJK an English guide may contain besides pack-derived text).
+PRINTED_CJK: tuple[str, ...] = (
+    "THELMA 7 维", "接地/防幻觉", "块级检索精度", "事实级检索精度", "源覆盖", "响应精度", "响应覆盖", "去重", "诊断", "无",
+    "目标达成", "轮次数", "失败归因", "无失败", "截断", "数据不足", "稳定", "一般", "不稳",
+    "已索引含检索 trace", "超时（仅 x/y 条就绪）",
+)
+
 _BUILT: dict[str, tuple] = {}
 
 
@@ -163,9 +171,11 @@ def test_guide_language_follows_the_pack(pack, lang):
         return
     assert "Step-by-step" in g.student and "Instructor guide" in g.instructor
     pack_text = guide.pack_sources_text(scenario)
-    allowed = list(gs.PRINTED_CJK) + guide._CJK.findall(pack_text)
+    allowed = sorted({a for a in (*PRINTED_CJK, *guide._CJK.findall(pack_text)) if a}, key=len, reverse=True)
     for text in (g.student, g.instructor):
-        assert guide.cjk_outside(text, allowed) == []
+        for a in allowed:
+            text = text.replace(a, " ")
+        assert guide._CJK.findall(text) == []  # CJK runs not covered by the allowed strings
 
 
 def _template_headings(text: str) -> list[int]:

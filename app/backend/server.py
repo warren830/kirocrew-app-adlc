@@ -31,7 +31,6 @@ from __future__ import annotations
 import base64
 import binascii
 import contextlib
-import dataclasses
 import hashlib
 import hmac
 import io
@@ -54,7 +53,6 @@ from urllib.parse import parse_qs, urlsplit
 
 APP_NAME = os.environ.get("KIROCREW_APP_NAME", "workshop-customizer")
 ROUTE_PREFIX = f"/api/apps/{APP_NAME}"
-PROJECT_ID_RE = re.compile(r"^[a-z][a-z0-9-]{2,40}$")
 ITEM_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{1,60}$")
 SIGNATURE_MAX_SKEW = 300
 CONFIRM_TOKEN_TTL = 900
@@ -66,12 +64,14 @@ APP_DIR = Path(__file__).resolve().parents[1]
 #: The generation routes module (stdlib at top level).  The helpers both processes need (the pack
 #: digest and its APP_MANAGED_DIRS today) have exactly one implementation there; see ``_gen()``.
 ROUTES_PY = Path(__file__).resolve().with_name("routes.py")
-_ROUTES_MODULE: Any = None
 _ROUTES_LOCK = threading.Lock()
+#: The modules :func:`_load_once` loaded, by path.
+_LOADED: dict[Path, Any] = {}
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    """Now, as every record of both processes writes it (``routes._utc_now``)."""
+    return _gen()._utc_now()
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ class Store:
         self._lock = threading.RLock()
 
     def project_dir(self, project_id: str, *, must_exist: bool = True) -> Path:
-        if not PROJECT_ID_RE.match(project_id):
+        if not _gen().PROJECT_RE.match(project_id):
             raise HttpError(400, "project id must be kebab-case (3-41 chars)")
         path = self.projects_dir / project_id
         if must_exist and not (path / "project.json").is_file():
@@ -215,10 +215,7 @@ class Store:
     def write_meta(self, project_id: str, meta: dict[str, Any]) -> None:
         with self._lock:
             meta["updatedAt"] = utc_now()
-            path = self.project_dir(project_id, must_exist=False) / "project.json"
-            tmp = path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(meta, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
-            os.replace(tmp, path)
+            self.write_json(self.project_dir(project_id, must_exist=False) / "project.json", meta)
 
     def write_json(self, path: Path, payload: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -317,7 +314,6 @@ class JobRunner:
         self.store = store
         self._lock = threading.Lock()
         self._active: dict[str, str] = {}
-        self._threads: dict[str, threading.Thread] = {}
         self._recover_interrupted()
 
     def jobs_dir(self, project_id: str) -> Path:
@@ -372,17 +368,8 @@ class JobRunner:
             ctx.save()
             snapshot = json.loads(json.dumps(job))
             self._active[project_id] = job_id
-            thread = threading.Thread(target=self._run, args=(ctx, work), name=f"wc-{job_id}", daemon=True)
-            self._threads[job_id] = thread
-            thread.start()
+            threading.Thread(target=self._run, args=(ctx, work), name=f"wc-{job_id}", daemon=True).start()
         return snapshot
-
-    def wait(self, job_id: str, timeout: float | None = None) -> None:
-        """Block until a job's thread ends (tests and the CLI; the UI polls instead)."""
-        with self._lock:
-            thread = self._threads.get(job_id)
-        if thread:
-            thread.join(timeout)
 
     def _run(self, ctx: JobContext, work: Callable[[JobContext], Any]) -> None:
         try:
@@ -403,7 +390,6 @@ class JobRunner:
         finally:
             with self._lock:
                 self._active.pop(ctx.project_id, None)
-                self._threads.pop(ctx.job["id"], None)
 
 
 BLANK_SCENARIO = """\
@@ -503,18 +489,23 @@ def _gen() -> Any:
     (``sourcePackDigest``) must agree byte for byte, so this process reuses the routes
     implementation instead of keeping a copy.
     """
-    global _ROUTES_MODULE
-    with _ROUTES_LOCK:
-        if _ROUTES_MODULE is None:
+    return _load_once("workshop_customizer_app_routes", ROUTES_PY, _ROUTES_LOCK)
+
+
+def _load_once(name: str, path: Path, lock: threading.Lock) -> Any:
+    """``path`` loaded as module ``name``, once, under ``lock`` (one lock a module, so a slow load — the console's —
+    holds up only its own callers)."""
+    with lock:
+        if path not in _LOADED:
             import importlib.util
 
-            spec = importlib.util.spec_from_file_location("workshop_customizer_app_routes", ROUTES_PY)
+            spec = importlib.util.spec_from_file_location(name, path)
             if spec is None or spec.loader is None:
-                raise ImportError(f"cannot load {ROUTES_PY}")
+                raise ImportError(f"cannot load {path}")
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-            _ROUTES_MODULE = module
-    return _ROUTES_MODULE
+            _LOADED[path] = module
+        return _LOADED[path]
 
 
 def pack_digest(pdir: Path) -> str:
@@ -551,8 +542,6 @@ def _all_items(data: dict[str, Any]):
         yield narrative
 
 
-#: labs.guide's fixed id (scenario.GUIDE_NARRATIVE_ID); teaching prose, reviewable only as sa_synthetic.
-GUIDE_NARRATIVE_ID = "guide-narrative"
 GUIDE_AUDIENCES = ("student", "instructor")
 INSTRUCTOR_BUNDLE_WARNING = "contains holdout cases and expected answers; never distribute it to participants"
 
@@ -646,7 +635,7 @@ class Service:
     # -- projects ----------------------------------------------------------
     def create_project(self, body: dict[str, Any]) -> dict[str, Any]:
         project_id = str(body.get("id", "")).strip()
-        if not PROJECT_ID_RE.match(project_id):
+        if not _gen().PROJECT_RE.match(project_id):
             raise HttpError(400, "id must be kebab-case (3-41 chars)")
         template = str(body.get("template", "blank"))
         if template not in TEMPLATES:
@@ -710,11 +699,6 @@ class Service:
         meta["editLog"] = {key: int(log.get(key) or 0) for key in gen.EDIT_LOG_KEYS}
         meta.setdefault("materialsPolicy", None)
         return meta
-
-    def delete_project(self, project_id: str) -> dict[str, Any]:
-        pdir = self.store.project_dir(project_id)
-        shutil.rmtree(pdir)
-        return {"deleted": project_id}
 
     def put_scenario(self, project_id: str, body: dict[str, Any]) -> dict[str, Any]:
         text = body.get("yaml")
@@ -1024,7 +1008,7 @@ class Service:
             hit = self._find_items(data, [item_id]).get(item_id)
             if hit is None:
                 raise HttpError(404, f"no fact/tool/golden case with id {item_id}")
-            narrative = item_id == GUIDE_NARRATIVE_ID
+            narrative = item_id == _gen().GUIDE_NARRATIVE_ID  # labs.guide's fixed id: teaching prose, sa_synthetic only
             if narrative and provenance != "sa_synthetic":
                 raise HttpError(400, "guide narrative is teaching prose; review it as sa_synthetic")
             if narrative and origin is not None:
@@ -1073,13 +1057,14 @@ class Service:
             if confirmed:
                 raise HttpError(409, "batch review would downgrade a customer confirmation: " + ", ".join(confirmed), itemIds=confirmed)
             # The guide narrative is teaching prose with no origin field (schema): never required, never written.
+            guide_id = _gen().GUIDE_NARRATIVE_ID
             if data.get("packKind") == "workshop" and origin is None:
-                unlabeled = [i for i in ids if i != GUIDE_NARRATIVE_ID and not self._has_origin(found[i])]
+                unlabeled = [i for i in ids if i != guide_id and not self._has_origin(found[i])]
                 if unlabeled:
                     raise HttpError(400, "a workshop pack labels every synthetic setting with its origin; pass origin "
                                          "or review these items one by one: " + ", ".join(unlabeled), itemIds=unlabeled)
             for item_id in ids:
-                if origin is not None and item_id != GUIDE_NARRATIVE_ID and not self._has_origin(found[item_id]):
+                if origin is not None and item_id != guide_id and not self._has_origin(found[item_id]):
                     found[item_id]["origin"] = dict(origin)
                 self._stamp_confirmation(data, found[item_id], "sa_synthetic", "", "")
             self._write_scenario_data(path, data)
@@ -1991,7 +1976,7 @@ class Service:
         except eng["sync"].SyncError as exc:
             raise HttpError(400, str(exc)) from exc
         project = str(body.get("releaseProject") or project_id)
-        if not PROJECT_ID_RE.match(project):
+        if not _gen().PROJECT_RE.match(project):
             raise HttpError(400, "releaseProject must be kebab-case")
         target = {**asdict(cfg), "releaseProject": project}
         meta = self.store.read_meta(project_id)
@@ -2460,25 +2445,13 @@ class Service:
 CONSOLE_PREFIX = "/api/console"
 CONSOLE_PY = APP_DIR / "console" / "server.py"
 BODY_LIMIT = 8 * 1024 * 1024
-_CONSOLE_MODULE: Any = None
 _CONSOLE_LOCK = threading.Lock()
 
 
 def console_module() -> Any:
     """``app/console/server.py``, loaded by path once: it brings the platform's engine modules (and boto3) along, so
     it is loaded on the console's first request, never at start-up."""
-    global _CONSOLE_MODULE
-    with _CONSOLE_LOCK:
-        if _CONSOLE_MODULE is None:
-            import importlib.util
-
-            spec = importlib.util.spec_from_file_location("adlc_console_server_mount", CONSOLE_PY)
-            if spec is None or spec.loader is None:
-                raise ImportError(f"cannot load {CONSOLE_PY}")
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            _CONSOLE_MODULE = module
-    return _CONSOLE_MODULE
+    return _load_once("adlc_console_server_mount", CONSOLE_PY, _CONSOLE_LOCK)
 
 
 class ConsoleMount:
@@ -2509,25 +2482,20 @@ PUBLIC_BODY_LIMIT = 1024 * 1024
 def write_reply(handler: BaseHTTPRequestHandler, reply: Any) -> None:
     """A console :class:`Reply`: whole, or its ``chunks`` sent chunked as they come (a stream, through the gateway or
     on the public API's port)."""
-    if reply.chunks is None:
-        handler.send_response(reply.status)
-        handler.send_header("Content-Type", reply.content_type)
-        handler.send_header("Content-Length", str(len(reply.body)))
-        handler.send_header("Cache-Control", "no-store")
-        handler.send_header("X-Content-Type-Options", "nosniff")
-        for k, v in reply.headers.items():
-            handler.send_header(k, v)
-        handler.end_headers()
-        handler.wfile.write(reply.body)
-        return
     handler.send_response(reply.status)
     handler.send_header("Content-Type", reply.content_type)
+    if reply.chunks is None:
+        handler.send_header("Content-Length", str(len(reply.body)))
     handler.send_header("Cache-Control", "no-store")
     handler.send_header("X-Content-Type-Options", "nosniff")
-    handler.send_header("Transfer-Encoding", "chunked")
+    if reply.chunks is not None:
+        handler.send_header("Transfer-Encoding", "chunked")
     for k, v in reply.headers.items():
         handler.send_header(k, v)
     handler.end_headers()
+    if reply.chunks is None:
+        handler.wfile.write(reply.body)
+        return
     try:
         for chunk in reply.chunks:
             if chunk:
@@ -2651,10 +2619,6 @@ def make_handler(service: Service, proxy_secret: str, console: ConsoleMount | No
                 raise HttpError(400 if length < 0 else 413, "bad Content-Length" if length < 0 else "body too large")
             return self.rfile.read(length) if length else b""
 
-        def _stream(self, reply: Any) -> None:
-            """A console :class:`Reply` with ``chunks``: chunked, each chunk sent as it comes (the gateway relays them)."""
-            write_reply(self, reply)
-
         def _console(self, split) -> None:
             """``/api/console/...``: only through the gateway, whose signature covers the body (so it is read first,
             bounded by the console's own limit, once the header is there)."""
@@ -2669,11 +2633,7 @@ def make_handler(service: Service, proxy_secret: str, console: ConsoleMount | No
             body = self._read_body(mount.body_limit(split.path))
             if not self._authorised(body):
                 raise HttpError(401, "missing or invalid gateway signature")
-            reply = mount.handle(self.command, self.path, body, self.headers)
-            if reply.chunks is None:
-                self._send(reply.status, raw=reply.body, content_type=reply.content_type, extra=reply.headers)
-            else:
-                self._stream(reply)
+            write_reply(self, mount.handle(self.command, self.path, body, self.headers))
 
         def _authorised(self, body: bytes) -> bool:
             if not proxy_secret:
@@ -2764,8 +2724,6 @@ def route(service: Service, method: str, path: str, query: dict[str, str], body:
             if not rest:
                 if method == "GET":
                     return ok(service.get_project(pid))
-                if method == "DELETE":
-                    return ok(service.delete_project(pid))
             elif rest == ["scenario"] and method == "PUT":
                 return ok(service.put_scenario(pid, body))
             elif rest == ["scenario"] and method == "GET":

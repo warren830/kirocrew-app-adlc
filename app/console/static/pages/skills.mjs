@@ -8,9 +8,11 @@
 import React from 'react'
 import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, useJob, Tabs, JOB_TONE,
   JOB_LABEL } from '../ui.mjs'
+import { listUnder } from './shared.mjs'
 
 const { useState, useEffect, createElement: h, Fragment } = React
 const ws = (wid, path) => `/workspaces/${wid}/skill-lab${path}`
+const useList = listUnder(ws)
 // Another team's agent: the backend refuses without acknowledged, the person confirms, and only then is it sent again.
 async function confirmed(send, what) {
   try { return await send(undefined) } catch (err) {
@@ -61,14 +63,6 @@ function Thumbs({ list, height }) {
   return h('div', { className: 'cs-row', style: { flexWrap: 'wrap', gap: 8, margin: '6px 0' } }, list.map((p) => h('figure', { key: p.key, style: { margin: 0 } },
     h('img', { src: p.src, alt: p.title, title: p.title, style: { maxHeight: height, maxWidth: height * 2, border: '1px solid #d9e2ec', borderRadius: 4, background: '#fff', display: 'block' } }),
     height > 60 ? h('figcaption', { className: 'cs-mut', style: { fontSize: 11 } }, p.title) : null)))
-}
-
-function useList(wid, path, key) {
-  const [list, setList] = useState(null)
-  const [error, setError] = useState(null)
-  const load = () => call('GET', ws(wid, path)).then((r) => { setList(listOf(r[key])); setError(null) }).catch(setError)
-  useEffect(() => { if (wid) load() }, [wid])
-  return [list, load, error]
 }
 
 // What a skill can be evaluated on: the workspace's Harnesses and its Claude Agent SDK runtimes (deployed from the template).

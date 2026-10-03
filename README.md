@@ -1,6 +1,6 @@
 # ADLC 控制台 · ADLC Platform for KiroCrew
 
-一个 KiroCrew App（`workshop-customizer`，版本 0.4.1）。装好后，KiroCrew 侧边栏里多一个「ADLC 控制台」：用 Amazon Bedrock
+一个 KiroCrew App（`workshop-customizer`，版本 0.4.2）。装好后，KiroCrew 侧边栏里多一个「ADLC 控制台」：用 Amazon Bedrock
 AgentCore 构建、评估、灰度发布 Agent，并把一份客户场景自动做成可以上课的 Workshop 场景包。
 
 ## What it does

@@ -7,6 +7,7 @@
 import React from 'react'
 import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, useJob, Tabs, JOB_TONE,
   JOB_LABEL } from '../ui.mjs'
+import { useList } from './shared.mjs'
 
 const { useState, useEffect, createElement: h, Fragment } = React
 const ex = (wid, path) => `/workspaces/${wid}/experiments${path}`
@@ -24,14 +25,6 @@ const short = (s, n = 8) => (s ? String(s).slice(0, n) : '—')
 const num = (v, d = 3) => (typeof v === 'number' ? v.toFixed(d) : '—')
 const excerpt = (s, n = 90) => { const t = String(s || '').replace(/\s+/g, ' '); return t.length > n ? `${t.slice(0, n)}…` : t || '—' }
 const split = (text) => text.split(/[\s,，]+/).filter(Boolean)
-
-function useList(wid, path, key, deps = []) {
-  const [list, setList] = useState(null)
-  const [error, setError] = useState(null)
-  const load = () => call('GET', path).then((r) => { setList(listOf(r[key])); setError(null) }).catch(setError)
-  useEffect(() => { if (wid) load() }, [wid, path, ...deps])
-  return [list, load, error]
-}
 
 // Harnesses, without the treatment Harnesses experiments make (<agent>_x<8 hex>).
 function useAgents(wid) {

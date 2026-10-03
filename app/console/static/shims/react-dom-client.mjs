@@ -1,1 +1,1 @@
-export const { createRoot, hydrateRoot } = window.ReactDOM
+export const { createRoot } = window.ReactDOM

@@ -1006,8 +1006,6 @@ def _instructor_values(ctx: InstructorContext, *, lang: str, template_commit: st
     practice_order = [by_id[c.case_id] for c in f.eval_cases if c.case_id in by_id]
     holdout = [c for c in golden if c.get("set") == "holdout"]
     narrative = _narrative_block(data)
-    kinds = teaching.case_kinds(data)
-    first = teaching.first_conversation(data) or {}
 
     def crit(value: Any) -> str:
         return str(gs.text(lang, f"criticality.{value}")) if value in ("blocking", "advisory") else md_inline(value, table=True)
@@ -1561,8 +1559,6 @@ def build_guides(
     root = Path(scenario.root) if getattr(scenario, "root", None) is not None else None
     path = Path(scenario.path) if getattr(scenario, "path", None) is not None else None
     facts = script_facts.compute(data)
-    if facts.semantics != "teaching":
-        raise GuideError("the guide describes the teaching runtime (script facts semantics 'teaching')")
     teach = teaching_view(data)
     lang = gs.lang_key(data.get("language"))
     findings: list[Finding] = []
@@ -1830,15 +1826,6 @@ def check_instructor_isolation(release_root: Path) -> ValidationReport:
     if guide.is_file() and (not readme.is_file() or readme.read_bytes() != guide.read_bytes()):
         report.findings.append(Finding("error", "guide.readme_mismatch", "README.md must be the pack's student guide, byte for byte", path="README.md"))
     return report
-
-
-def cjk_outside(text: str, allowed: Iterable[str]) -> list[str]:
-    """CJK runs of ``text`` not covered by ``allowed`` strings (the English-guide language test)."""
-    allowed = sorted({a for a in allowed if a}, key=len, reverse=True)
-    stripped = text
-    for a in allowed:
-        stripped = stripped.replace(a, " ")
-    return _CJK.findall(stripped)
 
 
 # ---------------------------------------------------------------------------

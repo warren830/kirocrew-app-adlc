@@ -98,7 +98,6 @@ def register(router: Any) -> None:
         return 200, found
 
     add("GET", "/jobs/{jid}", job)
-    add("GET", "/workspaces/{wid}/jobs", lambda r: (200, {"jobs": r.console.jobs.list(workspace=r.workspace(), kind=r.query.get("kind"))}))
 
     # -- agents and chat --------------------------------------------------------------
     def region(r: Any) -> str:
@@ -136,16 +135,10 @@ def register(router: Any) -> None:
         message = str(r.body.get("message") or "")
         sid = agents.check_turn(message, r.body.get("sessionId") or None)  # refused as a 400 now, not inside a started stream
         actor = str(r.body.get("actorId") or r.caller["username"])
-        prompt, model = r.body.get("systemPrompt") or None, r.body.get("model") or None
-        route = None if prompt or model or r.body.get("bypassExperiment") or agent["kind"] != "harness" else experiments.route_for(
-            r.console, r.workspace(), agent["id"])
-        if route:  # the agent is in an A/B test: its Gateway splits this conversation like any other
-            return sse(experiments.invoke_through(session, region(r), route, message=message, session_id=sid, actor=actor))
-        canary = runtime_canary.route_for(r.console, r.workspace(), agent["id"]) if agent["kind"] == "runtime" and not r.body.get(
-            "bypassExperiment") else None
-        if canary:  # a code agent in a canary: the canary's Gateway decides this conversation's arm
-            return sse(runtime_canary.invoke_through(session, region(r), canary, message=message, session_id=sid, actor=actor))
-        return sse(agents.invoke(session, region=region(r), agent=agent, message=message, session_id=sid, actor=actor, prompt=prompt, model=model))
+        events, _route = runtime_canary.routed_turn(r.console, r.workspace(), session, region(r), agent, message=message, session_id=sid, actor=actor,
+                                                    bypass=bool(r.body.get("bypassExperiment")), prompt=r.body.get("systemPrompt") or None,
+                                                    model=r.body.get("model") or None)
+        return sse(events)
 
     add("POST", "/workspaces/{wid}/agents/{kind}/{ident}/chat", chat)
 

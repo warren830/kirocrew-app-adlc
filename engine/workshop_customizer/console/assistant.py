@@ -100,17 +100,15 @@ import secrets
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from ..direct import verify
 from ..direct.aws import client
 from . import agents, evaluation, kb, registry, skills_lab
+from .common import now as _now
 from .web import sse
 
 DEFAULT_MODEL = "us.anthropic.claude-opus-5-5"
-#: The assistant's own models, as the page offers them (any Bedrock model id is accepted).
-ASSISTANT_MODELS = (("us.anthropic.claude-opus-5-5", "Claude Opus 5.5"), ("us.anthropic.claude-sonnet-5-5", "Claude Sonnet 5.5（更快）"))
 CID = re.compile(r"^asst-[0-9a-f]{10}$")
 MODEL_ID = re.compile(r"^[a-z0-9][a-z0-9.:_\-/]{2,199}$")
 MAX_MESSAGE = 20_000
@@ -164,10 +162,6 @@ class _Recorded(Exception):
     def __init__(self, approval: Mapping[str, Any]):
         super().__init__("recorded")
         self.approval = dict(approval)
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # -- the read-only session ------------------------------------------------------------------------------------------------
@@ -1621,8 +1615,6 @@ def register(router: Any) -> None:
             return exc.status, {"error": str(exc), **exc.extra}
 
     add, base = router.add, "/workspaces/{wid}/assistant"
-    add("GET", base + "/models", handle(lambda r: (r.workspace(), {"models": [{"id": m, "label": label} for m, label in ASSISTANT_MODELS],
-                                                                    "default": DEFAULT_MODEL})[1]))
     add("GET", base + "/conversations", handle(lambda r: {"conversations": list_conversations(r.console, r.workspace(), r.caller)}))
     add("POST", base + "/conversations", handle(lambda r: create(r.console, r.workspace(), r.caller, r.body), 201))
     add("GET", base + "/conversations/{cid}", handle(lambda r: detail(r.console, r.workspace(), r.params["cid"], r.caller)))

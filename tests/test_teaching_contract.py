@@ -35,15 +35,15 @@ def test_generation_contract_asks_for_the_teaching_skeleton_and_l1_expectations(
     assert shas["teaching"] and shas["l1"] and shas["guides"]
     assert "${" not in task and "<!-- contract:" not in task
     assert len(task.encode("utf-8")) < gen.MAX_TASK_BYTES // 20
-    zh = gen._build_task(project_id="cold-chain-test", display_name="冷链", pack_kind="customer", customer="",
-                         brief="一个为仓库操作员处理冷链事故的助手，需要回答温度偏差和交接流程的问题。")
+    zh = gen._compose_task(project_id="cold-chain-test", display_name="冷链", pack_kind="customer", customer="",
+                           brief="一个为仓库操作员处理冷链事故的助手，需要回答温度偏差和交接流程的问题。")[0]
     assert "written in the content language (zh-CN)" in zh
 
 
 def test_contract_examples_are_schema_valid():
     gen = _routes()
-    task = gen._build_task(project_id="cold-chain-test", display_name="Cold Chain", pack_kind="customer", customer="",
-                           brief="A cold-chain incident assistant for warehouse operators.")
+    task = gen._compose_task(project_id="cold-chain-test", display_name="Cold Chain", pack_kind="customer", customer="",
+                             brief="A cold-chain incident assistant for warehouse operators.")[0]
     example = json.loads(task.split("Example labs.teaching (ids are illustrative):\n", 1)[1].split("\nTEACHING SELF-CHECK", 1)[0])
     schema = load_schema()
     teaching_schema = {"$schema": schema.get("$schema"), "$defs": schema["$defs"], "$ref": "#/$defs/teaching"}

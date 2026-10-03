@@ -12,7 +12,7 @@ SPEC D2 / D8. Two layers, one module:
   complete runs are reported. Each failure maps to a remediation on a concrete asset (a knowledge
   document, the baseline or candidate prompt, a golden case, ``labs.teaching``, the judge, ops).
   ``readyForClass`` = verdict ``ready`` ∧ the current run's report complete ∧ both guides built
-  (:func:`guides_built`), judged on the build snapshot of the release the run is bound to (the CLI
+  (:func:`guide_status`), judged on the build snapshot of the release the run is bound to (the CLI
   can judge other inputs, never ready for class). Nothing else in the engine or the app sets it.
 
 Both layers read the scenario **as the release was built** (the build snapshot), never the live
@@ -554,11 +554,6 @@ def guide_status(build_dir: Path | str | None) -> dict[str, bool]:
             ok = ok and digest == manifest.get(parts[-1])
         status[name] = ok
     return status
-
-
-def guides_built(build_dir: Path | str | None) -> bool:
-    """True when both the student guide (release root README.md) and the instructor guide are built and verified."""
-    return all(guide_status(build_dir).values())
 
 
 def build_documents(scenario: Mapping[str, Any], build_dir: Path | str | None) -> dict[str, str] | None:

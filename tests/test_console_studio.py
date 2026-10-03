@@ -689,9 +689,6 @@ def test_projects_keep_versions_and_the_canvas_previews_bundles_and_downloads(se
     status, packed = client.call("POST", f"{S}/bundle", {"flow": flow, "project": {"name": "Points Support", "version": 2}})
     assert status == 200 and packed["filename"] == "points_support-v2.zip" and packed["files"] == ["main.py", "requirements.txt", "studio_flow.json"]
     assert st.read_bundle(base64.b64decode(packed["archive"]))["flow"] == st.normalize(flow)
-    status, raw = client.call("GET", f"{S}/projects/{pid}/download")
-    assert status == 200 and zipfile.ZipFile(io.BytesIO(raw)).namelist() == ["main.py", "requirements.txt", "studio_flow.json"]
-    assert client.call("GET", f"{S}/projects/{pid}/download?version=1")[0] == 400  # version 1 has no KB yet: it cannot generate
     status, kbs = client.call("GET", f"{S}/knowledge-bases")
     assert status == 200 and kbs["knowledgeBases"][0] | {} == {"id": KB, "name": "adlc-console-demo", "status": "ACTIVE", "description": "拾光家居积分规则（演示）",
                                                                 "type": "MANAGED"}
@@ -719,10 +716,9 @@ def test_deploying_a_project_runs_the_deploy_pipeline_with_a_retrieve_grant_and_
     assert [s["Resource"] for s in policy["Statement"] if s["Sid"] == "KnowledgeBases"] == [[f"arn:aws:bedrock:{REGION}:{ACCOUNT}:knowledge-base/{KB}"]]
     [smoke] = aws.named("bedrock-agentcore", "invoke_agent_runtime")
     assert json.loads(smoke["payload"]) == {"prompt": "我是会员 M1001，我现在有多少积分？这些积分多久会过期？"}  # the Input node's sample
-    status, deployments = client.call("GET", f"{S}/projects/{pid}/deployments")
-    [d] = deployments["deployments"]
-    assert (d["runtimeId"], d["jobStatus"], d["runtimeVersion"], d["flowVersion"], d["name"]) == (rid, "succeeded", "1", 1, "adlc_probe_studio_ab12cd")
-    assert client.call("GET", f"{S}/runtimes")[1]["runtimes"][0]["projectId"] == pid
+    [d] = st.studio_runtimes(console, "dev")
+    assert (d["runtimeId"], d["jobStatus"], d["runtimeVersion"], d["flowVersion"], d["name"], d["projectId"]) == (
+        rid, "succeeded", "1", 1, "adlc_probe_studio_ab12cd", pid)
     assert client.call("POST", f"{S}/open-runtime", {"runtimeId": rid})[1] == {"projectId": pid, "version": 1, "imported": False}
 
     # a new version of the same runtime, from a changed flow

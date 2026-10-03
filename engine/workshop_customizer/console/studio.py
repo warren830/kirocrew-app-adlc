@@ -93,6 +93,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from ..direct.aws import client
 from . import deploy
+from .common import now as _now, pages as _pages, safe
 from .kb import console_bucket
 
 # -- versions the generated agent pins -------------------------------------------------------------------------------
@@ -225,10 +226,6 @@ class StudioError(ValueError):
     def __init__(self, message: str, issues: Sequence[Mapping[str, Any]] | None = None):
         super().__init__(message)
         self.issues = list(issues or [])
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # -- text ----------------------------------------------------------------------------------------------------------
@@ -1273,7 +1270,8 @@ def generate(flow: Any, *, project: Mapping[str, Any] | None = None, version: in
 
 
 def bundle(files: Mapping[str, str]) -> bytes:
-    """The deployment zip: the files at its root, fixed timestamps (the same flow makes the same zip)."""
+    """The deployment zip (claude_sdk's Docker build context too): the files at its root, fixed timestamps (the same
+    flow or spec makes the same zip)."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         for name in sorted(files):
@@ -1564,21 +1562,17 @@ def resolve_kbs(session: Any, region: str, flow: Mapping[str, Any]) -> dict[str,
 def list_kbs(session: Any, region: str) -> list[dict[str, Any]]:
     """The workspace's KBs with their type (a KB node offers the ACTIVE MANAGED / VECTOR ones)."""
     agent = client(session, "bedrock-agent", region)
-    out, kwargs = [], {}
-    while True:
-        page = agent.list_knowledge_bases(**kwargs)
-        for summary in page.get("knowledgeBaseSummaries") or []:
-            entry = {"id": summary.get("knowledgeBaseId"), "name": summary.get("name"), "status": summary.get("status"),
-                     "description": summary.get("description") or "", "type": None}
-            try:
-                kb = agent.get_knowledge_base(knowledgeBaseId=entry["id"])["knowledgeBase"]
-                entry["type"] = (kb.get("knowledgeBaseConfiguration") or {}).get("type")
-            except Exception:  # noqa: BLE001 - listed without its type
-                pass
-            out.append(entry)
-        if not page.get("nextToken"):
-            return out
-        kwargs["nextToken"] = page["nextToken"]
+    out = []
+    for summary in _pages(agent.list_knowledge_bases, "knowledgeBaseSummaries"):
+        entry = {"id": summary.get("knowledgeBaseId"), "name": summary.get("name"), "status": summary.get("status"),
+                 "description": summary.get("description") or "", "type": None}
+        try:
+            kb = agent.get_knowledge_base(knowledgeBaseId=entry["id"])["knowledgeBase"]
+            entry["type"] = (kb.get("knowledgeBaseConfiguration") or {}).get("type")
+        except Exception:  # noqa: BLE001 - listed without its type
+            pass
+        out.append(entry)
+    return out
 
 
 def _job(console: Any, job_id: str | None) -> dict[str, Any] | None:
@@ -1599,11 +1593,6 @@ def _deployment_view(console: Any, record: Mapping[str, Any]) -> dict[str, Any]:
             "runtimeVersion": result.get("version") or progress.get("version") or record.get("runtimeVersion"),
             "jobStatus": job.get("status") or ("succeeded" if imported else None), "jobError": job.get("error"), "stage": progress.get("stage"),
             "smoke": result.get("smoke")}
-
-
-def project_deployments(console: Any, workspace: str, pid: str) -> list[dict[str, Any]]:
-    p = _project(console.store, workspace, pid)
-    return [_deployment_view(console, d) for d in reversed(p.get("deployments") or [])]
 
 
 def studio_runtimes(console: Any, workspace: str) -> list[dict[str, Any]]:
@@ -1755,20 +1744,7 @@ def runtime_logs(console: Any, workspace: str, runtime_id: str, *, session_id: s
 
 def _safe(fn):
     """Refusals answer 400 (with a flow's issues when they are why), a missing project or runtime 404."""
-    def route(r: Any) -> Any:
-        try:
-            return fn(r)
-        except StudioError as exc:
-            return 400, {"error": str(exc), **({"issues": exc.issues} if exc.issues else {})}
-        except deploy.DeployError as exc:
-            return 400, {"error": str(exc)}
-        except NotFound as exc:
-            return 404, {"error": str(exc)}
-        except Exception as exc:  # noqa: BLE001
-            if deploy._code(exc) == "ResourceNotFoundException":
-                return 404, {"error": f"not found: {str(exc)[:300]}"}
-            raise
-    return route
+    return safe(fn, (StudioError, deploy.DeployError), (NotFound,))
 
 
 def _preview(r: Any) -> tuple[int, dict[str, Any]]:
@@ -1791,18 +1767,10 @@ def _bundle(r: Any) -> tuple[int, dict[str, Any]]:
                  "size": len(data), "files": sorted(files)}
 
 
-def _download(r: Any) -> Any:
-    from .web import Stream
-
-    chosen = get_project(r.console, r.workspace(), r.params["pid"], r.query.get("version"))
-    files = generate(chosen["flow"], project={"id": chosen["id"], "name": chosen["name"]}, version=chosen["flowVersion"])
-    return Stream([bundle(files)], "application/zip")
-
-
 def register(router: Any) -> None:
     """``/workspaces/{wid}/studio/...``: the catalog; projects (list, create, open a version, save, delete — admin);
-    preview (validate + generate), bundle and download; the workspace's KBs; deploy (admin) and the deployments;
-    opening a deployed runtime in Studio; a runtime's recent turns and errors from its logs."""
+    preview (validate + generate) and bundle; the workspace's KBs; deploy (admin); opening a deployed runtime in
+    Studio; a runtime's recent turns and errors from its logs."""
     add = router.add
     base = "/workspaces/{wid}/studio"
 
@@ -1815,14 +1783,11 @@ def register(router: Any) -> None:
     add("GET", f"{base}/projects/{{pid}}", _safe(lambda r: (200, get_project(r.console, r.workspace(), r.params["pid"], r.query.get("version")))))
     add("PUT", f"{base}/projects/{{pid}}", _safe(lambda r: (200, save_project(r.console, r.workspace(), r.params["pid"], r.body, r.caller))))
     add("DELETE", f"{base}/projects/{{pid}}", _safe(lambda r: (200, delete_project(r.console, r.workspace(), r.params["pid"]))), admin=True)
-    add("GET", f"{base}/projects/{{pid}}/download", _safe(_download))
     add("POST", f"{base}/projects/{{pid}}/deploy", _safe(lambda r: (202, deploy_project(r.console, r.workspace(), r.params["pid"], r.body, r.caller))),
         admin=True)
-    add("GET", f"{base}/projects/{{pid}}/deployments", _safe(lambda r: (200, {"deployments": project_deployments(r.console, r.workspace(), r.params["pid"])})))
     add("POST", f"{base}/preview", _safe(lambda r: (r.workspace(), _preview(r))[1]))
     add("POST", f"{base}/bundle", _safe(lambda r: (r.workspace(), _bundle(r))[1]))
     add("GET", f"{base}/knowledge-bases", _safe(lambda r: (200, {"knowledgeBases": list_kbs(r.session(), region(r))})))
-    add("GET", f"{base}/runtimes", _safe(lambda r: (200, {"runtimes": studio_runtimes(r.console, r.workspace())})))
     add("POST", f"{base}/open-runtime", _safe(lambda r: (200, open_runtime(r.console, r.workspace(), str(r.body.get("runtimeId") or ""), r.caller))))
     add("GET", f"{base}/runtimes/{{rid}}/logs", _safe(lambda r: (200, runtime_logs(r.console, r.workspace(), r.params["rid"], session_id=r.query.get("session") or None,
                                                                                  minutes=r.query.get("minutes") or 60))))

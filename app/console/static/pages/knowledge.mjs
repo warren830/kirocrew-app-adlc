@@ -3,9 +3,9 @@
 import React from 'react'
 import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, useJob, JOB_TONE,
   JOB_LABEL } from '../ui.mjs'
+import { ws } from './shared.mjs'
 
 const { useState, useEffect, createElement: h, Fragment } = React
-const ws = (wid, path) => `/workspaces/${wid}${path}`
 const TONE = { ACTIVE: 'ok', AVAILABLE: 'ok', INDEXED: 'ok', COMPLETE: 'ok', CREATING: 'info', IN_PROGRESS: 'info', STARTING: 'info', FAILED: 'bad' }
 
 function readFiles(fileList) {

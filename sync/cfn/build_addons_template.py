@@ -30,7 +30,7 @@ SSM_DOCUMENT_CONTENT_LIMIT = 64 * 1024
 def document_sha256(document: dict) -> str:
     """Canonical sha256 of an SSM document's content (sorted keys, compact separators).
 
-    The same function lives in ``engine/workshop_customizer/sync.py`` (``run_document_sha256``); the
+    The same function lives in ``engine/workshop_customizer/sync.py`` (``document_sha256``); the
     preflight compares this stack output with the local ``sync/ssm/WorkshopCustomizerRunStep.json`` so a
     stale add-ons stack (an older RunStep parser) can never run Guided steps.
     """

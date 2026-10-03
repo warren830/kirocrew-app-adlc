@@ -160,16 +160,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import io
 import json
 import re
-import zipfile
-from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
 from ..direct.aws import client
-from . import deploy, skills_lab
-from .studio import names_for, py_str, py_value
+from . import deploy, skills_lab, studio
+from .common import now as _now, safe
+from .studio import _clean, _line, bundle, names_for, py_str, py_value
 
 SDK = "claude-agent-sdk==0.2.163"
 #: The Claude Code CLI version claude-agent-sdk 0.2.163 bundles (``_cli_version.py``): npm installs the same one.
@@ -233,27 +231,6 @@ SAMPLE_SPEC: dict[str, Any] = {
 
 class ClaudeSdkError(ValueError):
     """A spec or request the caller must fix (the route answers 400)."""
-
-
-class NotFound(LookupError):
-    pass
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-
-
-def _clean(text: Any, limit: int | None = None) -> str:
-    out = _CONTROL.sub("", str("" if text is None else text).replace("\r\n", "\n").replace("\r", "\n"))
-    out = out.encode("utf-8", "replace").decode("utf-8")
-    return out[:limit] if limit else out
-
-
-def _line(text: Any, limit: int = 120) -> str:
-    return re.sub(r"\s+", " ", _clean(text)).strip()[:limit]
 
 
 # -- the spec ------------------------------------------------------------------------------------------------------------
@@ -1573,18 +1550,6 @@ def generate(spec: Mapping[str, Any], *, skills: Mapping[str, Mapping[str, Any]]
     return files
 
 
-def bundle(files: Mapping[str, str]) -> bytes:
-    """The Docker build context as a zip: the files at its root, fixed timestamps (the same spec makes the same zip)."""
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name in sorted(files):
-            info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
-            info.external_attr = 0o644 << 16
-            info.compress_type = zipfile.ZIP_DEFLATED
-            archive.writestr(info, files[name].encode("utf-8"))
-    return buffer.getvalue()
-
-
 def catalog() -> dict[str, Any]:
     """What the form offers: models, built-in tools, efforts, limits, the deploy options' defaults, the sample."""
     return {"models": [{"id": m, "label": label} for m, label in MODELS], "defaultModel": DEFAULT_MODEL, "defaultFastModel": DEFAULT_FAST_MODEL,
@@ -1599,16 +1564,10 @@ def catalog() -> dict[str, Any]:
 
 # -- the console's side ---------------------------------------------------------------------------------------------------
 
-def _context(console: Any, workspace: str) -> tuple[dict[str, Any], Any]:
-    ws = console.workspaces.get(workspace)
-    console.workspaces.verify(workspace)
-    return ws, console.workspaces.session(workspace)
-
-
 def build(console: Any, workspace: str, body: Mapping[str, Any]) -> dict[str, Any]:
     """A spec checked and generated against the workspace (its skills read from the library, its KBs described)."""
     spec = check_spec(body)
-    ws, session = _context(console, workspace)
+    ws, session = deploy._context(console, workspace)
     skills = load_skills(console, workspace, spec)
     kbs = resolve_kbs(session, ws["region"], spec["knowledgeBases"])
     files = generate(spec, skills=skills, kbs=kbs, region=ws["region"])
@@ -1656,7 +1615,7 @@ def deploy_agent(console: Any, workspace: str, body: Mapping[str, Any], caller: 
         spec_body["name"] = record["name"]
     built = build(console, workspace, spec_body)
     spec = built["spec"]
-    ws, session = _context(console, workspace)
+    ws, session = deploy._context(console, workspace)
     mount = None
     storage = deploy.check_session_storage(body.get("sessionStorage"))
     if storage:
@@ -1692,19 +1651,10 @@ def deploy_agent(console: Any, workspace: str, body: Mapping[str, Any], caller: 
     return {**job, "claude": entry}
 
 
-def _job(console: Any, job_id: str | None) -> dict[str, Any]:
-    if not job_id:
-        return {}
-    try:
-        return console.jobs.get(job_id)
-    except (KeyError, OSError, ValueError):
-        return {}
-
-
 def _view(console: Any, rec: Mapping[str, Any]) -> dict[str, Any]:
     deployments = []
     for d in reversed(rec.get("deployments") or []):
-        job = _job(console, d.get("jobId"))
+        job = studio._job(console, d.get("jobId")) or {}
         result, progress = job.get("result") or {}, job.get("progress") or {}
         deployments.append({**d, "runtimeId": d.get("runtimeId") or result.get("runtimeId") or progress.get("runtimeId"),
                             "version": result.get("version") or progress.get("version"), "jobStatus": job.get("status"), "jobError": job.get("error"),
@@ -1719,42 +1669,16 @@ def list_agents(console: Any, workspace: str) -> list[dict[str, Any]]:
     return [_view(console, r) for r in sorted(mine, key=lambda r: str(r.get("updatedAt") or ""), reverse=True)]
 
 
-def get_agent(console: Any, workspace: str, name: str) -> dict[str, Any]:
-    rec = (console.store.read(COLLECTION, {}) or {}).get(_key(workspace, name))
-    if not rec:
-        raise NotFound(f"no Claude Agent SDK agent {name} in this workspace")
-    return _view(console, rec)
-
-
-def forget_agent(console: Any, workspace: str, name: str) -> dict[str, Any]:
-    """Forget an agent's spec (its runtime stays: delete it from 已部署)."""
-    agent = get_agent(console, workspace, name)
-    console.store.update(COLLECTION, {}, lambda all_: {k: v for k, v in all_.items() if k != _key(workspace, name)})
-    return {"forgotten": name, "runtimeLeft": agent.get("runtimeId")}
-
-
 # -- routes ---------------------------------------------------------------------------------------------------------------
 
 def _safe(fn: Any) -> Any:
-    """Refusals answer 400, a missing agent or runtime 404."""
-    def route(r: Any) -> Any:
-        try:
-            return fn(r)
-        except (ClaudeSdkError, deploy.DeployError) as exc:
-            return 400, {"error": str(exc)}
-        except NotFound as exc:
-            return 404, {"error": str(exc)}
-        except Exception as exc:  # noqa: BLE001
-            if deploy._code(exc) == "ResourceNotFoundException":
-                return 404, {"error": f"not found: {str(exc)[:300]}"}
-            raise
-    return route
+    """Refusals answer 400, a missing runtime 404."""
+    return safe(fn, (ClaudeSdkError, deploy.DeployError))
 
 
 def register(router: Any) -> None:
     """``/workspaces/{wid}/claude-sdk/...``: the catalog; preview (the generated files) and bundle (the zip); deploy
-    (admin: a new runtime, or a new version with ``runtimeId``); the agents made from the template and one agent's
-    spec; forgetting one (admin)."""
+    (admin: a new runtime, or a new version with ``runtimeId``); the agents made from the template."""
     add = router.add
     base = "/workspaces/{wid}/claude-sdk"
     add("GET", f"{base}/catalog", _safe(lambda r: (r.workspace(), (200, catalog()))[1]))
@@ -1762,5 +1686,3 @@ def register(router: Any) -> None:
     add("POST", f"{base}/bundle", _safe(lambda r: (200, download(r.console, r.workspace(), r.body))))
     add("POST", f"{base}/deploy", _safe(lambda r: (202, deploy_agent(r.console, r.workspace(), r.body, r.caller))), admin=True)
     add("GET", f"{base}/agents", _safe(lambda r: (200, {"agents": list_agents(r.console, r.workspace())})))
-    add("GET", f"{base}/agents/{{name}}", _safe(lambda r: (200, get_agent(r.console, r.workspace(), r.params["name"]))))
-    add("DELETE", f"{base}/agents/{{name}}", _safe(lambda r: (200, forget_agent(r.console, r.workspace(), r.params["name"]))), admin=True)

@@ -6,9 +6,10 @@
 import React from 'react'
 import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, useJob, Tabs, JOB_TONE,
   JOB_LABEL, STATUS_TONE } from '../ui.mjs'
+import { ws, listUnder, download } from './shared.mjs'
 
 const { useState, useEffect, createElement: h, Fragment } = React
-const ws = (wid, path) => `/workspaces/${wid}${path}`
+const useList = listUnder(ws)
 const MAX_BYTES = 18 * 1024 * 1024 // the console takes 25 MB JSON bodies; the zip travels base64-encoded in one
 
 const SOURCES = [['zip', 'Python 代码 zip（直接部署）'], ['dockerfile', 'Dockerfile 构建目录 zip（CodeBuild 构建镜像）'], ['image', '已有的 ECR 镜像']]
@@ -27,14 +28,6 @@ const ranked = (counts) => Object.entries(counts || {}).sort(([a], [b]) => (SEVE
 const SCAN_BLOCKS = [['CRITICAL', '有 CRITICAL 就拦下（默认）'], ['CRITICAL,HIGH', '有 CRITICAL 或 HIGH 就拦下'], ['', '只报告，不拦']]
 const MOUNT = '/mnt/workspace'
 
-function useList(wid, path, key, deps = []) {
-  const [list, setList] = useState(null)
-  const [error, setError] = useState(null)
-  const load = () => call('GET', ws(wid, path)).then((r) => { setList(listOf(r[key])); setError(null) }).catch(setError)
-  useEffect(() => { if (wid) load() }, [wid, ...deps])
-  return [list, load, error]
-}
-
 function readBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -42,18 +35,6 @@ function readBase64(file) {
     reader.onerror = () => reject(reader.error || new Error('读取文件失败'))
     reader.readAsDataURL(file)
   })
-}
-
-function download(filename, base64, type = 'application/zip') {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-  const url = URL.createObjectURL(new Blob([bytes], { type }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 2000)
 }
 
 function parseEnv(text) {

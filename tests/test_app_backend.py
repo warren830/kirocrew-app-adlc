@@ -7,6 +7,7 @@ import io
 import json
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -33,6 +34,13 @@ def _load_server():
 
 
 server_mod = _load_server()
+
+
+def wait_job(jobs, job: dict, timeout: float) -> None:
+    """Poll until ``job`` is no longer its project's active job (its thread has finished and released it)."""
+    deadline = time.monotonic() + timeout
+    while jobs.active(job["project"]) == job["id"] and time.monotonic() < deadline:
+        time.sleep(0.05)
 
 
 class Client:
@@ -286,12 +294,6 @@ def test_rollback_refuses_rolled_back_claim_while_aws_resources_exist(running, p
     assert c.call("GET", f"/projects/{project}")[1]["status"] == "rolled-back"
     events = [h["event"] for h in c.call("GET", f"/projects/{project}/sync/history")[1]["history"]]
     assert events[-2:] == ["rollback", "rollback"]
-
-
-def test_delete_project(running):
-    c = running["client"]
-    assert c.call("DELETE", "/projects/globex-hr")[0] == 200
-    assert c.call("GET", "/projects/globex-hr")[0] == 404
 
 
 def test_guided_run_requires_build_and_persists(running, project):

@@ -25,7 +25,6 @@ Exit 0 when the fast verdict is ready, 3 when not, 2 on an environment or run fa
 from __future__ import annotations
 
 import argparse
-import hashlib
 import io
 import json
 import sys

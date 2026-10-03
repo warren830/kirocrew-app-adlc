@@ -212,7 +212,7 @@ def test_derivations_hold_on_a_schema_valid_reference_pack_with_teaching(tmp_pat
     assert teaching.probe_start_index(d) == 3
     assert teaching.teaching_document_ids(d, scenario.root) == ("spare-parts",)
     answer = teaching.answer_documents(d, "filler-lubrication-interval", scenario.root)
-    assert answer.terms == ("250",) and answer.answer == ("preventive-maintenance",) and answer.missing_terms == ()
+    assert answer.terms == ("250",) and answer.answer == ("preventive-maintenance",)
 
 
 # ---------------------------------------------------------------------------
@@ -271,7 +271,7 @@ def test_answer_documents_for_a_prompt_fixable_case():
     found = teaching.answer_documents(data, "e-fix", texts=TEXTS)
     assert found == teaching.AnswerDocuments(
         case_id="e-fix", terms=("alpha", "gamma"), answer=("doc-answer", "doc-other"), complete=("doc-answer",),
-        missing_terms=(), bait_terms=(), bait=(),
+        bait_terms=(), bait=(),
     )
 
 
@@ -286,11 +286,11 @@ def test_answer_documents_for_a_buried_gap_reports_bait_in_noise_documents_only(
     assert found.bait == ("doc-noise",)  # doc-answer mentions the bait but is not a noise document
 
 
-def test_answer_documents_reports_missing_terms_and_rejects_unknown_input():
+def test_answer_documents_reports_partial_answers_and_rejects_unknown_input():
     data = _data(PHENOMENA)
     data["evaluation"]["goldenSet"][3]["expected"]["mustMention"] = ["alpha", "omega"]
     found = teaching.answer_documents(data, "c-fix", texts=TEXTS)
-    assert found.answer == ("doc-answer",) and found.complete == () and found.missing_terms == ("omega",)
+    assert found.answer == ("doc-answer",) and found.complete == ()
     with pytest.raises(KeyError):
         teaching.answer_documents(data, "nope", texts=TEXTS)
     with pytest.raises(ValueError):

@@ -23,6 +23,8 @@ from ..direct import online
 from ..direct.aws import client
 from ..direct.traces import TraceStore
 
+from .common import pages as _pages
+
 NAMESPACE = "AWS/Bedrock-AgentCore"
 EVALUATIONS = "Bedrock-AgentCore/Evaluations"
 #: (metric, statistic) shown for an agent.
@@ -97,13 +99,7 @@ def session_scores(session: Any, region: str, agent: Mapping[str, Any], hours: f
     log group (only read), and those evaluations' names."""
     group = runtime_group(agent)
     ctl, logs = client(session, "bedrock-agentcore-control", region), client(session, "logs", region)
-    configs, token = [], None
-    while True:
-        page = ctl.list_online_evaluation_configs(**({"nextToken": token} if token else {}))
-        configs += page.get("onlineEvaluationConfigs") or []
-        token = page.get("nextToken")
-        if not token:
-            break
+    configs = _pages(ctl.list_online_evaluation_configs, "onlineEvaluationConfigs")
     since = int((time.time() - float(hours) * 3600) * 1000)
     scores: dict[str, dict[str, Any]] = {}
     names = []

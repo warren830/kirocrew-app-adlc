@@ -195,7 +195,7 @@ def test_a_turn_that_failed_part_way_is_a_502_with_what_arrived(monkeypatch):
     from workshop_customizer.console import public
 
     monkeypatch.setattr(public, "_agent", lambda console, scope, name: (None, "us-west-2", {"kind": "harness", "id": "h", "name": "bot", "arn": "a"}))
-    monkeypatch.setattr(public.experiments, "route_for", lambda *a, **kw: None)
+    monkeypatch.setattr(public.runtime_canary.ex, "route_for", lambda *a, **kw: None)
     monkeypatch.setattr(public.agents, "invoke", lambda *a, **kw: iter([{"type": "session", "sessionId": "s"}, {"type": "text", "text": "Your refund of "},
                                                                         {"type": "error", "error": "EventStreamError: cut"}]))
     console = type("C", (), {"auth": type("A", (), {"key_scope": lambda _s, key: {"workspace": "dev", "keyId": "k"}})()})()

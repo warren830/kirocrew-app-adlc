@@ -14,9 +14,9 @@ import re
 import secrets
 import threading
 import time
-from datetime import datetime, timezone
 from typing import Any
 
+from .common import now as _now
 from .store import Store
 
 USERNAME = re.compile(r"^[a-z][a-z0-9_.-]{1,31}$")
@@ -28,10 +28,6 @@ KEY_PREFIX = "adlc_live_"
 
 class AuthError(PermissionError):
     pass
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def hash_password(password: str, salt: str | None = None) -> str:

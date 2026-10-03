@@ -9,8 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-STATUSES = ("not_started", "running", "passed", "failed", "blocked")
-
 @dataclass(frozen=True)
 class GuideStep:
     id: str

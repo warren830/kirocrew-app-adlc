@@ -50,8 +50,6 @@ def test_shared_authored_actors_are_not_a_policy_problem():
 @pytest.mark.parametrize("name", PACKS)
 def test_teaching_facts_give_every_case_its_own_persona(name):
     data = _pack(name)
-    facts = script_facts.compute(data, semantics="teaching")
+    facts = script_facts.compute(data)
     by_id = {c["id"]: c for c in data["evaluation"]["goldenSet"]}
-    assert facts.actor_mode == "per_case"
     assert [c.actor_id for c in facts.eval_cases] == [by_id[c.case_id]["actorId"] for c in facts.eval_cases]
-    assert facts.baseline_actor is None and facts.optimize_actor is None

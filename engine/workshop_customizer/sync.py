@@ -371,7 +371,7 @@ def resources_present(checks: list[Check]) -> bool:
 
 def build_bundle(release_dir: Path, out_zip: Path) -> tuple[Path, str]:
     """Zip a verified release deterministically (fixed timestamps, sorted entries)."""
-    manifest = verify_release(release_dir)
+    verify_release(release_dir)
     out_zip.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(p for p in release_dir.rglob("*") if p.is_file()):

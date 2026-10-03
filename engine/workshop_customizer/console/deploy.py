@@ -121,12 +121,12 @@ import uuid
 import zipfile
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import PurePosixPath
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from ..direct.aws import client
-from .agents import CONSOLE_TAG, ROLE_PATH, adopt, ensure_boundary, refusal, role_args, role_tags
+from .agents import CONSOLE_TAG, ROLE_PATH, adopt, ensure_boundary, refusal, role_args
+from .common import error_code as _code, now as _now, pages as _pages, safe
 from .kb import console_bucket  # deployments keep their sources under deployments/<runtime name>/<job>/
 from .workspaces import boundary_of
 
@@ -254,15 +254,6 @@ class Skip(str):
     """A stage's result when it had nothing to do (recorded as ``skipped`` with this reason)."""
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _code(exc: BaseException) -> str:
-    response = getattr(exc, "response", None)
-    return str(((response or {}).get("Error") or {}).get("Code") or "") if isinstance(response, dict) else ""
-
-
 def _transient(exc: BaseException) -> bool:
     """A network failure — a dropped TLS session, a timeout, a closed connection — rather than an answer from AWS.
     Live, the console machine's proxy dropped TLS for minutes and a delete's wait died on it: a poll reads again."""
@@ -275,16 +266,6 @@ def _missing(exc: BaseException) -> bool:
     return _code(exc) in ("ResourceNotFoundException", "NoSuchEntity", "RepositoryNotFoundException", "404", "NoSuchBucket", "NotFound")
 
 
-def _paged(call: Callable[..., Any], key: str, **kwargs: Any) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    while True:
-        page = call(**kwargs)
-        out += page.get(key) or []
-        if not page.get("nextToken"):
-            return out
-        kwargs["nextToken"] = page["nextToken"]
-
-
 #: More versions than this are not all read: what a runtime runs is then not known, and nothing it might run is deleted.
 MAX_VERSIONS = 200
 
@@ -294,7 +275,7 @@ def runtime_versions(ctl: Any, runtime_id: str) -> tuple[list[dict[str, Any]], b
     endpoint or a rollback can return to any version, so whatever one runs is in use. Raises when the runtime itself
     cannot be read."""
     current = ctl.get_agent_runtime(agentRuntimeId=runtime_id)
-    listed = _paged(ctl.list_agent_runtime_versions, "agentRuntimes", agentRuntimeId=runtime_id)
+    listed = _pages(ctl.list_agent_runtime_versions, "agentRuntimes", agentRuntimeId=runtime_id)
     found, complete = [current], len(listed) <= MAX_VERSIONS
     for v in listed[:MAX_VERSIONS]:
         version = str(v.get("agentRuntimeVersion") or "")
@@ -861,7 +842,7 @@ class Pipeline(Staged):
     # -- validate ----------------------------------------------------------------------------------------------------
     def _validate(self) -> str:
         if self.mode == "create":
-            taken = next((r for r in _paged(self.ctl.list_agent_runtimes, "agentRuntimes") if r.get("agentRuntimeName") == self.name), None)
+            taken = next((r for r in _pages(self.ctl.list_agent_runtimes, "agentRuntimes") if r.get("agentRuntimeName") == self.name), None)
             if taken:
                 raise DeployError(f"a runtime named {self.name} exists ({taken.get('agentRuntimeId')}): publish a new version of it instead")
         else:
@@ -1502,7 +1483,7 @@ class Teardown(Staged):
             found: dict[str, Any] = {"runtimes": [], "roles": set(), "repositories": set(), "images": set(), "code": set(), "complete": True}
             if self.runtime is None:
                 twin = re.compile(rf"^{re.escape(self.name[:38])}_c[0-9a-f]{{8}}$")
-                for r in _paged(self.ctl.list_agent_runtimes, "agentRuntimes"):
+                for r in _pages(self.ctl.list_agent_runtimes, "agentRuntimes"):
                     rid, rname = str(r.get("agentRuntimeId") or ""), str(r.get("agentRuntimeName") or "")
                     if rid == self.runtime_id or not (rname == self.name or twin.match(rname)):
                         continue
@@ -1578,14 +1559,14 @@ class Teardown(Staged):
     def _endpoints(self) -> str:
         if self.runtime is None:
             return Skip("no runtime")
-        named = [e["name"] for e in _paged(self.ctl.list_agent_runtime_endpoints, "runtimeEndpoints", agentRuntimeId=self.runtime_id)
+        named = [e["name"] for e in _pages(self.ctl.list_agent_runtime_endpoints, "runtimeEndpoints", agentRuntimeId=self.runtime_id)
                  if e.get("name") != "DEFAULT"]
         if not named:
             return Skip("no named endpoints")
         for endpoint in named:
             self.ctl.delete_agent_runtime_endpoint(agentRuntimeId=self.runtime_id, endpointName=endpoint)
         deadline = self.clock() + self.TIMEOUT
-        while [e for e in self._read(lambda: _paged(self.ctl.list_agent_runtime_endpoints, "runtimeEndpoints", agentRuntimeId=self.runtime_id))
+        while [e for e in self._read(lambda: _pages(self.ctl.list_agent_runtime_endpoints, "runtimeEndpoints", agentRuntimeId=self.runtime_id))
                if e.get("name") in named]:
             if self.clock() > deadline:
                 raise DeployError(f"the endpoints {', '.join(named)} are still there after {int(self.TIMEOUT / 60)} min")
@@ -1698,73 +1679,6 @@ class Teardown(Staged):
         return f"{count} object version(s) under s3://{bucket}/{where} deleted" if count else Skip("no sources")
 
 
-def build_role_users(session: Any, region: str, role: str) -> list[str] | None:
-    """The CodeBuild projects, in every region enabled in the account, whose service role is ``role`` (the shared build
-    role of a console before per-region roles could serve a project in any of them), as ``<region>/<project>``; None
-    when that cannot be known (the regions or a region's projects cannot be read: a spoke role reads one region only)."""
-    try:
-        regions = sorted(r["RegionName"] for r in client(session, "ec2", region).describe_regions().get("Regions") or [])
-    except Exception:  # noqa: BLE001 - not readable here: unknown
-        return None
-    users: list[str] = []
-    for where in regions or [region]:
-        cb = client(session, "codebuild", where)
-        try:
-            names, token = [], None
-            while True:
-                page = cb.list_projects(**({"nextToken": token} if token else {}))
-                names += page.get("projects") or []
-                token = page.get("nextToken")
-                if not token:
-                    break
-            for i in range(0, len(names), 100):
-                users += [f"{where}/{p.get('name')}" for p in cb.batch_get_projects(names=names[i:i + 100]).get("projects") or []
-                          if str(p.get("serviceRole") or "").rsplit("/", 1)[-1] == role]
-        except Exception:  # noqa: BLE001 - a region this workspace cannot read: unknown
-            return None
-    return users
-
-
-def remove_build_infrastructure(session: Any, *, account: str, region: str, names: Names = NAMES, boundary: str | None = None) -> dict[str, Any]:
-    """Delete the region's shared build project, its role and its log group, when the console created them (a role the
-    console may not adopt, ``agents.refusal``, stays). The one build role of a console before per-region roles
-    (``<prefix>-build``) may serve another region's project: it is deleted once no CodeBuild project in any region of
-    the account runs with it, and stays while one does or that cannot be read (``legacyRole`` says which)."""
-    cb, iam, logs = client(session, "codebuild", region), client(session, "iam"), client(session, "logs", region)
-    out: dict[str, Any] = {"project": None, "role": None, "logGroup": None, "legacyRole": None}
-    found = cb.batch_get_projects(names=[names.build_project]).get("projects") or []
-    if found:
-        if {t.get("key"): t.get("value") for t in found[0].get("tags") or []}.get("adlc:console") != "1":
-            raise DeployError(f"the CodeBuild project {names.build_project} is not the console's")
-        cb.delete_project(name=names.build_project)
-        out["project"] = names.build_project
-    for key, role in (("role", names.build_role(region)), ("legacyRole", names.build_project)):
-        try:
-            got = iam.get_role(RoleName=role)["Role"]
-        except Exception as exc:  # noqa: BLE001
-            if not _missing(exc):
-                raise
-            continue
-        tags = role_tags(iam, role)
-        if tags.get("adlc:console") != "1" or refusal(role, got, tags, boundary) is not None:
-            continue
-        if key == "legacyRole":
-            users = build_role_users(session, region, role)
-            if users != []:
-                out[key] = {"kept": role, "usedBy": users} if users else {"kept": role, "usedBy": "unknown: not every region's projects could be read"}
-                continue
-        delete_role(iam, role, boundary)
-        out[key] = role
-    group = f"/aws/codebuild/{names.build_project}"
-    try:
-        logs.delete_log_group(logGroupName=group)
-        out["logGroup"] = group
-    except Exception as exc:  # noqa: BLE001
-        if not _missing(exc):
-            raise
-    return out
-
-
 # -- the console's side ----------------------------------------------------------------------------------------------
 
 def _console_runtime(ctl: Any, runtime_id: str) -> tuple[dict[str, Any], dict[str, str]]:
@@ -1870,8 +1784,7 @@ def _refuse_held(console: Any, workspace: str, runtime_id: str, endpoint: str | 
         raise _held_error(rec, what)
 
 
-def start_deploy(console: Any, workspace: str, body: Mapping[str, Any], *, runtime_id: str | None = None, names: Names = NAMES,
-                 sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
+def start_deploy(console: Any, workspace: str, body: Mapping[str, Any], *, runtime_id: str | None = None, names: Names = NAMES) -> dict[str, Any]:
     """Start a ``deploy`` job: a new runtime, or (``runtime_id``) a new version of a console runtime."""
     req = deploy_request(body, mode="update" if runtime_id else "create")
     ws, session = _context(console, workspace)
@@ -1881,13 +1794,13 @@ def start_deploy(console: Any, workspace: str, body: Mapping[str, Any], *, runti
         current, _tags = _console_runtime(ctl, runtime_id)
         req["name"] = str(current["agentRuntimeName"])
         record = _records(console.store, workspace).get(runtime_id)
-    elif any(r.get("agentRuntimeName") == req["name"] for r in _paged(ctl.list_agent_runtimes, "agentRuntimes")):
+    elif any(r.get("agentRuntimeName") == req["name"] for r in _pages(ctl.list_agent_runtimes, "agentRuntimes")):
         raise DeployError(f"a runtime named {req['name']} exists: publish a new version of it instead")
     params = {**public_params(req), **({"runtimeId": runtime_id} if runtime_id else {})}
 
     def work(job: Any) -> dict[str, Any]:
         return Pipeline(session, account=ws["accountId"], region=ws["region"], request=req, job=job, names=names, current=current, record=record,
-                        on_runtime=lambda fields: _remember(console.store, workspace, fields), sleep=sleep, boundary=boundary_of(ws)).run()
+                        on_runtime=lambda fields: _remember(console.store, workspace, fields), boundary=boundary_of(ws)).run()
 
     with moves(runtime_id) if runtime_id else moves(f"create:{req['name']}"):  # a new runtime: one create of a name at a time
         if runtime_id:
@@ -1901,8 +1814,7 @@ def start_deploy(console: Any, workspace: str, body: Mapping[str, Any], *, runti
         return console.jobs.start("deploy", workspace, params, work, label=f"{'新版本' if runtime_id else '部署'} {req['name']}")
 
 
-def start_delete(console: Any, workspace: str, runtime_id: str, *, keep_repository: bool = False, names: Names = NAMES,
-                 sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
+def start_delete(console: Any, workspace: str, runtime_id: str, *, keep_repository: bool = False, names: Names = NAMES) -> dict[str, Any]:
     """Start an ``undeploy`` job for a console runtime (or what is left of one the console recorded)."""
     if not RUNTIME_ID.match(runtime_id or ""):
         raise DeployError(f"not a runtime id: {runtime_id}")
@@ -1919,7 +1831,7 @@ def start_delete(console: Any, workspace: str, runtime_id: str, *, keep_reposito
 
     def work(job: Any) -> dict[str, Any]:
         out = Teardown(session, account=ws["accountId"], region=ws["region"], runtime_id=runtime_id, name=name, runtime=runtime, job=job,
-                       keep_repository=keep_repository, record=record, names=names, sleep=sleep, boundary=boundary_of(ws)).run()
+                       keep_repository=keep_repository, record=record, names=names, boundary=boundary_of(ws)).run()
         console.store.update("deployments", {}, lambda all_: {k: v for k, v in all_.items() if k != runtime_id})
         return out
 
@@ -1936,7 +1848,7 @@ def deployments(console: Any, workspace: str) -> list[dict[str, Any]]:
     if not records:
         return []
     ws, session = _context(console, workspace)
-    live = {r["agentRuntimeId"]: r for r in _paged(client(session, "bedrock-agentcore-control", ws["region"]).list_agent_runtimes, "agentRuntimes")}
+    live = {r["agentRuntimeId"]: r for r in _pages(client(session, "bedrock-agentcore-control", ws["region"]).list_agent_runtimes, "agentRuntimes")}
     out = []
     for rid, rec in records.items():
         r = live.get(rid) or {}
@@ -1961,8 +1873,8 @@ def deployment(console: Any, workspace: str, runtime_id: str) -> dict[str, Any]:
             raise
         return {"runtimeId": runtime_id, "name": record.get("name"), "status": "MISSING", "console": True, "record": record, "versions": [], "endpoints": []}
     tags = ctl.list_tags_for_resource(resourceArn=r["agentRuntimeArn"]).get("tags") or {}
-    versions = _paged(ctl.list_agent_runtime_versions, "agentRuntimes", agentRuntimeId=runtime_id)
-    endpoints = _paged(ctl.list_agent_runtime_endpoints, "runtimeEndpoints", agentRuntimeId=runtime_id)
+    versions = _pages(ctl.list_agent_runtime_versions, "agentRuntimes", agentRuntimeId=runtime_id)
+    endpoints = _pages(ctl.list_agent_runtime_endpoints, "runtimeEndpoints", agentRuntimeId=runtime_id)
     return {"runtimeId": runtime_id, "name": r.get("agentRuntimeName"), "arn": r.get("agentRuntimeArn"), "status": r.get("status"),
             "version": r.get("agentRuntimeVersion"), "failureReason": r.get("failureReason"), "artifact": r.get("agentRuntimeArtifact"),
             "protocol": (r.get("protocolConfiguration") or {}).get("serverProtocol"), "roleArn": r.get("roleArn"),
@@ -2024,16 +1936,7 @@ def deploy_jobs(console: Any, workspace: str) -> list[dict[str, Any]]:
 
 def _safe(fn: Callable[[Any], Any]) -> Callable[[Any], Any]:
     """A route whose refusals answer 400 and whose missing runtime answers 404 (not an internal error)."""
-    def route(r: Any) -> Any:
-        try:
-            return fn(r)
-        except DeployError as exc:
-            return 400, {"error": str(exc)}
-        except Exception as exc:  # noqa: BLE001
-            if _code(exc) == "ResourceNotFoundException":
-                return 404, {"error": f"not found: {str(exc)[:300]}"}
-            raise
-    return route
+    return safe(fn, (DeployError,))
 
 
 def register(router: Any) -> None:

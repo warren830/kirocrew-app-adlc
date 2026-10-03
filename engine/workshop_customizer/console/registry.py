@@ -47,6 +47,7 @@ from urllib.parse import quote
 
 from ..direct.aws import client
 from .agents import CONSOLE_TAG, AgentError
+from .common import guarded as common_guarded, pages
 
 CONTROL, DISCOVERY = "agent-registry-control", "agent-registry"
 #: The console's record kinds and the service's record types.
@@ -82,18 +83,6 @@ def _ctl(session: Any, region: str) -> Any:
 
 def _ts(value: Any) -> str:
     return value.isoformat() if hasattr(value, "isoformat") else str(value or "")
-
-
-def _pages(call: Any, key: str, **kwargs: Any) -> list[dict[str, Any]]:
-    """Every page (live: ListRegistries answers an empty first page that still carries a nextToken)."""
-    out: list[dict[str, Any]] = []
-    for _ in range(100):
-        page = call(**kwargs)
-        out += page.get(key) or []
-        if not page.get("nextToken"):
-            break
-        kwargs["nextToken"] = page["nextToken"]
-    return out
 
 
 def _tags(ctl: Any, arn: str) -> dict[str, str]:
@@ -146,7 +135,7 @@ def registries(session: Any, region: str) -> list[dict[str, Any]]:
     console's."""
     ctl = _ctl(session, region)
     out = []
-    for summary in _pages(ctl.list_registries, "registries", maxResults=100):
+    for summary in pages(ctl.list_registries, "registries", max_pages=100, maxResults=100):
         item = _registry(summary)
         try:
             item.update({k: v for k, v in _registry(ctl.get_registry(registryId=summary["registryId"])).items() if v is not None})
@@ -188,7 +177,7 @@ def delete_registry(session: Any, region: str, ident: str, *, with_records: bool
     got = ctl.get_registry(registryId=registry_id(ident))
     if not _console(_tags(ctl, str(got["registryArn"]))):
         raise RegistryError("only registries created from this console can be deleted here")
-    held = _pages(ctl.list_registry_records, "registryRecords", registryId=ident, maxResults=100)
+    held = pages(ctl.list_registry_records, "registryRecords", max_pages=100, registryId=ident, maxResults=100)
     foreign = [str(r.get("name")) for r in held if not _console(_tags(ctl, str(r["recordArn"])))]
     if foreign:
         raise RegistryError(f"the registry holds {len(foreign)} record(s) this console did not create ({', '.join(foreign[:5])}): it stays")
@@ -268,7 +257,7 @@ def records(session: Any, region: str, ident: str, kind: str | None = None, stat
     kwargs: dict[str, Any] = {"registryId": registry_id(ident), "maxResults": 100}
     if filters:
         kwargs["filters"] = filters
-    return [summary(r) for r in _pages(_ctl(session, region).list_registry_records, "registryRecords", **kwargs)]
+    return [summary(r) for r in pages(_ctl(session, region).list_registry_records, "registryRecords", max_pages=100, **kwargs)]
 
 
 def get_record(session: Any, region: str, ident: str, rec: str) -> dict[str, Any]:
@@ -400,7 +389,8 @@ def gateways(session: Any, region: str) -> list[dict[str, Any]]:
     """The workspace's MCP Gateways (what an MCP record can describe)."""
     ctl = client(session, "bedrock-agentcore-control", region)
     return [{"id": g.get("gatewayId"), "name": g.get("name"), "status": g.get("status"), "authorizer": g.get("authorizerType"),
-             "description": g.get("description") or ""} for g in _pages(ctl.list_gateways, "items", maxResults=100) if g.get("protocolType") == "MCP"]
+             "description": g.get("description") or ""} for g in pages(ctl.list_gateways, "items", max_pages=100, maxResults=100)
+            if g.get("protocolType") == "MCP"]
 
 
 def gateway_mcp(session: Any, region: str, gateway: str) -> dict[str, Any]:
@@ -410,7 +400,7 @@ def gateway_mcp(session: Any, region: str, gateway: str) -> dict[str, Any]:
     if g.get("protocolType") != "MCP":
         raise RegistryError(f"Gateway {g.get('name')} is not an MCP Gateway")
     tools, opaque = [], []
-    for target in _pages(ctl.list_gateway_targets, "items", gatewayIdentifier=g["gatewayId"]):
+    for target in pages(ctl.list_gateway_targets, "items", max_pages=100, gatewayIdentifier=g["gatewayId"]):
         got = ctl.get_gateway_target(gatewayIdentifier=g["gatewayId"], targetId=target["targetId"])
         mcp = (got.get("targetConfiguration") or {}).get("mcp") or {}
         inline = next((((v or {}).get("toolSchema") or {}).get("inlinePayload") for v in mcp.values()
@@ -721,32 +711,9 @@ def search(session: Any, region: str, ident: str, query: str, kind: str | None =
 
 # -- routes ---------------------------------------------------------------------------------------------------------
 
-def _aws(exc: BaseException) -> tuple[int, str] | None:
-    response = getattr(exc, "response", None)
-    if not isinstance(response, dict) or "Error" not in response:
-        return None
-    error = response.get("Error") or {}
-    status = int((response.get("ResponseMetadata") or {}).get("HTTPStatusCode") or 500)
-    return (status if 400 <= status < 500 else 502), f"{error.get('Code') or type(exc).__name__}: {error.get('Message') or exc}"
-
-
 def guarded(fn: Callable[[Any], Any]) -> Callable[[Any], Any]:
     """A route whose refusals are answers: the console's own checks a 400, AWS's errors their own 4xx (502 for 5xx)."""
-    def run(r: Any) -> Any:
-        try:
-            return fn(r)
-        except (RegistryError, AgentError) as exc:
-            return 400, {"error": str(exc)}
-        except Exception as exc:  # noqa: BLE001 - only AWS errors are answered here; the rest stays a 500
-            if type(exc).__name__ == "ParamValidationError":
-                return 400, {"error": " ".join(str(exc).split())[:600]}
-            found = _aws(exc)
-            if found is None:
-                raise
-            return found[0], {"error": found[1]}
-
-    run.__name__ = getattr(fn, "__name__", "route")
-    return run
+    return common_guarded(fn, (RegistryError, AgentError))
 
 
 def register(router: Any) -> None:

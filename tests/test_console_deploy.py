@@ -84,7 +84,6 @@ class FakeAWS:
         self.scan_findings: list[dict] = []
         self.subnets: dict[str, dict] = {}
         self.security_groups: dict[str, dict] = {}
-        self.regions: list[str] | None = ["us-east-1", REGION]  # the account's enabled regions (None: not readable)
 
     def client(self, service: str, region_name=None, **kw):
         return FakeClient(self, service)
@@ -379,15 +378,7 @@ class FakeAWS:
             raise err("InvalidGroup.NotFound", f"The security group '{missing[0]}' does not exist")
         return {"SecurityGroups": [dict(self.security_groups[g]) for g in GroupIds]}
 
-    def ec2_describe_regions(self, **p):
-        if self.regions is None:
-            raise err("UnauthorizedOperation", "You are not authorized to perform this operation.")
-        return {"Regions": [{"RegionName": r, "Endpoint": f"ec2.{r}.amazonaws.com", "OptInStatus": "opt-in-not-required"} for r in self.regions]}
-
     # -- codebuild -----------------------------------------------------------------------------------------------------
-    def cb_list_projects(self, **p):
-        return {"projects": sorted(self.projects)}
-
     def cb_batch_get_projects(self, names):
         return {"projects": [self.projects[n] for n in names if n in self.projects], "projectsNotFound": [n for n in names if n not in self.projects]}
 
@@ -398,10 +389,6 @@ class FakeAWS:
     def cb_update_project(self, **p):
         self.projects[p["name"]].update(p)
         return {"project": self.projects[p["name"]]}
-
-    def cb_delete_project(self, name):
-        del self.projects[name]
-        return {}
 
     def cb_start_build(self, **p):
         bid = f"{p['projectName']}:{len(self.builds) + 1:08d}-b0b0-4c4c-8d8d-123456789abc"
@@ -1015,30 +1002,6 @@ def test_a_poll_survives_a_dropped_connection_and_a_delete_resumes_one_already_g
     with pytest.raises(ClientError):
         down.run()
     assert not [line for line in down.job.lines if "read failed" in line]
-
-
-def test_the_build_infrastructure_is_removed_only_when_the_console_made_it():
-    aws = FakeAWS()
-    aws.projects["adlc-probe-build"] = {"name": "adlc-probe-build", "tags": [{"key": "adlc:console", "value": "1"}]}
-    aws.seed_role(f"adlc-probe-build-{REGION}", {"adlc:console": "1"})
-    aws.seed_role("adlc-probe-build", {"adlc:console": "1"})  # the one build role of a console before per-region roles
-    aws.projects["adlc-probe-build-old"] = {"name": "adlc-probe-build-old", "serviceRole": f"arn:aws:iam::{ACCOUNT}:role/adlc-probe-build"}  # runs with it
-    aws.log_groups.add("/aws/codebuild/adlc-probe-build")
-    out = dp.remove_build_infrastructure(FakeSession(aws), account=ACCOUNT, region=REGION, names=dp.Names("adlc-probe"))
-    assert out == {"project": "adlc-probe-build", "role": f"adlc-probe-build-{REGION}", "logGroup": "/aws/codebuild/adlc-probe-build",
-                   "legacyRole": {"kept": "adlc-probe-build", "usedBy": ["us-east-1/adlc-probe-build-old", f"{REGION}/adlc-probe-build-old"]}}
-    assert set(aws.projects) == {"adlc-probe-build-old"} and set(aws.roles) == {"adlc-probe-build"} and not aws.log_groups
-    aws.regions = None  # the account's regions cannot be read (a spoke role): kept, said so
-    assert dp.remove_build_infrastructure(FakeSession(aws), account=ACCOUNT, region=REGION, names=dp.Names("adlc-probe"))["legacyRole"]["usedBy"].startswith(
-        "unknown") and "adlc-probe-build" in aws.roles
-    aws.regions = ["us-east-1", REGION]
-    del aws.projects["adlc-probe-build-old"]  # no project in any region runs with it any more: it goes, never orphaned
-    assert dp.remove_build_infrastructure(FakeSession(aws), account=ACCOUNT, region=REGION, names=dp.Names("adlc-probe"))["legacyRole"] == "adlc-probe-build"
-    assert not aws.roles
-    aws.projects["adlc-console-build"] = {"name": "adlc-console-build", "tags": []}
-    with pytest.raises(dp.DeployError, match="not the console's"):
-        dp.remove_build_infrastructure(FakeSession(aws), account=ACCOUNT, region=REGION)
-    assert "adlc-console-build" in aws.projects
 
 
 def test_a_runtime_answer_is_read_from_json_an_event_stream_or_text():

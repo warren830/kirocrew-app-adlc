@@ -332,7 +332,6 @@ class AnswerDocuments:
     terms: tuple[str, ...]  # answer terms searched: expected.mustMention
     answer: tuple[str, ...]  # documents containing at least one answer term
     complete: tuple[str, ...]  # documents containing every answer term
-    missing_terms: tuple[str, ...]  # answer terms that appear in no document
     bait_terms: tuple[str, ...]  # baitTerms of the retrieval_gap phenomena listing this case
     bait: tuple[str, ...]  # noise documents (noise: true) containing at least one bait term
 
@@ -385,7 +384,6 @@ def answer_documents(
     hits = {term: set(documents_containing(docs, term, order=order)) for term in terms}
     answer = tuple(did for did in order if any(did in ids for ids in hits.values()))
     complete = tuple(did for did in order if terms and all(did in ids for ids in hits.values()))
-    missing = tuple(term for term in terms if not hits[term])
     bait_terms = _unique(
         t
         for p in phenomena(data, "retrieval_gap")
@@ -396,7 +394,7 @@ def answer_documents(
     noise = _noise_doc_ids(data)
     bait = tuple(did for did in noise if did in docs and any(contains_term(docs[did], t) for t in bait_terms))
     return AnswerDocuments(
-        case_id=cid, terms=terms, answer=answer, complete=complete, missing_terms=missing, bait_terms=bait_terms, bait=bait
+        case_id=cid, terms=terms, answer=answer, complete=complete, bait_terms=bait_terms, bait=bait
     )
 
 

@@ -16,12 +16,9 @@ import json
 import time
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from ..l1 import _attrs
+
 SPAN_LOG_GROUP = "aws/spans"
-
-
-def _attrs(span: Mapping[str, Any]) -> Mapping[str, Any]:
-    attrs = span.get("attributes")
-    return attrs if isinstance(attrs, dict) else {}
 
 
 def _body(record: Mapping[str, Any]) -> Any:

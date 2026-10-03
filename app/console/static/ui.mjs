@@ -10,8 +10,8 @@ const { useState, useEffect, useCallback, useContext, createContext, createEleme
 // Where the console is, as the page that serves it writes it (index.html): on its own server the API is /api/console;
 // inside KiroCrew it is /apps/workshop-customizer/api/console, the App's backend behind the gateway's signed proxy.
 const meta = (name, fallback) => (document.querySelector(`meta[name="${name}"]`) || {}).content || fallback
-export const API = meta('adlc-api', '/api/console')
-export const HOST = meta('adlc-host', 'standalone')
+const API = meta('adlc-api', '/api/console')
+const HOST = meta('adlc-host', 'standalone')
 export const IN_KIROCREW = HOST === 'kirocrew'
 
 // Inside KiroCrew the 工作坊 item opens KiroCrew's own Workshop Customizer view: this frame's parent, the App's page.
@@ -146,7 +146,7 @@ export const api = {
 
 export const Ctx = createContext(null)
 export const useCtx = () => useContext(Ctx)
-export const WS_KEY = 'adlc-console:workspace'
+const WS_KEY = 'adlc-console:workspace'
 export const listOf = (v) => (Array.isArray(v) ? v : [])
 
 export function useConsoleState() {

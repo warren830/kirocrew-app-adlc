@@ -125,6 +125,7 @@ from ..direct.aws import client
 from ..direct.run import Asked, new_session_id, out_text
 from . import deploy, experiments as ex
 from .agents import CONSOLE_TAG
+from .common import now as _now
 
 #: Every canary resource is named ``<PREFIX>-<id>`` (``_`` where a name takes no ``-``); its role is on the console's IAM
 #: path (``agents.ROLE_PATH``), where a spoke role lets the console make roles. The live probe runs with
@@ -156,10 +157,6 @@ def configure(*, prefix: str | None = None, names: deploy.Names | None = None) -
         PREFIX = prefix
     if names:
         NAMES = names
-
-
-def _now() -> str:
-    return ex._now()
 
 
 def _token() -> str:
@@ -208,10 +205,9 @@ def _image_repository(uri: str) -> str | None:
     return found["repo"] if found else None
 
 
-def publish_request(name: str, artifact: Mapping[str, Any], environment: Mapping[str, Any], *, endpoint: str | None,
-                    smoke: bool = True) -> dict[str, Any]:
+def publish_request(name: str, artifact: Mapping[str, Any], environment: Mapping[str, Any], *, endpoint: str | None) -> dict[str, Any]:
     """The deploy module's update request for an artifact that exists already (an image by digest, or code in S3)."""
-    common = {"mode": "update", "name": name, "protocol": None, "environment": dict(environment), "endpoint": endpoint, "smoke": smoke,
+    common = {"mode": "update", "name": name, "protocol": None, "environment": dict(environment), "endpoint": endpoint, "smoke": True,
               "prompt": deploy.SMOKE_PROMPT}
     container = ((artifact or {}).get("containerConfiguration") or {}).get("containerUri")
     if container:
@@ -509,21 +505,8 @@ def _get(x: ex.Ctx, cid: str) -> dict[str, Any]:
 
 
 def _save(x: ex.Ctx, cid: str, *, expect: Mapping[str, Any] | None = None, **fields: Any) -> dict[str, Any]:
-    """The record with ``fields`` saved onto it. With ``expect``, saved only while the stored record still has those
-    values: a settle decides on what it read, outside production's lock, and another action may have moved the record
-    since (then nothing is written, and the record as it is now is returned)."""
-    out: dict[str, Any] = {}
-
-    def change(all_: dict[str, Any]) -> dict[str, Any]:
-        current = all_[cid]
-        if expect and any(current.get(k) != v for k, v in expect.items()):
-            out.update(current)
-            return all_
-        out.update({**current, **fields, "updatedAt": _now()})
-        return {**all_, cid: dict(out)}
-
-    x.console.store.update(COLLECTION, {}, change)
-    return out
+    """``experiments._save_in`` for a canary (with ``expect``: saved only while the record still has those values)."""
+    return ex._save_in(x, COLLECTION, cid, expect=expect, **fields)
 
 
 def _admin(x: ex.Ctx, what: str) -> None:
@@ -867,34 +850,11 @@ def _set_split(x: ex.Ctx, cid: str, body: Mapping[str, Any]) -> dict[str, Any]:
     weight = ex._weight(body.get("treatmentWeight"))
     before = int(rec["weights"]["T1"])
     ex.split_allowed(x, rec, weight, before, body.get("acknowledged") is True, lambda: _gate(x, rec)["gate"], arm="candidate", base="production")
-    data = x.data()
-    ab_id = rec["abTest"]["id"]
-    was = data.get_ab_test(abTestId=ab_id).get("executionStatus")
-    if was == "STOPPED":
-        raise ExperimentError(f"A/B test {ab_id} is stopped")
-    if was == "RUNNING":
-        data.update_ab_test(abTestId=ab_id, executionStatus="PAUSED", clientToken=_token())
-        ex._ab_wait(data, ab_id, execution="PAUSED")
-    data.update_ab_test(abTestId=ab_id, variants=ex.variants({v: t["name"] for v, t in rec["targets"].items()}, weight), clientToken=_token())
-    ex._ab_wait(data, ab_id, execution=str(was if was != "RUNNING" else "PAUSED"))
-    if was == "RUNNING":
-        data.update_ab_test(abTestId=ab_id, executionStatus="RUNNING", clientToken=_token())
-        ex._ab_wait(data, ab_id, execution="RUNNING")
-    weights = {"C": 100 - weight, "T1": weight}
-    step = {"at": _now(), "by": x.caller.get("username"), "weights": weights,
-            **({"acknowledged": True} if weight > before and body.get("acknowledged") is True else {})}
-    return _save(x, cid, weights=weights, ramp=[*rec.get("ramp", []), step])
+    return _save(x, cid, **ex._resplit(x, rec, weight, before, body))
 
 
 def _stop(x: ex.Ctx, rec: Mapping[str, Any], *, status: str) -> dict[str, Any]:
-    data = x.data()
-    ab = data.get_ab_test(abTestId=rec["abTest"]["id"])
-    if ab.get("executionStatus") != "STOPPED":
-        data.update_ab_test(abTestId=rec["abTest"]["id"], executionStatus="STOPPED", clientToken=_token())
-        ab = ex._ab_wait(data, rec["abTest"]["id"], execution="STOPPED")
-    final = {"at": _now(), "metrics": ex.ab_metrics(ab) or list((rec.get("finalResults") or {}).get("metrics") or []),
-             "analysisTimestamp": str((ab.get("results") or {}).get("analysisTimestamp") or "") or None}
-    return _save(x, rec["id"], status=status, finalResults=final)
+    return _save(x, rec["id"], status=status, finalResults=ex._final_results(x, rec))
 
 
 def set_state(x: ex.Ctx, cid: str, body: Mapping[str, Any]) -> dict[str, Any]:
@@ -985,11 +945,26 @@ def _headers(sid: str, user: str) -> dict[str, str]:
 
 def route_for(console: Any, workspace: str, runtime_id: str) -> dict[str, Any] | None:
     """The running canary of a runtime, if it has one: its traffic should go through the canary's Gateway."""
-    for rec in (console.store.read(COLLECTION, {}) or {}).values():
-        if (rec.get("workspace") == workspace and rec.get("status") == "running" and rec.get("invokeUrl")
-                and (rec.get("agent") or {}).get("id") == runtime_id):
-            return rec
-    return None
+    return ex._running(console, COLLECTION, workspace, runtime_id)
+
+
+def routed_turn(console: Any, workspace: str, session: Any, region: str, agent: Mapping[str, Any], *, message: str, session_id: str | None,
+                actor: str, bypass: bool = False, prompt: str | None = None,
+                model: str | None = None) -> tuple[Iterator[dict[str, Any]], dict[str, Any] | None]:
+    """One turn of the console chat or the public API as events, and the A/B test or canary record it goes through:
+    a Harness in a running experiment through the experiment's Gateway (not with the playground's own ``prompt`` or
+    ``model``), a runtime in a running canary through the canary's; otherwise (or ``bypass``) ``agents.invoke``."""
+    from . import agents
+
+    if agent["kind"] == "harness" and not (prompt or model or bypass):
+        route = ex.route_for(console, workspace, agent["id"])
+        if route:  # the agent is in an A/B test: its Gateway splits this conversation like any other
+            return ex.invoke_through(session, region, route, message=message, session_id=session_id, actor=actor), route
+    if agent["kind"] == "runtime" and not bypass:
+        canary = route_for(console, workspace, agent["id"])
+        if canary:  # a code agent in a canary: the canary's Gateway decides this conversation's arm
+            return invoke_through(session, region, canary, message=message, session_id=session_id, actor=actor), canary
+    return agents.invoke(session, region=region, agent=agent, message=message, session_id=session_id, actor=actor, prompt=prompt, model=model), None
 
 
 def invoke_through(session: Any, region: str, rec: Mapping[str, Any], *, message: str, session_id: str | None, actor: str) -> Iterator[dict[str, Any]]:
@@ -1035,12 +1010,8 @@ def send_traffic(x: ex.Ctx, cid: str, body: Mapping[str, Any]) -> dict[str, Any]
     rec = _get(x, cid)
     if rec["status"] not in ("running", "paused") or not rec.get("invokeUrl"):
         raise ExperimentError(f"canary {cid} is {rec['status']}: traffic goes to a running A/B test")
-    prompts = ex.contract_queries(x, str(body["contractSet"])) if body.get("contractSet") else [str(p).strip() for p in body.get("prompts") or [] if str(p).strip()]
-    repeat = ex._int(body.get("repeat"), 1, "repeat", 1, 5)
-    if not prompts or len(prompts) * repeat > ex.MAX_TRAFFIC:
-        raise ExperimentError(f"give a contractSet or prompts, at most {ex.MAX_TRAFFIC} sessions in all", status=400)
+    items = ex._traffic_items(x, body)
     hexid, url, session, region = cid[4:], rec["invokeUrl"], x.session, x.region
-    items = list(enumerate([q for _ in range(repeat) for q in prompts], 1))
 
     def work(job: Any) -> dict[str, Any]:
         def one(item: tuple[int, str]) -> dict[str, Any]:
@@ -1054,18 +1025,7 @@ def send_traffic(x: ex.Ctx, cid: str, body: Mapping[str, Any]) -> dict[str, Any]
                 status, text, error = 0, "", f"{type(exc).__name__}: {str(exc)[:200]}"
             return {"sessionId": sid, "query": query[:200], "status": status, "answer": text[:300], "error": error}
 
-        job.log(f"{len(items)} session(s) through {url}")
-        with ThreadPoolExecutor(max_workers=ex.TRAFFIC_WORKERS) as pool:
-            done = list(pool.map(one, items))
-        failed = [d for d in done if d["status"] != 200 or d["error"]]
-        statuses: dict[str, int] = {}
-        for d in done:
-            statuses[str(d["status"])] = statuses.get(str(d["status"]), 0) + 1
-        job.progress(sent=len(done) - len(failed), failed=len(failed))
-        for d in failed[:3]:
-            job.log(f"failed {d['status']}: {d['error']}")
-        return {"sent": len(done) - len(failed), "failed": len(failed), "statuses": statuses, "samples": done[:20],
-                "sessions": [d["sessionId"] for d in done if d["status"] == 200]}
+        return ex._replay(job, url, items, one, samples=20)
 
     return x.console.jobs.start("runtime-canary-traffic", x.workspace, {"canary": cid, "sessions": len(items)}, work,
                                 label=f"金丝雀流量 {rec['agent']['name']}")
@@ -1580,26 +1540,7 @@ def _cleanup(x: ex.Ctx, cid: str, job: Any, after: str) -> dict[str, Any]:
 # -- routes ----------------------------------------------------------------------------------------------------------------
 
 def register(router: Any) -> None:
-    def ctx(r: Any) -> ex.Ctx:
-        wid = r.workspace()
-        session = r.session()
-        ws = r.console.workspaces.get(wid)
-        return ex.Ctx(r.console, wid, session, ws["region"], ws["accountId"], r.caller, boundary=ws.get("permissionsBoundaryArn"))
-
-    def handle(fn: Callable[[ex.Ctx, Any], Any], status: int = 200) -> Callable[[Any], tuple[int, Any]]:
-        def route(r: Any) -> tuple[int, Any]:
-            try:
-                return status, fn(ctx(r), r)
-            except ExperimentError as exc:
-                return exc.status, {"error": str(exc), **exc.extra}
-            except Exception as exc:  # noqa: BLE001 - an AWS refusal is the caller's to read, not an internal error
-                code = ex._client_status(exc) if hasattr(exc, "response") else None
-                if code is None:
-                    raise
-                return code, {"error": f"{ex._code(exc)}: {str(exc)[:400]}"}
-
-        return route
-
+    handle = ex.handle
     add, base = router.add, "/workspaces/{wid}/experiments/runtime-canaries"
     add("GET", base, handle(lambda x, r: {"canaries": list_canaries(x)}))
     add("POST", base, handle(lambda x, r: start_canary(x, r.body), 202), admin=True)

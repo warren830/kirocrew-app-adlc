@@ -1,6 +1,6 @@
 {
   "name": "workshop-customizer",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "displayName": "Workshop Customizer",
   "description": "The ADLC platform for SAs in KiroCrew: the ADLC console (agents, knowledge bases, evaluation, A/B tests, registry, governance, Autopilot) served by this App's backend, and the Workshop customizer, where KiroCrew turns a raw customer scenario into a reviewable Scenario Pack draft, the deterministic engine validates and renders it, and a controlled AWS CLI profile syncs the approved release to the workshop EC2 before Workshop day.",
   "author": "warren830",

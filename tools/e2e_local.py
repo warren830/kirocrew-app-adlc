@@ -154,9 +154,9 @@ def phase_a(scratch: Path) -> dict:
         step("A13 target stores names only", s == 200 and "secret" not in json.dumps(t).lower())
         s, pf = api.call("POST", "/projects/globex-hr/sync/preflight")
         step("A14 preflight refuses without a usable AWS profile (no AWS touched)", s == 409 and "not usable" in pf.get("error", ""), pf.get("error", "")[:120])
-        s, ap = api.call("POST", "/projects/globex-hr/sync/apply", {"confirmToken": "guess"})
+        s, _ = api.call("POST", "/projects/globex-hr/sync/apply", {"confirmToken": "guess"})
         step("A15 apply refused without a preflight token", s == 409)
-        s, ap = api.call("PUT", "/projects/globex-hr/target", {"profile": "p", "region": "us-west-2", "expectedAccountId": "123456789012", "secretAccessKey": "x"})
+        s, _ = api.call("PUT", "/projects/globex-hr/target", {"profile": "p", "region": "us-west-2", "expectedAccountId": "123456789012", "secretAccessKey": "x"})
         step("A16 target refuses credential material", s == 400)
         out["data_dir"] = data_dir
     finally:

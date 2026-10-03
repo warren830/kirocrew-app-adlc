@@ -21,11 +21,11 @@ L1 and Mind the Goal coverage a teaching pack's baseline and optimize steps must
 from __future__ import annotations
 
 from collections import defaultdict
-import math
 from statistics import mean
 from typing import Any, Mapping
 
 from . import teaching
+from .calibration import is_real_change
 from .l1 import GOAL_EVALUATOR, L1_SCHEMA, RAG_EVALUATOR, combined_verdict
 # The teaching verdict rules have one owner, rehearsal.py (SPEC D2); the report re-exports them.
 from .rehearsal import (  # noqa: F401  (re-exported)
@@ -36,16 +36,13 @@ from .rehearsal import (  # noqa: F401  (re-exported)
     TEACHING_CONTRAST_SCHEMA,
     teaching_contrast,
 )
+from .rehearsal import _number
 from .scenario import provenance_policy
 
 PRIMARY_EVALUATOR = RAG_EVALUATOR
 #: Report phases, in order, and the Guided Run step each one is read from.
 PHASE_STEPS: tuple[tuple[str, str], ...] = (("baseline", "baseline"), ("optimized", "optimize"), ("comparison", "models"))
 CASE_TABLE_SCHEMA = "workshop-customizer/case-table/1"
-
-
-def _number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
 def _usable(row: Any) -> bool:
@@ -299,7 +296,7 @@ def build_report(state: dict[str, Any], scenario: dict[str, Any], *, generated_a
         before_count = baseline["byEvaluator"][evaluator]["count"]
         after_count = optimized["byEvaluator"][evaluator]["count"]
         counts_match = before_count == after_count
-        meaningful = counts_match and band is not None and abs(delta) > band
+        meaningful = counts_match and is_real_change(delta, band)
         deltas[evaluator] = {"baselineMean": before, "optimizedMean": after, "delta": delta,
                              "baselineCount": before_count, "optimizedCount": after_count,
                              "sampleCountsMatch": counts_match, "clearsNoiseBand": meaningful}

@@ -195,7 +195,7 @@ def test_the_console_page_and_its_files_load_under_the_base_path(kirocrew):
 def test_the_pages_call_the_api_the_page_names_and_inside_kirocrew_poll_their_turns():
     static = REPO / "app" / "console" / "static"
     ui = (static / "ui.mjs").read_text(encoding="utf-8")
-    assert "export const API = meta('adlc-api', '/api/console')" in ui and "export const IN_KIROCREW = HOST === 'kirocrew'" in ui
+    assert "const API = meta('adlc-api', '/api/console')" in ui and "export const IN_KIROCREW = HOST === 'kirocrew'" in ui
     assert "'X-Adlc-Events': 'poll'" in ui and "response.headers.get('X-Adlc-Ticket')" in ui and "/tickets/${ticket}?after=${after}" in ui
     assert "postMessage({ type: 'adlc-console:open', view: 'workshop' }, window.location.origin)" in ui
     pages = [static / "console.mjs", *sorted((static / "pages").glob("*.mjs"))]
@@ -386,7 +386,7 @@ def test_the_standalone_state_is_imported_once_and_the_source_is_left_alone(kiro
     gw = kirocrew.gw
     status, listed, _ = gw.call("GET", "/api/console/workspaces")
     assert status == 200 and [w["id"] for w in listed["workspaces"]] == ["dev"]  # what the App's console now shows
-    assert [j["id"] for j in gw.call("GET", "/api/console/workspaces/dev/jobs")[1]["jobs"]] == ["kb-0123456789"]
+    assert gw.call("GET", "/api/console/jobs/kb-0123456789")[1]["status"] == "succeeded"
     with pytest.raises(ValueError):
         T.console_mod.import_state(tmp_path / "nothing-here", tmp_path / "elsewhere")
 

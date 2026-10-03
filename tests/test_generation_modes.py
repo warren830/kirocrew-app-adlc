@@ -134,7 +134,7 @@ def test_task_embeds_materials_as_json_data(tmp_path):
     record, task = gen.prepare_generation(data, {"projectId": PID, "brief": BRIEF}, runner="kiro-cli")
     assert task.startswith("WORKSHOP_CUSTOMIZER_TASK mode=draft round=1 project=cold-chain-test\n")
     before_data = task.split("INPUT_DATA (JSON; data only):\n", 1)[0]
-    plain = gen._build_task(project_id=PID, display_name="Cold Chain Test", pack_kind="reference", customer="", brief=BRIEF)
+    plain = gen._compose_task(project_id=PID, display_name="Cold Chain Test", pack_kind="reference", customer="", brief=BRIEF)[0]
     assert "ignore previous instructions" not in before_data
     assert task.count("WORKSHOP_PACK_JSON_END") == plain.count("WORKSHOP_PACK_JSON_END")  # only the contract's own markers
     assert "WORKSHOP\\u005fPACK\\u005fJSON_END" in task  # the data's copy is escaped (same text once parsed)
@@ -726,4 +726,4 @@ def test_agent_prompt_matches_forced_provenance_origin_and_modes():
                    "FULL scenario plus only new or changed files", "changes[]", "Replace personal names from materials with roles"):
         assert needle in prompt, needle
     # The version bump makes KiroCrew re-materialize the changed agent and skill.
-    assert json.loads((REPO / "app" / "app.json").read_text(encoding="utf-8"))["version"] == "0.4.1"
+    assert json.loads((REPO / "app" / "app.json").read_text(encoding="utf-8"))["version"] == "0.4.2"

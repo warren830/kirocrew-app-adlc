@@ -48,11 +48,9 @@ SUPPORTED: dict[str, str] = {
     ".md": "md", ".markdown": "md", ".txt": "txt", ".csv": "csv", ".json": "json",
     ".yaml": "yaml", ".yml": "yaml", ".docx": "docx", ".pptx": "pptx", ".pdf": "pdf",
 }
-MEDIA_TYPES = ("md", "txt", "csv", "json", "yaml", "docx", "pptx", "pdf")
 TEXT_TYPES = frozenset({"md", "txt", "csv", "json", "yaml"})
 GENERATION_USES = ("source", "background", "exclude")
 AUTHORS = ("customer", "sa")
-EXTRACTION_STATUSES = ("ok", "partial", "failed")
 MAX_TEXT_CHARS = 300_000
 MAX_NAME_CHARS = 120
 MAX_NOTES_CHARS = 500

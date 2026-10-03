@@ -44,7 +44,6 @@ import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
@@ -54,20 +53,19 @@ from urllib.parse import parse_qs, urlsplit
 APP = Path(__file__).resolve().parents[1]
 
 
+def _load(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
 def _checkout() -> Path:
     """The checkout with ``engine/`` and ``tools/``: the one around ``app/``. KiroCrew's installed copy of the App has
     neither, so there it is the App's home, resolved as its backend resolves it: where KiroCrew installed it from
-    (``installed.json``: a path's parent, or a registry install's clone in ``~/.kiro/crew/app-sources/<name>``), else
-    ``WORKSHOP_CUSTOMIZER_HOME``, else ``data/config.json`` ``homeDir``."""
-    candidates = [APP.parent]
-    try:
-        source = str(json.loads((APP / "installed.json").read_text(encoding="utf-8")).get("source") or "")
-    except (OSError, ValueError, AttributeError):
-        source = ""
-    if source.startswith("registry:"):
-        candidates.append(APP.parent.parent / "app-sources" / source[len("registry:"):])
-    elif source:
-        candidates.append(Path(source).expanduser().parent)
+    (the backend's ``installed_homes``: a path's parent, or a registry install's clone in
+    ``~/.kiro/crew/app-sources/<name>``), else ``WORKSHOP_CUSTOMIZER_HOME``, else ``data/config.json`` ``homeDir``."""
+    candidates = [APP.parent, *_load("wc_app_server_homes", APP / "backend" / "server.py").installed_homes(APP)]
     if os.environ.get("WORKSHOP_CUSTOMIZER_HOME"):
         candidates.append(Path(os.environ["WORKSHOP_CUSTOMIZER_HOME"]).expanduser())
     try:
@@ -103,17 +101,6 @@ COOKIE = "adlc_session"
 def body_limit(path: str) -> int:
     """The largest request body ``path`` takes."""
     return next((limit for pattern, limit in BODY_LIMITS if pattern.match(path)), MAX_BODY)
-
-
-def _load(name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)  # type: ignore[union-attr]
-    return module
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class HttpError(Exception):
@@ -251,15 +238,8 @@ class KiroRunner:
     def start(self, body: dict[str, Any]) -> tuple[int, Any]:
         try:
             record, task = generation.prepare_generation(self.data_dir, body, runner="kiro-cli")
-        except generation.GenerationConflict as exc:
-            payload: dict[str, Any] = {"error": str(exc)}
-            if exc.record is not None:
-                payload["generation"] = generation._public_record(exc.record)
-            return 409, payload
-        except generation.GenerationTooLarge as exc:
-            return 413, {"error": str(exc)}
         except generation.GenerationError as exc:
-            return 400, {"error": str(exc)}
+            return generation.start_refused(exc)
         timeout = int(record["timeoutSecs"])
         generation.mark_running(self.data_dir, record, timeout_secs=timeout)
 
@@ -277,38 +257,9 @@ class KiroRunner:
         threading.Thread(target=work, name=f"kiro-{record['id']}", daemon=True).start()
         return 202, generation._public_record(record)
 
-    def latest(self, project_id: str) -> tuple[int, Any]:
-        generation._project_dir(self.data_dir, project_id)
-        candidates = generation._project_records(self.data_dir, project_id)
-        if not candidates:
-            return 200, {"generation": None}
-        record = max(candidates, key=lambda item: str(item.get("createdAt") or ""))
-        return 200, {"generation": generation._public_record(generation._settle(record, data_dir=self.data_dir))}
-
-    def poll(self, generation_id: str) -> tuple[int, Any]:
-        record = generation._read_record(self.data_dir, generation_id)
-        return 200, generation._public_record(generation._settle(record, data_dir=self.data_dir))
-
-    def apply(self, generation_id: str, body: dict[str, Any]) -> tuple[int, Any]:
-        record = generation._settle(generation._read_record(self.data_dir, generation_id), data_dir=self.data_dir)
-        return 200, generation.apply_generation(record, self.data_dir, body)
-
-    def revert(self, generation_id: str, body: dict[str, Any]) -> tuple[int, Any]:
-        return 200, generation.revert_generation(generation_id, self.data_dir, body)
-
     def dispatch(self, method: str, parts: list[str], body: dict[str, Any]) -> tuple[int, Any]:
-        try:
-            if parts == ["generations"] and method == "POST":
-                return self.start(body)
-            if len(parts) == 3 and parts[:2] == ["generations", "latest"] and method == "GET":
-                return self.latest(parts[2])
-            if len(parts) == 2 and parts[0] == "generations" and method == "GET":
-                return self.poll(parts[1])
-            if len(parts) == 3 and parts[0] == "generations" and parts[2] in ("apply", "revert") and method == "POST":
-                return (self.apply if parts[2] == "apply" else self.revert)(parts[1], body)
-        except generation.GenerationError as exc:
-            return (404 if method == "GET" else 409), {"error": str(exc)}
-        return 404, {"error": "no such generation route"}
+        """The generation routes (``routes.generation_route``), started by :meth:`start`."""
+        return generation.generation_route(method, parts, body, self.data_dir, start=self.start)
 
 
 class Console:
@@ -686,10 +637,6 @@ class Mount:
         self._lock = threading.Lock()
         self._host: tuple[float, dict[str, Any]] | None = None  # the last host checks, for the banner every page load shows
 
-    @classmethod
-    def handles(cls, path: str) -> bool:
-        return path == cls.PREFIX or path.startswith(cls.PREFIX + "/")
-
     @staticmethod
     def body_limit(path: str) -> int:
         return body_limit(path)
@@ -953,7 +900,7 @@ class Mount:
                                                 "level": os.environ.get("KIROCREW_SANDBOX_LEVEL") or None},
                 "dataDir": str(self.data_dir), "consoleData": str(console.store.root), "home": str(REPO), "python": sys.executable,
                 "publicApi": dict(self.public_api) or None,
-                "checkedAt": _now(), "checks": results}
+                "checkedAt": generation._utc_now(), "checks": results}
 
     def kiro_check(self) -> dict[str, Any]:
         """One real kiro-cli turn with the App's restricted agent, the way Autopilot's loop runs Kiro, as a job."""
@@ -987,7 +934,7 @@ def import_state(source: Path, target: Path) -> dict[str, Any]:
     dst.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.json.tmp", "__pycache__"))
     files = sorted(str(p.relative_to(dst)) for p in dst.rglob("*") if p.is_file())
-    record = {"from": str(src.resolve()), "at": _now(), "files": len(files),
+    record = {"from": str(src.resolve()), "at": generation._utc_now(), "files": len(files),
               "collections": sorted(p.stem for p in dst.glob("*.json")), "jobs": len(list((dst / "jobs").glob("*.json")))}
     (dst / ".imported.json").write_text(json.dumps(record, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     return record

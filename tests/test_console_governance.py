@@ -151,9 +151,6 @@ class Control:
             {"policyGenerationAssetId": "g-cccccccccc", "rawTextFragment": "Only managers on weekends.",
              "findings": [{"type": "INVALID", "description": "Non-translatable: cannot be expressed in Dogwood"}]}]}
 
-    def list_policy_generations(self, **kw):
-        return {"policyGenerations": [{"policyGenerationId": "g-gggggggggg", "name": "g", "status": "GENERATED", "resource": {"arn": "x"}, "createdAt": WHEN}]}
-
     # gateways
     def list_gateways(self, **kw):
         return {"items": [{"gatewayId": g["gatewayId"], "name": g["name"]} for g in self.gateways.values()]}

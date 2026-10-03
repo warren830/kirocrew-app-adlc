@@ -140,7 +140,8 @@ def test_guides_built_needs_the_verified_student_readme_and_instructor_guide(tmp
     from workshop_customizer import render
 
     assert rehearsal.RELEASE_MANIFEST == render.MANIFEST_NAME
-    assert rehearsal.guides_built(None) is False and rehearsal.guide_status(tmp_path) == {"student": False, "instructor": False}
+    assert rehearsal.guide_status(None) == {"student": False, "instructor": False}
+    assert rehearsal.guide_status(tmp_path) == {"student": False, "instructor": False}
     student, instructor = b"# Student guide\n", b"# Instructor guide\n"
     digest = {k: hashlib.sha256(v).hexdigest() for k, v in (("s", student), ("i", instructor))}
     (tmp_path / "release").mkdir()
@@ -152,7 +153,7 @@ def test_guides_built_needs_the_verified_student_readme_and_instructor_guide(tmp
                                                                    "instructor/instructor-guide.md": digest["i"]}}))
     assert rehearsal.guide_status(tmp_path) == {"student": False, "instructor": True}  # README.md is not in RELEASE.json yet
     (tmp_path / "release" / "RELEASE.json").write_text(json.dumps({"files": {"README.md": digest["s"]}}))
-    assert rehearsal.guides_built(tmp_path) is True
+    assert rehearsal.guide_status(tmp_path) == {"student": True, "instructor": True}
     (tmp_path / "release" / "README.md").write_text("# Another guide\n", encoding="utf-8")
     assert rehearsal.guide_status(tmp_path) == {"student": False, "instructor": True}
 

@@ -16,7 +16,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "tests"))
-from test_app_backend import Client, server_mod  # noqa: E402
+from test_app_backend import Client, server_mod, wait_job  # noqa: E402
 from test_oneclick import HostStub  # noqa: E402
 from test_sync import ACCOUNT, default_stacks  # noqa: E402
 import teaching_run  # noqa: E402
@@ -92,7 +92,7 @@ def test_scenario_oneclick_then_full_guided_workshop(workshop, template):
     # One click: validate → build → preflight → apply → verify → confirm → bind Workshop Run.
     status, job, _ = client.call("POST", f"/projects/{pid}/oneclick", {"acknowledged": True})
     assert status == 202, job
-    svc.jobs.wait(job["id"], timeout=180)
+    wait_job(svc.jobs, job, timeout=180)
     job = client.call("GET", f"/projects/{pid}/jobs/{job['id']}")[1]["job"]
     assert job["status"] == "succeeded", json.dumps(job, indent=2)
     version = job["result"]["version"]

@@ -14,7 +14,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "tests"))
-from test_app_backend import server_mod  # noqa: E402
+from test_app_backend import server_mod, wait_job  # noqa: E402
 from test_policy_seam import Recorder  # noqa: E402
 
 PID = "draft-check"
@@ -287,7 +287,7 @@ def test_oneclick_build_stage_reports_findings_instead_of_an_internal_error(tmp_
     service.put_target(PID, {"profile": "align-workshop", "region": "us-west-2", "expectedAccountId": "123456789012"})
     _leak_holdout_into_a_document(service)
     job = service.start_oneclick(PID, {"acknowledged": True})
-    service.jobs.wait(job["id"], timeout=180)
+    wait_job(service.jobs, job, timeout=180)
     done = service.jobs.get(PID, job["id"])
     stages = {s["id"]: s for s in done["stages"]}
     assert done["status"] == "failed" and "internal error" not in done["error"], done

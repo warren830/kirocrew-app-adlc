@@ -35,6 +35,7 @@ from ..direct import online, verify
 from ..direct.aws import client
 from ..direct.panel import DEFAULT_PANEL
 from .agents import CONSOLE_TAG, ROLE_PATH, get_agent, refusal, role_tags
+from .common import now as _now, pages as _pages
 
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,47}$")
 #: The insights of a batch (Launchpad's agentcore_eval.INSIGHT_TYPES): failure clusters with root causes, user intents,
@@ -44,10 +45,6 @@ INSIGHTS = ("Builtin.Insight.FailureAnalysis", "Builtin.Insight.UserIntent", "Bu
 
 class EvaluationError(ValueError):
     pass
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # -- contract sets ------------------------------------------------------------------------------------------------
@@ -298,14 +295,8 @@ def judge_request(body: Mapping[str, Any]) -> dict[str, Any]:
 
 def evaluators(session: Any, region: str) -> list[dict[str, Any]]:
     ctl = client(session, "bedrock-agentcore-control", region)
-    out, kwargs = [], {}
-    while True:
-        page = ctl.list_evaluators(**kwargs)
-        out += [{"id": e.get("evaluatorId"), "name": e.get("evaluatorName"), "type": e.get("evaluatorType"), "level": e.get("level"),
-                 "arn": e.get("evaluatorArn"), "description": e.get("description")} for e in page.get("evaluators") or []]
-        if not page.get("nextToken"):
-            return out
-        kwargs["nextToken"] = page["nextToken"]
+    return [{"id": e.get("evaluatorId"), "name": e.get("evaluatorName"), "type": e.get("evaluatorType"), "level": e.get("level"),
+             "arn": e.get("evaluatorArn"), "description": e.get("description")} for e in _pages(ctl.list_evaluators, "evaluators")]
 
 
 def create_judge(session: Any, region: str, body: Mapping[str, Any]) -> dict[str, Any]:
@@ -402,17 +393,12 @@ def gateway_tools(session: Any, region: str, harness_id: str) -> list[dict[str, 
         arn = ((tool.get("config") or {}).get("agentCoreGateway") or {}).get("gatewayArn")
         if tool.get("type") != "agentcore_gateway" or not arn:
             continue
-        gid, token = arn.rsplit("/", 1)[-1], None
-        while True:
-            page = ctl.list_gateway_targets(gatewayIdentifier=gid, **({"nextToken": token} if token else {}))
-            for target in page.get("items") or []:
-                got = ctl.get_gateway_target(gatewayIdentifier=gid, targetId=target["targetId"])
-                schema = (((got.get("targetConfiguration") or {}).get("mcp") or {}).get("lambda") or {}).get("toolSchema") or {}
-                for t in schema.get("inlinePayload") or []:
-                    out.append({"toolName": f"{target['name']}___{t['name']}", "description": str(t.get("description") or "")})
-            token = page.get("nextToken")
-            if not token:
-                break
+        gid = arn.rsplit("/", 1)[-1]
+        for target in _pages(ctl.list_gateway_targets, "items", gatewayIdentifier=gid):
+            got = ctl.get_gateway_target(gatewayIdentifier=gid, targetId=target["targetId"])
+            schema = (((got.get("targetConfiguration") or {}).get("mcp") or {}).get("lambda") or {}).get("toolSchema") or {}
+            for t in schema.get("inlinePayload") or []:
+                out.append({"toolName": f"{target['name']}___{t['name']}", "description": str(t.get("description") or "")})
     return out
 
 
@@ -572,7 +558,6 @@ def register(router: Any) -> None:
     add("GET", "/workspaces/{wid}/contract-sets/packs", lambda r: (r.workspace(), (200, {"projects": packs(r.console.workshop_data)}))[1])
     add("POST", "/workspaces/{wid}/contract-sets/import", lambda r: (201, import_from_pack(r.console.store, r.workspace(), r.console.workshop_data,
                                                                                             str(r.body.get("project") or ""))))
-    add("GET", "/workspaces/{wid}/contract-sets/{sid}", lambda r: (200, contract_set(r.console.store, r.workspace(), r.params["sid"])))
     add("DELETE", "/workspaces/{wid}/contract-sets/{sid}", lambda r: (r.console.store.update("contract_sets", {}, lambda a: {
         k: v for k, v in a.items() if not (k == r.params["sid"] and v["workspace"] == r.workspace())}), (200, {"deleted": r.params["sid"]}))[1])
     add("POST", "/workspaces/{wid}/contract-sets/{sid}/dataset", lambda r: (201, create_dataset(*sess(r), contract_set(r.console.store, r.workspace(),

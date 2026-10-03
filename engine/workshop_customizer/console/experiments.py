@@ -79,6 +79,7 @@ from ..direct.aws import client
 from ..direct.online import role_documents as evaluation_role_documents
 from ..direct.panel import DEFAULT_PANEL, MIN_BAND
 from .agents import CONSOLE_TAG
+from .common import error_code, now as _now, pages as _pages
 
 #: The canary ramp: the treatment's share of the Gateway's sessions, step by step; 100 % is the promotion itself.
 CANARY_STEPS = (5, 25, 50)
@@ -151,10 +152,6 @@ class Ctx:
         return client(self.session, "logs", self.region)
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _age(stamp: Any) -> float:
     """Seconds since a record's ``_now()`` stamp (very old when it has none)."""
     try:
@@ -180,23 +177,11 @@ def _token() -> str:
 
 
 def _code(exc: BaseException) -> str:
-    response = getattr(exc, "response", None)
-    code = str(((response or {}).get("Error") or {}).get("Code") or "") if isinstance(response, dict) else ""
-    return code or type(exc).__name__
+    return error_code(exc) or type(exc).__name__
 
 
 def _gone(exc: BaseException) -> bool:
     return any(g in _code(exc) or g in str(exc) for g in GONE)
-
-
-def _pages(call: Callable[..., Any], key: str, **kwargs: Any) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    while True:
-        page = call(**kwargs)
-        out += page.get(key) or []
-        if not page.get("nextToken"):
-            return out
-        kwargs["nextToken"] = page["nextToken"]
 
 
 def _wait(probe: Callable[[], str], ready: Sequence[str], *, what: str, attempts: int = 90, pause: float = 4.0) -> str:
@@ -767,22 +752,27 @@ def _get(x: Ctx, eid: str) -> dict[str, Any]:
     return _settle(x, found)
 
 
-def _save(x: Ctx, eid: str, *, expect: Mapping[str, Any] | None = None, **fields: Any) -> dict[str, Any]:
-    """The record with ``fields`` saved onto it; with ``expect``, only while the stored record still has those values
-    (a settle decides on what it read, and another action may have moved the record since: then nothing is written,
-    and the record as it is now is returned)."""
+def _save_in(x: Ctx, collection: str, rid: str, /, *, expect: Mapping[str, Any] | None = None, **fields: Any) -> dict[str, Any]:
+    """The record ``rid`` of ``collection`` (an experiment, or ``runtime_canary``'s canary) with ``fields`` saved onto
+    it; with ``expect``, only while the stored record still has those values (a settle decides on what it read — a
+    canary's outside production's lock — and another action may have moved the record since: then nothing is
+    written, and the record as it is now is returned)."""
     out: dict[str, Any] = {}
 
     def change(all_: dict[str, Any]) -> dict[str, Any]:
-        current = all_[eid]
+        current = all_[rid]
         if expect and any(current.get(k) != v for k, v in expect.items()):
             out.update(current)
             return all_
         out.update({**current, **fields, "updatedAt": _now()})
-        return {**all_, eid: dict(out)}
+        return {**all_, rid: dict(out)}
 
-    x.console.store.update("experiments", {}, change)
+    x.console.store.update(collection, {}, change)
     return out
+
+
+def _save(x: Ctx, eid: str, *, expect: Mapping[str, Any] | None = None, **fields: Any) -> dict[str, Any]:
+    return _save_in(x, "experiments", eid, expect=expect, **fields)
 
 
 @contextmanager
@@ -1117,6 +1107,12 @@ def _set_split(x: Ctx, eid: str, body: Mapping[str, Any]) -> dict[str, Any]:
     weight = _weight(body.get("treatmentWeight"))
     before = int(rec["weights"]["T1"])
     split_allowed(x, rec, weight, before, body.get("acknowledged") is True, lambda: _evidence(x, rec)["gate"])
+    return _save(x, eid, **_resplit(x, rec, weight, before, body))
+
+
+def _resplit(x: Ctx, rec: Mapping[str, Any], weight: int, before: int, body: Mapping[str, Any]) -> dict[str, Any]:
+    """Give a running or paused A/B test (an experiment's or a canary's) ``weight`` % treatment: a running one is
+    paused around the change and resumed. Returns the fields to save: the weights, and the ramp with this step."""
     data = x.data()
     ab_id = rec["abTest"]["id"]
     was = data.get_ab_test(abTestId=ab_id).get("executionStatus")
@@ -1132,7 +1128,7 @@ def _set_split(x: Ctx, eid: str, body: Mapping[str, Any]) -> dict[str, Any]:
         _ab_wait(data, ab_id, execution="RUNNING")
     weights = {"C": 100 - weight, "T1": weight}
     step = {"at": _now(), "by": x.caller.get("username"), "weights": weights, **({"acknowledged": True} if weight > before and body.get("acknowledged") is True else {})}
-    return _save(x, eid, weights=weights, ramp=[*rec.get("ramp", []), step])
+    return {"weights": weights, "ramp": [*rec.get("ramp", []), step]}
 
 
 def set_state(x: Ctx, eid: str, body: Mapping[str, Any]) -> dict[str, Any]:
@@ -1160,14 +1156,19 @@ def _pause_resume(x: Ctx, rec: Mapping[str, Any], state: str) -> dict[str, Any]:
 
 
 def _stop(x: Ctx, rec: Mapping[str, Any], *, status: str = "stopped") -> dict[str, Any]:
+    return _save(x, rec["id"], status=status, finalResults=_final_results(x, rec))
+
+
+def _final_results(x: Ctx, rec: Mapping[str, Any]) -> dict[str, Any]:
+    """Stop the record's A/B test (an experiment's or a canary's) and return its last results (the ones saved before
+    when AWS has none now)."""
     data = x.data()
     ab = data.get_ab_test(abTestId=rec["abTest"]["id"])
     if ab.get("executionStatus") != "STOPPED":
         data.update_ab_test(abTestId=rec["abTest"]["id"], executionStatus="STOPPED", clientToken=_token())
         ab = _ab_wait(data, rec["abTest"]["id"], execution="STOPPED")
-    final = {"at": _now(), "metrics": ab_metrics(ab) or list((rec.get("finalResults") or {}).get("metrics") or []),
-             "analysisTimestamp": str((ab.get("results") or {}).get("analysisTimestamp") or "") or None}
-    return _save(x, rec["id"], status=status, finalResults=final)
+    return {"at": _now(), "metrics": ab_metrics(ab) or list((rec.get("finalResults") or {}).get("metrics") or []),
+            "analysisTimestamp": str((ab.get("results") or {}).get("analysisTimestamp") or "") or None}
 
 
 def contract_queries(x: Ctx, sid: str) -> list[str]:
@@ -1258,13 +1259,18 @@ def twin_of(console: Any, workspace: str, harness_id: str) -> dict[str, Any] | N
     return None
 
 
-def route_for(console: Any, workspace: str, harness_id: str) -> dict[str, Any] | None:
-    """The running experiment of a Harness, if it has one: its traffic should go through the experiment's Gateway."""
-    for rec in (console.store.read("experiments", {}) or {}).values():
+def _running(console: Any, collection: str, workspace: str, agent_id: str) -> dict[str, Any] | None:
+    """The running record of ``collection`` (an experiment, or a canary) on an agent with a Gateway to invoke."""
+    for rec in (console.store.read(collection, {}) or {}).values():
         if (rec.get("workspace") == workspace and rec.get("status") == "running" and rec.get("invokeUrl")
-                and (rec.get("agent") or {}).get("id") == harness_id):
+                and (rec.get("agent") or {}).get("id") == agent_id):
             return rec
     return None
+
+
+def route_for(console: Any, workspace: str, harness_id: str) -> dict[str, Any] | None:
+    """The running experiment of a Harness, if it has one: its traffic should go through the experiment's Gateway."""
+    return _running(console, "experiments", workspace, harness_id)
 
 
 def invoke_through(session: Any, region: str, rec: Mapping[str, Any], *, message: str, session_id: str | None, actor: str) -> Iterator[dict[str, Any]]:
@@ -1329,12 +1335,8 @@ def send_traffic(x: Ctx, eid: str, body: Mapping[str, Any]) -> dict[str, Any]:
     rec = _get(x, eid)
     if rec["status"] not in ("running", "paused") or not rec.get("invokeUrl"):
         raise ExperimentError(f"experiment {eid} is {rec['status']}: traffic goes to a running A/B test")
-    prompts = contract_queries(x, str(body["contractSet"])) if body.get("contractSet") else [str(p).strip() for p in body.get("prompts") or [] if str(p).strip()]
-    repeat = _int(body.get("repeat"), 1, "repeat", 1, 5)
-    if not prompts or len(prompts) * repeat > MAX_TRAFFIC:
-        raise ExperimentError(f"give a contractSet or prompts, at most {MAX_TRAFFIC} sessions in all", status=400)
+    items = _traffic_items(x, body)
     hexid, url, session, region = eid[4:], rec["invokeUrl"], x.session, x.region
-    items = [(i, q) for i, q in enumerate([q for _ in range(repeat) for q in prompts], 1)]
 
     def work(job: Any) -> dict[str, Any]:
         def one(item: tuple[int, str]) -> dict[str, Any]:
@@ -1349,21 +1351,35 @@ def send_traffic(x: Ctx, eid: str, body: Mapping[str, Any]) -> dict[str, Any]:
                 status, text, error = 0, "", f"{type(exc).__name__}: {str(exc)[:200]}"
             return {"sessionId": sid, "query": query[:200], "status": status, "answer": text[:300], "error": error}
 
-        job.log(f"{len(items)} session(s) through {url}")
-        with ThreadPoolExecutor(max_workers=TRAFFIC_WORKERS) as pool:
-            done = list(pool.map(one, items))
-        failed = [d for d in done if d["status"] != 200 or d["error"]]
-        statuses: dict[str, int] = {}
-        for d in done:
-            statuses[str(d["status"])] = statuses.get(str(d["status"]), 0) + 1
-        job.progress(sent=len(done) - len(failed), failed=len(failed))
-        for d in failed[:3]:
-            job.log(f"failed {d['status']}: {d['error']}")
-        return {"sent": len(done) - len(failed), "failed": len(failed), "statuses": statuses, "samples": done[:10],
-                "sessions": [d["sessionId"] for d in done if d["status"] == 200]}
+        return _replay(job, url, items, one, samples=10)
 
     return x.console.jobs.start("experiment-traffic", x.workspace, {"experiment": eid, "sessions": len(items)}, work,
                                 label=f"A/B 流量 {rec['agent']['name']}")
+
+
+def _traffic_items(x: Ctx, body: Mapping[str, Any]) -> list[tuple[int, str]]:
+    """The numbered prompts a traffic job sends (a contract set's questions, or ``prompts``), ``repeat`` times."""
+    prompts = contract_queries(x, str(body["contractSet"])) if body.get("contractSet") else [str(p).strip() for p in body.get("prompts") or [] if str(p).strip()]
+    repeat = _int(body.get("repeat"), 1, "repeat", 1, 5)
+    if not prompts or len(prompts) * repeat > MAX_TRAFFIC:
+        raise ExperimentError(f"give a contractSet or prompts, at most {MAX_TRAFFIC} sessions in all", status=400)
+    return list(enumerate([q for _ in range(repeat) for q in prompts], 1))
+
+
+def _replay(job: Any, url: str, items: Sequence[tuple[int, str]], one: Callable[[tuple[int, str]], dict[str, Any]], *, samples: int) -> dict[str, Any]:
+    """A traffic job's sessions (``one`` per item, :data:`TRAFFIC_WORKERS` at a time) and their tally."""
+    job.log(f"{len(items)} session(s) through {url}")
+    with ThreadPoolExecutor(max_workers=TRAFFIC_WORKERS) as pool:
+        done = list(pool.map(one, items))
+    failed = [d for d in done if d["status"] != 200 or d["error"]]
+    statuses: dict[str, int] = {}
+    for d in done:
+        statuses[str(d["status"])] = statuses.get(str(d["status"]), 0) + 1
+    job.progress(sent=len(done) - len(failed), failed=len(failed))
+    for d in failed[:3]:
+        job.log(f"failed {d['status']}: {d['error']}")
+    return {"sent": len(done) - len(failed), "failed": len(failed), "statuses": statuses, "samples": done[:samples],
+            "sessions": [d["sessionId"] for d in done if d["status"] == 200]}
 
 
 # -- promotion ---------------------------------------------------------------------------------------------------------
@@ -1580,27 +1596,31 @@ def _client_status(exc: BaseException) -> int | None:
     return None
 
 
+def _ctx(r: Any) -> Ctx:
+    wid = r.workspace()
+    session = r.session()
+    ws = r.console.workspaces.get(wid)
+    return Ctx(r.console, wid, session, ws["region"], ws["accountId"], r.caller, boundary=ws.get("permissionsBoundaryArn"))
+
+
+def handle(fn: Callable[[Ctx, Any], Any], status: int = 200) -> Callable[[Any], tuple[int, Any]]:
+    """A route of this module or of ``runtime_canary``: ``fn(ctx, request)`` answers ``status``; its refusals and
+    AWS's (:func:`_client_status`) are answers, anything else stays a 500."""
+    def route(r: Any) -> tuple[int, Any]:
+        try:
+            return status, fn(_ctx(r), r)
+        except ExperimentError as exc:
+            return exc.status, {"error": str(exc), **exc.extra}
+        except Exception as exc:  # noqa: BLE001 - an AWS refusal is the caller's to read, not an internal error
+            code = _client_status(exc) if hasattr(exc, "response") else None
+            if code is None:
+                raise
+            return code, {"error": f"{_code(exc)}: {str(exc)[:400]}"}
+
+    return route
+
+
 def register(router: Any) -> None:
-    def ctx(r: Any) -> Ctx:
-        wid = r.workspace()
-        session = r.session()
-        ws = r.console.workspaces.get(wid)
-        return Ctx(r.console, wid, session, ws["region"], ws["accountId"], r.caller, boundary=ws.get("permissionsBoundaryArn"))
-
-    def handle(fn: Callable[[Ctx, Any], Any], status: int = 200) -> Callable[[Any], tuple[int, Any]]:
-        def route(r: Any) -> tuple[int, Any]:
-            try:
-                return status, fn(ctx(r), r)
-            except ExperimentError as exc:
-                return exc.status, {"error": str(exc), **exc.extra}
-            except Exception as exc:  # noqa: BLE001 - an AWS refusal is the caller's to read, not an internal error
-                code = _client_status(exc) if hasattr(exc, "response") else None
-                if code is None:
-                    raise
-                return code, {"error": f"{_code(exc)}: {str(exc)[:400]}"}
-
-        return route
-
     add, base = router.add, "/workspaces/{wid}/experiments"
     add("GET", base + "/bundles", handle(lambda x, r: {"bundles": list_bundles(x)}))
     add("POST", base + "/bundles", handle(lambda x, r: create_bundle(x, r.body), 201))

@@ -1077,8 +1077,6 @@ def _patch_scripts(release: Path, data: dict[str, Any], facts: ScriptFacts) -> l
     |P| counts, the per-case runtime actor computed in bash, the run record, probe-scoped trace
     selection and waits, case-tagged scores, the judge on every practice session and L1.
     """
-    if facts.semantics != "teaching" or facts.actor_mode != "per_case":
-        raise RenderError(f"script facts use '{facts.semantics}' semantics; the renderer emits only the teaching runtime")
     if not facts.eval_cases or facts.first_conversation is None:
         raise RenderError("pack has no practice golden cases")
     if facts.probe_count < 1:

@@ -50,6 +50,7 @@ from typing import Any, Callable, Iterable, Mapping
 
 from ..direct.aws import client
 from .agents import CONSOLE_TAG, AgentError, ensure_boundary, put_inline_policy
+from .common import error_code as _code, guarded as common_guarded, pages as _pages
 from .workspaces import boundary_of
 
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,47}$")  # engine, policy and generation names
@@ -98,21 +99,6 @@ def _iso(value: Any) -> str | None:
 
 def _ctl(session: Any, region: str) -> Any:
     return client(session, "bedrock-agentcore-control", region)
-
-
-def _all(call: Callable[..., Any], key: str, **kwargs: Any) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    while True:
-        page = call(**kwargs)
-        out += page.get(key) or []
-        if not page.get("nextToken"):
-            return out
-        kwargs["nextToken"] = page["nextToken"]
-
-
-def _code(exc: BaseException) -> str:
-    response = getattr(exc, "response", None)
-    return str(((response or {}).get("Error") or {}).get("Code") or "") if isinstance(response, dict) else ""
 
 
 def _message(exc: BaseException) -> str:
@@ -169,7 +155,7 @@ def overview(session: Any, region: str) -> dict[str, Any]:
     """Every policy engine (with the Gateways attached to it and its policy count) and every Gateway (with its engine)."""
     ctl = _ctl(session, region)
     gateways = []
-    for summary in _all(ctl.list_gateways, "items"):
+    for summary in _pages(ctl.list_gateways, "items"):
         g = ctl.get_gateway(gatewayIdentifier=summary["gatewayId"])
         gateways.append(_gateway_view(g, _tags(ctl, g["gatewayArn"])))
     attached: dict[str, list[dict[str, Any]]] = {}
@@ -177,8 +163,8 @@ def overview(session: Any, region: str) -> dict[str, Any]:
         if g["engine"]:
             attached.setdefault(str(g["engine"]["arn"]), []).append({"id": g["id"], "name": g["name"], "mode": g["engine"]["mode"]})
     engines = []
-    for e in _all(ctl.list_policy_engines, "policyEngines"):
-        count = len(_all(ctl.list_policies, "policies", policyEngineId=e["policyEngineId"]))
+    for e in _pages(ctl.list_policy_engines, "policyEngines"):
+        count = len(_pages(ctl.list_policies, "policies", policyEngineId=e["policyEngineId"]))
         engines.append(_engine_view(e, _tags(ctl, e["policyEngineArn"]), attached.get(str(e["policyEngineArn"]), []), count))
     return {"engines": engines, "gateways": gateways}
 
@@ -204,7 +190,7 @@ def _console_engine(ctl: Any, engine_id: str) -> dict[str, Any]:
 
 def _attached_to(ctl: Any, engine_arn: str) -> list[str]:
     names = []
-    for summary in _all(ctl.list_gateways, "items"):
+    for summary in _pages(ctl.list_gateways, "items"):
         g = ctl.get_gateway(gatewayIdentifier=summary["gatewayId"])
         if (g.get("policyEngineConfiguration") or {}).get("arn") == engine_arn:
             names.append(str(g.get("name") or g.get("gatewayId")))
@@ -219,7 +205,7 @@ def delete_engine(session: Any, region: str, engine_id: str, body: Mapping[str, 
     if gateways:
         raise GovernanceError(f"detach the engine from {', '.join(gateways)} first: a Gateway keeps pointing at a deleted engine", 409,
                               gateways=gateways)
-    policies = _all(ctl.list_policies, "policies", policyEngineId=engine_id)
+    policies = _pages(ctl.list_policies, "policies", policyEngineId=engine_id)
     if policies and body.get("deletePolicies") is not True:
         raise GovernanceError(f"the engine still holds {len(policies)} policies: send deletePolicies: true to delete them with it", 409,
                               policies=len(policies))
@@ -227,7 +213,7 @@ def delete_engine(session: Any, region: str, engine_id: str, body: Mapping[str, 
         if p.get("status") != "DELETING":
             ctl.delete_policy(policyEngineId=engine_id, policyId=p["policyId"])
     for _ in range(40):
-        if not _all(ctl.list_policies, "policies", policyEngineId=engine_id):
+        if not _pages(ctl.list_policies, "policies", policyEngineId=engine_id):
             break
         _pause(3)
     out = ctl.delete_policy_engine(policyEngineId=engine_id)
@@ -245,7 +231,7 @@ def _policy_view(p: Mapping[str, Any]) -> dict[str, Any]:
 
 def policies(session: Any, region: str, engine_id: str) -> list[dict[str, Any]]:
     ctl = _ctl(session, region)
-    found = _all(ctl.list_policies, "policies", policyEngineId=_check(engine_id, RESOURCE_ID, "policy engine"))
+    found = _pages(ctl.list_policies, "policies", policyEngineId=_check(engine_id, RESOURCE_ID, "policy engine"))
     return [_policy_view(p) for p in sorted(found, key=lambda p: str(p.get("name") or ""))]
 
 
@@ -393,16 +379,10 @@ def generation(session: Any, region: str, engine_id: str, generation_id: str) ->
     g = ctl.get_policy_generation(policyEngineId=engine_id, policyGenerationId=generation_id)
     assets = []
     if g.get("status") == "GENERATED":
-        assets = [_asset_view(a) for a in _all(ctl.list_policy_generation_assets, "policyGenerationAssets", policyEngineId=engine_id,
+        assets = [_asset_view(a) for a in _pages(ctl.list_policy_generation_assets, "policyGenerationAssets", policyEngineId=engine_id,
                                                policyGenerationId=generation_id)]
     return {"id": g.get("policyGenerationId"), "name": g.get("name"), "status": g.get("status"), "statusReasons": list(g.get("statusReasons") or []),
             "findings": g.get("findings"), "gatewayArn": (g.get("resource") or {}).get("arn"), "createdAt": _iso(g.get("createdAt")), "assets": assets}
-
-
-def generations(session: Any, region: str, engine_id: str) -> list[dict[str, Any]]:
-    found = _all(_ctl(session, region).list_policy_generations, "policyGenerations", policyEngineId=_check(engine_id, RESOURCE_ID, "policy engine"))
-    return [{"id": g.get("policyGenerationId"), "name": g.get("name"), "status": g.get("status"), "gatewayArn": (g.get("resource") or {}).get("arn"),
-             "createdAt": _iso(g.get("createdAt"))} for g in sorted(found, key=lambda g: str(g.get("createdAt") or ""), reverse=True)]
 
 
 # -- Gateways: the engine, rules, rate limits, resource policy -----------------------------------------------------
@@ -498,7 +478,7 @@ def attach(session: Any, region: str, gateway_id: str, body: Mapping[str, Any], 
     out: dict[str, Any] = {"gatewayId": gateway["gatewayId"], "engineId": engine["policyEngineId"], "mode": mode,
                            "replaced": before["arn"] if before and before.get("arn") != wanted["arn"] else None, "roleGranted": False}
     if mode == "ENFORCE":
-        live = [p for p in _all(ctl.list_policies, "policies", policyEngineId=engine["policyEngineId"])
+        live = [p for p in _pages(ctl.list_policies, "policies", policyEngineId=engine["policyEngineId"])
                 if p.get("status") == "ACTIVE" and p.get("enforcementMode") == "ACTIVE" and re.search(r"\bpermit\s*\(", statement_of(p.get("definition") or {}))]
         if not live:
             out["warning"] = "no ACTIVE permit policy in this engine: under ENFORCE every tool call is denied"
@@ -557,7 +537,7 @@ def _rule_view(r: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def rules(session: Any, region: str, gateway_id: str) -> list[dict[str, Any]]:
-    found = _all(_ctl(session, region).list_gateway_rules, "gatewayRules", gatewayIdentifier=_check(gateway_id, GATEWAY_ID, "gateway"))
+    found = _pages(_ctl(session, region).list_gateway_rules, "gatewayRules", gatewayIdentifier=_check(gateway_id, GATEWAY_ID, "gateway"))
     return [_rule_view(r) for r in sorted(found, key=lambda r: int(r.get("priority") or 0))]
 
 
@@ -651,7 +631,7 @@ def _rate_limit_view(r: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def rate_limits(session: Any, region: str, gateway_id: str) -> list[dict[str, Any]]:
-    found = _all(_ctl(session, region).list_gateway_rate_limits, "rateLimits", gatewayIdentifier=_check(gateway_id, GATEWAY_ID, "gateway"))
+    found = _pages(_ctl(session, region).list_gateway_rate_limits, "rateLimits", gatewayIdentifier=_check(gateway_id, GATEWAY_ID, "gateway"))
     return [_rate_limit_view(r) for r in found]
 
 
@@ -764,22 +744,12 @@ def _window(hours: Any) -> tuple[float, datetime, datetime]:
     return h, end - timedelta(hours=h), end
 
 
-def _logs_all(call: Callable[..., Any], key: str) -> list[dict[str, Any]]:
-    out, kwargs = [], {}
-    while True:
-        page = call(**kwargs)
-        out += page.get(key) or []
-        if not page.get("nextToken"):
-            return out
-        kwargs = {"nextToken": page["nextToken"]}
-
-
 def channels(logs: Any, gateway_arn: str) -> dict[str, Any]:
     """Where this Gateway's decisions are delivered: its APPLICATION_LOGS log group, and whether traces reach aws/spans."""
-    sources = {s["name"]: s for s in _logs_all(logs.describe_delivery_sources, "deliverySources") if gateway_arn in (s.get("resourceArns") or [])}
+    sources = {s["name"]: s for s in _pages(logs.describe_delivery_sources, "deliverySources") if gateway_arn in (s.get("resourceArns") or [])}
     out: dict[str, Any] = {"logGroup": None, "traces": False, "deliveries": []}
-    deliveries = [d for d in _logs_all(logs.describe_deliveries, "deliveries") if d.get("deliverySourceName") in sources] if sources else []
-    destinations = {d["arn"]: d for d in _logs_all(logs.describe_delivery_destinations, "deliveryDestinations")} if deliveries else {}
+    deliveries = [d for d in _pages(logs.describe_deliveries, "deliveries") if d.get("deliverySourceName") in sources] if sources else []
+    destinations = {d["arn"]: d for d in _pages(logs.describe_delivery_destinations, "deliveryDestinations")} if deliveries else {}
     for d in deliveries:
         kind = sources[d["deliverySourceName"]].get("logType")
         out["deliveries"].append({"id": d.get("id"), "arn": d.get("arn"), "source": d["deliverySourceName"], "logType": kind,
@@ -1013,31 +983,9 @@ def disable_decision_log(session: Any, region: str, gateway_id: str, body: Mappi
 
 # -- routes --------------------------------------------------------------------------------------------------------
 
-def _aws_status(exc: BaseException) -> tuple[int, str] | None:
-    response = getattr(exc, "response", None)
-    if not isinstance(response, dict) or "Error" not in response:
-        return None
-    status = int((response.get("ResponseMetadata") or {}).get("HTTPStatusCode") or 500)
-    return (status if 400 <= status < 500 else 502), f"{_code(exc) or type(exc).__name__}: {_message(exc)}"
-
-
 def guarded(fn: Callable[[Any], Any]) -> Callable[[Any], Any]:
     """A route whose refusals are answers: the console's own with their status, AWS's with theirs (502 for a 5xx)."""
-    def run(r: Any) -> Any:
-        try:
-            return fn(r)
-        except GovernanceError as exc:
-            return exc.status, {"error": str(exc), **exc.extra}
-        except Exception as exc:  # noqa: BLE001 - only AWS's answers are mapped; anything else stays a 500
-            if type(exc).__name__ == "ParamValidationError":
-                return 400, {"error": " ".join(str(exc).split())[:600]}
-            found = _aws_status(exc)
-            if found is None:
-                raise
-            return found[0], {"error": found[1][:1500]}
-
-    run.__name__ = getattr(fn, "__name__", "route")
-    return run
+    return common_guarded(fn, (GovernanceError,), limit=1500)
 
 
 def register(router: Any) -> None:
@@ -1065,7 +1013,6 @@ def register(router: Any) -> None:
         ("GET", f"{engine}/policies/{{pid}}", lambda r: (200, get_policy(*sess(r), r.params["eid"], r.params["pid"])), False),
         ("PUT", f"{engine}/policies/{{pid}}", lambda r: (200, update_policy(*sess(r), r.params["eid"], r.params["pid"], r.body)), True),
         ("DELETE", f"{engine}/policies/{{pid}}", lambda r: (200, delete_policy(*sess(r), r.params["eid"], r.params["pid"])), True),
-        ("GET", f"{engine}/generations", lambda r: (200, {"generations": generations(*sess(r), r.params["eid"])}), False),
         ("POST", f"{engine}/generations", lambda r: (202, start_generation(*sess(r), r.params["eid"], r.body)), True),
         ("GET", f"{engine}/generations/{{gen}}", lambda r: (200, generation(*sess(r), r.params["eid"], r.params["gen"])), False),
         ("PUT", f"{gateway}/engine", lambda r: (200, attach(*sess(r), r.params["gw"], r.body, boundary=bound(r))), True),

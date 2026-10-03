@@ -37,7 +37,6 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
-import math
 import os
 import re
 import tempfile
@@ -48,6 +47,7 @@ from types import SimpleNamespace
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from . import l1, pre_thelma, teaching, teaching_policy
+from .direct.aws import _code_error
 from .rehearsal import FOCUS_CHECKS, RETRIEVAL_CAP
 from .script_facts import UPSTREAM_MAX_ITERATIONS
 
@@ -59,7 +59,6 @@ MAX_TOKENS = 8192
 #: knowledge-base/create_kb.py: FIXED_SIZE chunks of 128 tokens with 20% overlap; the tools handler asks for 3.
 CHUNK_TOKENS, CHUNK_OVERLAP, TOP_K = 128, 0.2, 3
 PHASES = ("baseline", "optimized")
-PREDICTIONS = ("likely_reproduced", "likely_not_reproduced", "needs_goal_judge", "not_predicted", "unknown")
 HANDLER = Path(__file__).resolve().parent / "templates" / "scenario_tools_handler.py"
 
 _CJK = re.compile(r"[㐀-鿿豈-﫿]")
@@ -139,11 +138,6 @@ MODEL_ERRORS = frozenset({"ValidationException", "ModelErrorException", "ModelTi
 TRUNCATED_ERROR = "Error: Model stopped generating due to maximum token limit"
 
 
-def _error_code(exc: BaseException) -> str:
-    response = getattr(exc, "response", None)
-    return str(((response or {}).get("Error") or {}).get("Code") or "") if isinstance(response, dict) else ""
-
-
 #: An embedding has no question to fail: Titan's "unexpected error during processing. Try your request again."
 #: (ModelErrorException, 2026-10-01) is retried like throttling instead of ending the run.
 EMBED_RETRIED = frozenset({"ModelErrorException", "ModelTimeoutException", "InternalServerException"})
@@ -155,8 +149,8 @@ def _retrying(fn: Callable[..., Any], *, attempts: int = 6, pause: float = 2.0, 
         try:
             return fn(**kwargs)
         except Exception as exc:  # noqa: BLE001 - botocore throttling, read timeouts
-            transient = _error_code(exc) in ("ThrottlingException", "ServiceUnavailableException", "ModelNotReadyException") or \
-                _error_code(exc) in also or type(exc).__name__ in TRANSIENT_ERRORS
+            transient = _code_error(exc) in ("ThrottlingException", "ServiceUnavailableException", "ModelNotReadyException") or \
+                _code_error(exc) in also or type(exc).__name__ in TRANSIENT_ERRORS
             if not transient or attempt == attempts - 1:
                 raise
             sleep(pause * (2 ** attempt))
@@ -275,7 +269,7 @@ def converse(client: Any, *, model: str, system: str, query: str, tools: Toolbox
             response = _retrying(client.converse, modelId=model, system=[{"text": system}], messages=messages,
                                  toolConfig=tools.config(), inferenceConfig={"maxTokens": max_tokens})
         except Exception as exc:  # noqa: BLE001 - botocore ClientError
-            if _error_code(exc) not in MODEL_ERRORS:
+            if _code_error(exc) not in MODEL_ERRORS:
                 raise
             stop, error = "error", str(exc)[:300]
             break

@@ -16,16 +16,10 @@ Facts are pure data derived from a loaded scenario (no I/O in :func:`compute`):
   retrieval tool, the THELMA retrieval-span filter, evaluator ids) and skills;
 * ``features``: evaluation features the release implements (vocabulary :data:`FEATURES`).
 
-Two semantics exist:
-
-``teaching`` (the default; SPEC D3, what render emits)
-    ``labs.teaching``-driven: :func:`teaching.eval_order`, probe flags from P, probe count =
-    ``RECENT_N`` = |P|, per-case personas (the scripts derive a fresh runtime actor
-    ``${GOLDEN_ACTORS[i]}-${RUN_TAG}-q$((i+1))``), and 06 from ``labs.teaching.firstConversation``.
-``legacy`` (reference only; render refuses it)
-    The pre-P1 rendering: practice order, one shared actor (``practice[0].actorId``; ``-v2`` for
-    10), probes = practice cases whose ``requiredTools`` name the retrieval tool, or every practice
-    case when none does; 06 asks ``practice[0].query`` as the template's actor; ``RECENT_N`` 3.
+The derivation is the teaching runtime render emits (SPEC D3): ``labs.teaching``-driven
+:func:`teaching.eval_order`, probe flags from P, probe count = ``RECENT_N`` = |P|, per-case personas
+(the scripts derive a fresh runtime actor ``${GOLDEN_ACTORS[i]}-${RUN_TAG}-q$((i+1))``), and 06 from
+``labs.teaching.firstConversation`` (``practice[0].query`` as the template's actor when none is declared).
 
 The 06 console lines (:func:`first_conversation_topic`, :func:`memory_notice`) are built here so
 render writes and :func:`verify_rendered` checks the same text.
@@ -41,15 +35,11 @@ from typing import Any
 
 from . import teaching
 
-SEMANTICS: tuple[str, ...] = ("legacy", "teaching")
-DEFAULT_SEMANTICS = "teaching"
-
 #: Evaluation features a release may implement (RELEASE.json ``evaluationFeatures``, guide wording).
 FEATURES: frozenset[str] = frozenset({"l1-scenario-assertions/1", "mtg-scenario-policy/1", "per-case-actors/1"})
 
-#: Values the pinned upstream scripts hard-code (06 actor, 09/11 RECENT_N, 13 RUNS default).
+#: Values the pinned upstream scripts hard-code (06 actor, 13 RUNS default).
 UPSTREAM_FIRST_ACTOR = "employee-001"
-UPSTREAM_RECENT_N = 3
 UPSTREAM_STABILITY_RUNS = 3
 #: 04-deploy.sh ``npx agentcore create --max-iterations``: render keeps the flag and no scenario field sets it, so
 #: every release's harness ends a turn after this many agent iterations (rehearsal names it on an empty reply).
@@ -62,11 +52,8 @@ DEFAULT_JUDGE_MODEL = "us.amazon.nova-2-lite-v1:0"
 
 #: SPEC D3 run-record contract (teaching semantics): RUN_TAG = <phase>-<epoch>, per-case runtime
 #: actor computed in bash, records under the eval-runs root (never inside the release dir).
-RUN_PHASES: tuple[str, ...] = ("baseline", "optimized", "comparison")
 RUNTIME_ACTOR_EXPR = "${GOLDEN_ACTORS[$i]}-${RUN_TAG}-q$((i+1))"
 EVAL_RUNS_ROOT_EXPR = "${WORKSHOP_ROOT:-$HOME/workshop}/eval-runs"
-
-ACTOR_MODES = ("shared", "per_case")
 
 
 @dataclass(frozen=True)
@@ -90,8 +77,8 @@ class FirstConversation:
 
     query: str
     actor_id: str
-    source: str  # "teaching" (labs.teaching.firstConversation) | "practice" (legacy: practice[0])
-    case_id: str | None = None  # legacy only: the practice case whose query is reused
+    source: str  # "teaching" (labs.teaching.firstConversation) | "practice" (fallback: practice[0])
+    case_id: str | None = None  # "practice" only: the practice case whose query is reused
     label: str | None = None
     unknown_context: tuple[str, ...] = ()
     must_not_mention: tuple[str, ...] = ()
@@ -104,15 +91,11 @@ class ScriptFacts:
     pack_id: str
     display_name: str
     language: str
-    semantics: str
     teaching_declared: bool
     first_conversation: FirstConversation | None
     eval_cases: tuple[CaseRun, ...]
     probe_count: int  # 09 want / N, 10 --eval-only N and its span wait
     recent_n: int  # 09 and 11 RECENT_N
-    actor_mode: str  # "shared" (legacy ACTOR_ID lines) | "per_case" (GOLDEN_ACTORS + RUN_TAG)
-    baseline_actor: str | None  # 09 ACTOR_ID (shared mode only)
-    optimize_actor: str | None  # 10 ACTOR_ID (shared mode only)
     agent_name: str
     gateway_name: str
     target_name: str
@@ -127,10 +110,6 @@ class ScriptFacts:
     stability_runs: int = UPSTREAM_STABILITY_RUNS  # 13 RUNS default
 
     def __post_init__(self) -> None:
-        if self.semantics not in SEMANTICS:
-            raise ValueError(f"unknown script-facts semantics '{self.semantics}'")
-        if self.actor_mode not in ACTOR_MODES:
-            raise ValueError(f"unknown actor mode '{self.actor_mode}'")
         unknown = set(self.features) - FEATURES
         if unknown:
             raise ValueError(f"unknown evaluation feature(s): {', '.join(sorted(unknown))}")
@@ -195,77 +174,10 @@ class ScriptFacts:
         return tuple(c.case_id for c in self.eval_cases if c.probe)
 
     @property
-    def retrieval_annotated(self) -> bool:
-        """False when no practice case names the retrieval tool (legacy: every case is a probe)."""
-        return any(c.requires_retrieval for c in self.eval_cases)
-
-    @property
     def stability_case_id(self) -> str | None:
         """The last probe asked: the retrieval trace 13-judge-stability re-scores by default."""
         probes = self.probe_case_ids
         return probes[-1] if probes else None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Deterministic JSON-able view (derived arrays and names included)."""
-        fc = self.first_conversation
-        return {
-            "packId": self.pack_id,
-            "semantics": self.semantics,
-            "teachingDeclared": self.teaching_declared,
-            "firstConversation": None
-            if fc is None
-            else {
-                "query": fc.query,
-                "actorId": fc.actor_id,
-                "source": fc.source,
-                "caseId": fc.case_id,
-                "label": fc.label,
-                "unknownContext": list(fc.unknown_context),
-                "mustNotMention": list(fc.must_not_mention),
-                "teachingPoint": fc.teaching_point,
-            },
-            "evalCases": [
-                {
-                    "index": c.index,
-                    "caseId": c.case_id,
-                    "label": c.label,
-                    "query": c.query,
-                    "category": c.category,
-                    "provenance": c.provenance,
-                    "actorId": c.actor_id,
-                    "probe": c.probe,
-                    "requiresRetrieval": c.requires_retrieval,
-                }
-                for c in self.eval_cases
-            ],
-            "probeCount": self.probe_count,
-            "probeCaseIds": list(self.probe_case_ids),
-            "recentN": self.recent_n,
-            "stabilityCaseId": self.stability_case_id,
-            "stabilityRuns": self.stability_runs,
-            "actorMode": self.actor_mode,
-            "baselineActor": self.baseline_actor,
-            "optimizeActor": self.optimize_actor,
-            "names": {
-                "agent": self.agent_name,
-                "memory": self.memory_name,
-                "gateway": self.gateway_name,
-                "target": self.target_name,
-                "compactTarget": self.compact_target,
-                "lambda": self.lambda_name,
-                "knowledgeBase": self.kb_name,
-                "kbPrefix": self.kb_prefix,
-                "ssmPrefix": self.ssm_prefix,
-                "retrievalTool": self.retrieval_tool,
-                "retrievalSpan": self.retrieval_span,
-                "thelmaEvaluator": self.thelma_evaluator,
-                "mtgEvaluator": self.mtg_evaluator,
-                "evalRunsRoot": self.eval_runs_root,
-            },
-            "judgeModel": self.judge_model,
-            "skills": list(self.skills),
-            "features": sorted(self.features),
-        }
 
 
 # ---------------------------------------------------------------------------
@@ -377,59 +289,28 @@ def _declared_first_conversation(data: dict[str, Any]) -> FirstConversation | No
     )
 
 
-def compute(data: dict[str, Any], *, semantics: str | None = None) -> ScriptFacts:
-    """Derive the script facts of a loaded scenario (``semantics`` defaults to :data:`DEFAULT_SEMANTICS`)."""
-    semantics = semantics or DEFAULT_SEMANTICS
-    if semantics not in SEMANTICS:
-        raise ValueError(f"unknown script-facts semantics '{semantics}'")
+def compute(data: dict[str, Any]) -> ScriptFacts:
+    """Derive the script facts of a loaded scenario."""
     ns = data["namespace"]
     evaluation = data["evaluation"]
     retrieval_tool = evaluation["retrievalToolName"]
     practice = teaching.practice_cases(data)
-
-    if semantics == "legacy":
-        annotated = any(_requires_retrieval(c, retrieval_tool) for c in practice)
-        shared = practice[0]["actorId"] if practice else None
-        cases = tuple(
-            _case_run(
-                i, c, actor=practice[0]["actorId"],  # one shared actor: today's render
-                # Unannotated packs evaluate the full set; annotated tool-only cases emit no retrieval span.
-                probe=_requires_retrieval(c, retrieval_tool) or not annotated,
-                retrieval_tool=retrieval_tool,
-            )
-            for i, c in enumerate(practice)
-        )
-        first = _practice_first_conversation(practice, str(data.get("language") or "") or None)
-        recent_n = UPSTREAM_RECENT_N
-        actor_mode, baseline_actor = "shared", shared
-        optimize_actor = f"{shared}-v2" if shared else None
-        features: frozenset[str] = frozenset()
-    else:
-        probes = set(teaching.probe_case_ids(data))
-        cases = tuple(
-            _case_run(i, c, actor=c["actorId"], probe=c["id"] in probes, retrieval_tool=retrieval_tool)
-            for i, c in enumerate(teaching.eval_order(data))
-        )
-        first = _declared_first_conversation(data) or _practice_first_conversation(practice, str(data.get("language") or "") or None)
-        recent_n = len(probes)
-        actor_mode, baseline_actor, optimize_actor = "per_case", None, None
-        # The teaching render ships per-case runtime actors, the L1 checker (l1_eval.py) and the
-        # scenario-policy Mind-the-Goal judge prompt together.
-        features = FEATURES
+    probes = set(teaching.probe_case_ids(data))
+    cases = tuple(
+        _case_run(i, c, actor=c["actorId"], probe=c["id"] in probes, retrieval_tool=retrieval_tool)
+        for i, c in enumerate(teaching.eval_order(data))
+    )
+    first = _declared_first_conversation(data) or _practice_first_conversation(practice, str(data.get("language") or "") or None)
 
     return ScriptFacts(
         pack_id=str(data["id"]),
         display_name=str(data.get("displayName", data["id"])),
         language=str(data.get("language", "")),
-        semantics=semantics,
         teaching_declared=teaching.declared(data),
         first_conversation=first,
         eval_cases=cases,
         probe_count=sum(c.probe for c in cases),
-        recent_n=recent_n,
-        actor_mode=actor_mode,
-        baseline_actor=baseline_actor,
-        optimize_actor=optimize_actor,
+        recent_n=len(probes),
         agent_name=ns["agentName"],
         gateway_name=ns["gatewayName"],
         target_name=ns["toolTargetName"],
@@ -440,7 +321,9 @@ def compute(data: dict[str, Any], *, semantics: str | None = None) -> ScriptFact
         retrieval_tool=retrieval_tool,
         judge_model=evaluation.get("judgeModel", DEFAULT_JUDGE_MODEL),
         skills=tuple(s["name"] for s in data.get("skills", [])),
-        features=features,
+        # The teaching render ships per-case runtime actors, the L1 checker (l1_eval.py) and the
+        # scenario-policy Mind-the-Goal judge prompt together.
+        features=FEATURES,
     )
 
 
@@ -522,33 +405,26 @@ def verify_rendered(release_dir: Path | str, facts: ScriptFacts) -> list[str]:
         _one(problems, "06-test-conversation.sh", "--actor-id", re.findall(r'--actor-id "([^"]*)"', s06), fc.actor_id)
         queries = [bash_unquote(q) for q in re.findall(r'--stream \\\n[ \t]*"((?:[^"\\]|\\.)*)" 2>&1\)', s06, re.S)]
         _one(problems, "06-test-conversation.sh", "first-conversation query", queries, fc.query)
-        if facts.semantics == "teaching":
-            echoed = [bash_unquote(v) for v in re.findall(r'^echo "((?:[^"\\]|\\.)*)"$', s06, re.M)]
-            for what, line in (("first-conversation topic", first_conversation_topic(fc)), ("memory notice", memory_notice(fc))):
-                if echoed.count(line) != 1:
-                    problems.append(f"06-test-conversation.sh: {what} line {line!r} printed {echoed.count(line)} times, expected once")
+        echoed = [bash_unquote(v) for v in re.findall(r'^echo "((?:[^"\\]|\\.)*)"$', s06, re.M)]
+        for what, line in (("first-conversation topic", first_conversation_topic(fc)), ("memory notice", memory_notice(fc))):
+            if echoed.count(line) != 1:
+                problems.append(f"06-test-conversation.sh: {what} line {line!r} printed {echoed.count(line)} times, expected once")
 
-    arrays = [("GOLDEN_QUERIES", list(facts.golden_queries)), ("GOLDEN_LABELS", list(facts.golden_labels))]
-    if facts.actor_mode == "per_case":
-        arrays += [
-            ("GOLDEN_IDS", list(facts.golden_ids)),
-            ("GOLDEN_ACTORS", list(facts.golden_actors)),
-            ("GOLDEN_PROBE", [str(p) for p in facts.golden_probe]),
-        ]
-    shared_actor = {"09-run-eval.sh": facts.baseline_actor, "10-optimize-prompt.sh": facts.optimize_actor}
+    arrays = [
+        ("GOLDEN_QUERIES", list(facts.golden_queries)), ("GOLDEN_LABELS", list(facts.golden_labels)),
+        ("GOLDEN_IDS", list(facts.golden_ids)), ("GOLDEN_ACTORS", list(facts.golden_actors)),
+        ("GOLDEN_PROBE", [str(p) for p in facts.golden_probe]),
+    ]
     for rel in ("09-run-eval.sh", "10-optimize-prompt.sh"):
         text = read(rel)
         for name, expected in arrays:
             _one(problems, rel, name, bash_arrays(text, name), expected)
-        if facts.actor_mode == "shared":
-            _one(problems, rel, "ACTOR_ID", re.findall(r'^ACTOR_ID="([^"]*)"$', text, re.M), shared_actor[rel])
-        else:
-            # One fresh runtime actor per case and run, computed in bash; one run-record root.
-            if text.count(RUNTIME_ACTOR_EXPR) != 1:
-                problems.append(f"{rel}: runtime actor {RUNTIME_ACTOR_EXPR} appears {text.count(RUNTIME_ACTOR_EXPR)} times, expected once")
-            if re.findall(r'^ACTOR_ID=', text, re.M):
-                problems.append(f"{rel}: a shared ACTOR_ID line remains")
-            _one(problems, rel, "EVAL_ROOT", re.findall(r'^EVAL_ROOT="([^"]*)"$', text, re.M), facts.eval_runs_root)
+        # One fresh runtime actor per case and run, computed in bash; one run-record root.
+        if text.count(RUNTIME_ACTOR_EXPR) != 1:
+            problems.append(f"{rel}: runtime actor {RUNTIME_ACTOR_EXPR} appears {text.count(RUNTIME_ACTOR_EXPR)} times, expected once")
+        if re.findall(r'^ACTOR_ID=', text, re.M):
+            problems.append(f"{rel}: a shared ACTOR_ID line remains")
+        _one(problems, rel, "EVAL_ROOT", re.findall(r'^EVAL_ROOT="([^"]*)"$', text, re.M), facts.eval_runs_root)
 
     s09 = read("09-run-eval.sh")
     _one(problems, "09-run-eval.sh", "want", _ints(r'local want="(\d+)"', s09), facts.probe_count)

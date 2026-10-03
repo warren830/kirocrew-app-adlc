@@ -5,6 +5,7 @@
 import React from 'react'
 import { call, api, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, useJob, Tabs,
   JOB_TONE, JOB_LABEL, STATUS_TONE } from '../ui.mjs'
+import { download } from './shared.mjs'
 
 const { useState, useEffect, useRef, useMemo, useCallback, createElement: h, Fragment } = React
 const ws = (wid, path) => `/workspaces/${wid}/studio${path}`
@@ -462,18 +463,6 @@ function Issues({ issues, onPick }) {
 }
 
 // -- code ----------------------------------------------------------------------------------------------------------------
-
-function download(filename, base64, type = 'application/zip') {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-  const url = URL.createObjectURL(new Blob([bytes], { type }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 2000)
-}
 
 function CodeView({ preview, onDownload, busy }) {
   const [file, setFile] = useState('main.py')

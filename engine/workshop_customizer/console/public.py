@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from . import agents, experiments, runtime_canary
+from . import agents, runtime_canary
 from .auth import AuthError
 from .web import sse
 
@@ -47,12 +47,7 @@ def handle(console: Any, method: str, path: str, headers: Mapping[str, str], bod
             session, region, agent = _agent(console, scope, str(body.get("agent") or ""))
             message, actor = str(body.get("message") or ""), str(body.get("actorId") or f"key-{scope['keyId']}")
             sid = agents.check_turn(message, body.get("sessionId") or None)  # a 400 before any stream starts
-            route = experiments.route_for(console, scope["workspace"], agent["id"]) if agent["kind"] == "harness" else None
-            canary = runtime_canary.route_for(console, scope["workspace"], agent["id"]) if agent["kind"] == "runtime" else None
-            events = (experiments.invoke_through(session, region, route, message=message, session_id=sid, actor=actor) if route
-                      else runtime_canary.invoke_through(session, region, canary, message=message, session_id=sid, actor=actor) if canary
-                      else agents.invoke(session, region=region, agent=agent, message=message, session_id=sid, actor=actor))
-            route = route or canary
+            events, route = runtime_canary.routed_turn(console, scope["workspace"], session, region, agent, message=message, session_id=sid, actor=actor)
             if body.get("stream"):
                 return 200, sse(events)
             text, tools, usage, sid, error, seconds = [], [], {}, None, None, None

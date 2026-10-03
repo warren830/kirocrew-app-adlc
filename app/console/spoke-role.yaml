@@ -399,7 +399,6 @@ Resources:
                   - codebuild:CreateProject
                   - codebuild:UpdateProject
                   - codebuild:BatchGetProjects
-                  - codebuild:DeleteProject
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
                 Resource: !Sub arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/adlc-console-*

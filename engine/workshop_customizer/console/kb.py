@@ -32,7 +32,8 @@ import time
 from typing import Any, Mapping, Sequence
 
 from ..direct.aws import client
-from .agents import CONSOLE_TAG, _pages, adopt, ensure_boundary, get_agent, put_inline_policy, role_args
+from .agents import CONSOLE_TAG, adopt, ensure_boundary, ensure_role, get_agent, put_inline_policy
+from .common import pages as _pages
 from .workspaces import boundary_of
 
 KB_ROLE = "adlc-console-kb-role"
@@ -77,27 +78,9 @@ def ensure_bucket(session: Any, account: str, region: str) -> str:
     return name
 
 
-def _ensure_role(session: Any, name: str, trust: Mapping[str, Any], policy_name: str, policy: Mapping[str, Any],
-                 managed: Sequence[str] = (), boundary: str | None = None) -> str:
-    """The role (created on the console's path with the workspace's permissions boundary, or an existing one the console
-    may adopt, given the boundary first when it was made before) and its inline policy; its ARN as IAM gives it."""
-    iam = client(session, "iam")
-    try:
-        role = iam.get_role(RoleName=name)["Role"]
-    except Exception as exc:  # noqa: BLE001
-        if "NoSuchEntity" not in str(exc):
-            raise
-        arn = iam.create_role(RoleName=name, AssumeRolePolicyDocument=json.dumps(trust), Description="ADLC console",
-                              Tags=[{"Key": k, "Value": v} for k, v in CONSOLE_TAG.items()], **role_args(boundary))["Role"]["Arn"]
-        for m in managed:
-            iam.attach_role_policy(RoleName=name, PolicyArn=m)
-        time.sleep(10)  # IAM propagation
-    else:
-        role, tags = adopt(iam, name, boundary, role, error=KnowledgeError)
-        arn = role["Arn"]
-        ensure_boundary(iam, name, boundary, role, tags)
-    iam.put_role_policy(RoleName=name, PolicyName=policy_name, PolicyDocument=json.dumps(policy))
-    return arn
+def _ensure_role(session: Any, name: str, trust: Mapping[str, Any], policy_name: str, policy: Mapping[str, Any], boundary: str | None = None) -> str:
+    """The KB's or the KB Gateway's role (``agents.ensure_role``; one the console may not adopt is a KnowledgeError)."""
+    return ensure_role(session, name, trust, policy_name, policy, description="ADLC console", boundary=boundary, error=KnowledgeError)
 
 
 def _s3_read(bucket: str, prefix: str) -> dict[str, Any]:
@@ -119,14 +102,8 @@ def _kb(session: Any, region: str) -> Any:
 
 def list_kbs(session: Any, region: str) -> list[dict[str, Any]]:
     agent = _kb(session, region)
-    out, kwargs = [], {}
-    while True:
-        page = agent.list_knowledge_bases(**kwargs)
-        out += [{"id": k.get("knowledgeBaseId"), "name": k.get("name"), "status": k.get("status"), "description": k.get("description"),
-                 "updatedAt": str(k.get("updatedAt") or "")} for k in page.get("knowledgeBaseSummaries") or []]
-        if not page.get("nextToken"):
-            return out
-        kwargs["nextToken"] = page["nextToken"]
+    return [{"id": k.get("knowledgeBaseId"), "name": k.get("name"), "status": k.get("status"), "description": k.get("description"),
+             "updatedAt": str(k.get("updatedAt") or "")} for k in _pages(agent.list_knowledge_bases, "knowledgeBaseSummaries")]
 
 
 def _location(ds: Mapping[str, Any]) -> tuple[str | None, str]:
@@ -583,18 +560,11 @@ def register(router: Any) -> None:
     add("POST", "/workspaces/{wid}/knowledge-bases/{kid}/files", lambda r: (201, upload(r.console, r.workspace(), r.params["kid"], r.body.get("files") or [],
                                                                                        acknowledged=r.body.get("acknowledged"))))
 
-    def add_source(r: Any):
-        session, region = sess(r)
-        owned(session, region, r.params["kid"], r.body.get("acknowledged"))
-        ws = r.console.workspaces.get(r.workspace())
-        return 201, {"dataSourceId": create_data_source(session, ws["accountId"], region, r.params["kid"], r.body, boundary_of(ws))}
-
     def start_sync(r: Any):
         session, region = sess(r)
         owned(session, region, r.params["kid"], r.body.get("acknowledged"))
         return 202, {"started": sync(session, region, r.params["kid"])}
 
-    add("POST", "/workspaces/{wid}/knowledge-bases/{kid}/sources", add_source)
     add("POST", "/workspaces/{wid}/knowledge-bases/{kid}/sync", start_sync)
     add("POST", "/workspaces/{wid}/knowledge-bases/{kid}/query", lambda r: (200, {"results": query(*sess(r), r.params["kid"], str(r.body.get("query") or ""),
                                                                                                     int(r.body.get("results") or 5))}))

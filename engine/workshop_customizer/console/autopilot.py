@@ -20,7 +20,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import threading
 from pathlib import Path
 from typing import Any, Mapping

@@ -1,9 +1,8 @@
 """script_facts: the single seam between the scenario and the rendered 06/09/10/11 scripts.
 
-Teaching semantics (the default since P1) derives the labs.teaching runtime render emits (eval order,
-per-case personas, probe flags, |P|, the 06 first conversation); legacy semantics still reproduces the
-pre-P0d values as a reference (render refuses it); verify_rendered proves the release scripts do what
-the facts say (offline, deterministic).
+The facts derive the labs.teaching runtime render emits (eval order, per-case personas, probe flags,
+|P|, the 06 first conversation); verify_rendered proves the release scripts do what the facts say
+(offline, deterministic).
 """
 
 from __future__ import annotations
@@ -36,23 +35,6 @@ def _undeclared(data: dict) -> dict:
     data = json.loads(json.dumps(data))
     data["labs"].pop("teaching", None)
     return data
-
-
-def _pre_refactor_values(data: dict) -> dict:
-    """What render.py computed inline before the P0d refactor (render.py @ 4e2651d :209, :305, :421-425, :498)."""
-    practice = [c for c in data["evaluation"]["goldenSet"] if c["set"] == "practice"]
-    first_actor = practice[0]["actorId"]
-    retrieval_count = sum(data["evaluation"]["retrievalToolName"] in case.get("expected", {}).get("requiredTools", [])
-                          for case in practice)
-    return {
-        "queries": tuple(c["query"] for c in practice),
-        "labels": tuple(c["label"] for c in practice),
-        "baseline_actor": first_actor,
-        "optimize_actor": f"{first_actor}-v2",
-        "count": retrieval_count or len(practice),
-        "first_query": practice[0]["query"],
-        "skills": tuple(s["name"] for s in data.get("skills", [])),
-    }
 
 
 def _teaching_block() -> dict:
@@ -92,68 +74,13 @@ def maintenance_release(maintenance_pack, tmp_path_factory):
 
 
 # ---------------------------------------------------------------------------
-# Legacy semantics = today's render
+# Teaching facts (what render emits)
 # ---------------------------------------------------------------------------
 
 
-def test_default_semantics_is_teaching_since_p1():
-    assert script_facts.DEFAULT_SEMANTICS == "teaching"
-    assert script_facts.compute(_pack_data("maintenance")).semantics == "teaching"
-
-
-@pytest.mark.parametrize("pack_id", REFERENCE_PACKS)
-def test_legacy_facts_reproduce_the_pre_refactor_render_values(pack_id):
-    data = _pack_data(pack_id)
-    facts = script_facts.compute(data, semantics="legacy")
-    old = _pre_refactor_values(data)
-    assert facts.golden_queries == old["queries"] and facts.golden_labels == old["labels"]
-    assert facts.actor_mode == "shared"
-    assert (facts.baseline_actor, facts.optimize_actor) == (old["baseline_actor"], old["optimize_actor"])
-    assert set(facts.golden_actors) == {old["baseline_actor"]}
-    assert facts.probe_count == old["count"]
-    assert facts.recent_n == script_facts.UPSTREAM_RECENT_N == 3
-    assert facts.first_conversation.query == old["first_query"]
-    assert facts.first_conversation.actor_id == script_facts.UPSTREAM_FIRST_ACTOR
-    assert facts.first_conversation.source == "practice"
-    assert facts.skills == old["skills"]
-    assert facts.features == frozenset() and facts.teaching_declared  # declared, ignored under legacy
-
-
-def test_legacy_probe_flags_follow_required_retrieval():
-    facts = script_facts.compute(_pack_data("maintenance"), semantics="legacy")
-    assert facts.golden_probe == (1, 1, 1, 1, 0, 1)
-    assert facts.probe_case_ids == ("filler-lubrication-interval", "p1-response-target", "cap-steriliser-uv-lamps",
-                                    "overdue-lubrication-check", "interlock-bypass-request")
-    assert facts.retrieval_annotated and facts.stability_case_id == "interlock-bypass-request"
-
-
-def test_legacy_unannotated_pack_treats_every_practice_case_as_a_probe():
-    data = _pack_data("it-helpdesk")
-    rt = data["evaluation"]["retrievalToolName"]
-    for case in data["evaluation"]["goldenSet"]:
-        case["expected"]["requiredTools"] = [t for t in case["expected"].get("requiredTools", []) if t != rt]
-    facts = script_facts.compute(data, semantics="legacy")
-    practice = [c for c in data["evaluation"]["goldenSet"] if c["set"] == "practice"]
-    assert not facts.retrieval_annotated
-    assert facts.probe_count == len(practice) == _pre_refactor_values(data)["count"]
-    assert all(c.probe and not c.requires_retrieval for c in facts.eval_cases)
-
-
-def test_legacy_semantics_ignores_a_declared_teaching_block():
-    data = _undeclared(_pack_data("maintenance"))
-    plain, taught = script_facts.compute(data, semantics="legacy"), script_facts.compute(_with_teaching(data), semantics="legacy")
-    assert taught.teaching_declared and not plain.teaching_declared
-    assert dataclasses.replace(taught, teaching_declared=False) == plain
-
-
-# ---------------------------------------------------------------------------
-# Teaching semantics (what render emits)
-# ---------------------------------------------------------------------------
-
-
-def test_teaching_semantics_uses_eval_order_personas_probe_flags_and_probe_count():
+def test_teaching_facts_uses_eval_order_personas_probe_flags_and_probe_count():
     data = _with_teaching(_pack_data("maintenance"))
-    facts = script_facts.compute(data, semantics="teaching")
+    facts = script_facts.compute(data)
     assert facts.golden_ids == teaching.eval_order_ids(data) == (
         "cap-steriliser-uv-lamps", "own-work-order-status", "interlock-bypass-request",
         "filler-lubrication-interval", "p1-response-target", "overdue-lubrication-check",
@@ -164,7 +91,6 @@ def test_teaching_semantics_uses_eval_order_personas_probe_flags_and_probe_count
     assert facts.probe_case_ids == teaching.probe_case_ids(data) == ("filler-lubrication-interval", "p1-response-target", "overdue-lubrication-check")
     assert facts.probe_count == facts.recent_n == 3
     assert facts.stability_case_id == teaching.stability_case_id(data) == "overdue-lubrication-check"
-    assert facts.actor_mode == "per_case" and facts.baseline_actor is None and facts.optimize_actor is None
     assert facts.features == script_facts.FEATURES
     # The interlock case requires retrieval but is not a declared probe: asked early, not counted.
     interlock = next(c for c in facts.eval_cases if c.case_id == "interlock-bypass-request")
@@ -175,14 +101,14 @@ def test_teaching_semantics_uses_eval_order_personas_probe_flags_and_probe_count
     assert fc.case_id is None and fc.teaching_point == "The agent does not know your line yet."
 
 
-def test_teaching_semantics_without_a_block_has_no_probes():
-    facts = script_facts.compute(_undeclared(_pack_data("hr-default")), semantics="teaching")
+def test_teaching_facts_without_a_block_has_no_probes():
+    facts = script_facts.compute(_undeclared(_pack_data("hr-default")))
     assert facts.probe_count == facts.recent_n == 0 and facts.stability_case_id is None
     assert facts.first_conversation.source == "practice"  # falls back so the facts stay total
 
 
 # ---------------------------------------------------------------------------
-# Names, invariants, serialization
+# Names and invariants
 # ---------------------------------------------------------------------------
 
 
@@ -204,27 +130,11 @@ def test_names_are_the_ones_the_rendered_scripts_use(maintenance_release):
 def test_invalid_facts_are_rejected():
     facts = script_facts.compute(_pack_data("maintenance"))
     with pytest.raises(ValueError):
-        script_facts.compute(_pack_data("maintenance"), semantics="future")
-    with pytest.raises(ValueError):
-        dataclasses.replace(facts, semantics="future")
-    with pytest.raises(ValueError):
         dataclasses.replace(facts, features=frozenset({"holdout-rehearsal"}))
     with pytest.raises(ValueError):
         dataclasses.replace(facts, probe_count=facts.probe_count + 1)
     with pytest.raises(ValueError):
         dataclasses.replace(facts, eval_cases=tuple(reversed(facts.eval_cases)))
-    with pytest.raises(ValueError):
-        dataclasses.replace(facts, actor_mode="mixed")
-
-
-@pytest.mark.parametrize("semantics", script_facts.SEMANTICS)
-def test_to_dict_is_json_and_deterministic(semantics):
-    data = _with_teaching(_pack_data("maintenance"))
-    first = script_facts.compute(data, semantics=semantics).to_dict()
-    again = script_facts.compute(data, semantics=semantics).to_dict()
-    assert json.dumps(first, sort_keys=True) == json.dumps(again, sort_keys=True)
-    assert first["probeCount"] == len(first["probeCaseIds"]) and first["semantics"] == semantics
-    assert first["names"]["retrievalSpan"].startswith("execute_tool ")
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +225,7 @@ def test_verify_rendered_reports_duplicates_missing_files_and_practice_mismatch(
 
 def test_verify_rendered_checks_per_case_arrays_for_teaching_facts(tmp_path: Path):
     data = _with_teaching(_pack_data("maintenance"))
-    facts = script_facts.compute(data, semantics="teaching")
+    facts = script_facts.compute(data)
     arrays = "".join(
         f"{name}=(" + " ".join(render.bash_quote(str(v)) for v in values) + ")\n"
         for name, values in (
@@ -350,8 +260,8 @@ def test_verify_rendered_checks_per_case_arrays_for_teaching_facts(tmp_path: Pat
 def test_render_writes_the_practice_patches_from_script_facts(maintenance_pack, tmp_path: Path, monkeypatch):
     real = script_facts.compute
 
-    def fake(data, *, semantics=None):
-        facts = real(data, semantics=semantics)
+    def fake(data):
+        facts = real(data)
         cases = tuple(dataclasses.replace(c, query=f"Facts query {c.index}?", label=f"Facts label {c.index}", actor_id=f"persona-{c.index}")
                       for c in facts.eval_cases)
         first = dataclasses.replace(facts.first_conversation, query="Facts first question?", actor_id="first-actor", label="the facts topic")
@@ -367,13 +277,6 @@ def test_render_writes_the_practice_patches_from_script_facts(maintenance_pack, 
     assert '  "Facts query 0?"\n' in s09 and '"Facts label 4"' in s10
     actors = 'GOLDEN_ACTORS=(' + " ".join(f'"persona-{i}"' for i in range(6)) + ')'
     assert actors in s09 and actors in s10
-
-
-def test_render_refuses_legacy_semantics(maintenance_pack, tmp_path: Path, monkeypatch):
-    real = script_facts.compute
-    monkeypatch.setattr(script_facts, "compute", lambda data, *, semantics=None: real(data, semantics="legacy"))
-    with pytest.raises(render.RenderError, match="'legacy' semantics"):
-        render.render_release(maintenance_pack, UPSTREAM, tmp_path / "release", template_commit=TEMPLATE_COMMIT)
 
 
 def test_render_refuses_facts_without_probes(tmp_path: Path):

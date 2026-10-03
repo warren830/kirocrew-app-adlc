@@ -12,7 +12,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "tests"))
-from test_app_backend import Client, server_mod  # noqa: E402
+from test_app_backend import Client, server_mod, wait_job  # noqa: E402
 from test_sync import ACCOUNT, StubClients  # noqa: E402
 from workshop_customizer.guided_run import GUIDE_STEPS  # noqa: E402
 
@@ -90,7 +90,7 @@ def _run(env, body=None) -> dict:
     client, svc = env["client"], env["service"]
     status, job, _ = client.call("POST", f"/projects/{PROJECT}/oneclick", {"acknowledged": True, **(body or {})})
     assert status == 202 and job["status"] == "running", job
-    svc.jobs.wait(job["id"], timeout=180)
+    wait_job(svc.jobs, job, timeout=180)
     status, latest, _ = client.call("GET", f"/projects/{PROJECT}/oneclick")
     assert status == 200 and latest["job"]["id"] == job["id"], latest
     return latest["job"]
@@ -162,7 +162,7 @@ def test_sync_actions_run_as_background_jobs(env):
     def run_action(action: str) -> dict:
         status, job, _ = client.call("POST", f"/projects/{PROJECT}/sync/{action}/job", {})
         assert status == 202 and job["kind"] == f"sync-{action}" and job["status"] == "running", job
-        svc.jobs.wait(job["id"], timeout=60)
+        wait_job(svc.jobs, job, timeout=60)
         status, body, _ = client.call("GET", f"/projects/{PROJECT}/jobs/{job['id']}")
         assert status == 200 and body["job"]["status"] == "succeeded", json.dumps(body, indent=2)
         assert [(s["id"], s["status"]) for s in body["job"]["stages"]] == [(action, "succeeded")]
@@ -224,7 +224,7 @@ def test_running_job_rejects_second_start_and_other_writes(env):
         assert status == 200 and body["job"]["status"] == "running"
     finally:
         release.set()
-        svc.jobs.wait(job["id"], timeout=30)
+        wait_job(svc.jobs, job, timeout=30)
     assert client.call("GET", f"/projects/{PROJECT}/jobs/{job['id']}")[1]["job"]["status"] == "succeeded"
     assert client.call("GET", f"/projects/{PROJECT}/jobs/not-a-job")[0] == 400
     assert client.call("GET", f"/projects/{PROJECT}/jobs/oneclick-20000101t000000000000z-000000")[0] == 404

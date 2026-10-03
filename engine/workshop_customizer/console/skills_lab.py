@@ -113,13 +113,13 @@ import time
 import uuid
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from ..direct.aws import client
 from . import agents
 from .auth import Auth
+from .common import error_code, now as _now
 from .kb import ensure_bucket
 from .workspaces import boundary_of
 
@@ -165,10 +165,6 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 class SkillLabError(ValueError):
     pass
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # -- SKILL.md -----------------------------------------------------------------------------------------------------------
@@ -239,7 +235,7 @@ def list_skills(console: Any, workspace: str) -> list[dict[str, Any]]:
             for n, e in sorted(library(console, workspace).items())]
 
 
-def save_version(console: Any, workspace: str, name: str, text: str, *, source: str, note: str = "", make_current: bool = True) -> dict[str, Any]:
+def save_version(console: Any, workspace: str, name: str, text: str, *, source: str, note: str = "") -> dict[str, Any]:
     """A new version of ``name`` (the skill is created by its first); the same text again returns its version."""
     meta = check_skill(name, text)
     sha = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
@@ -255,8 +251,7 @@ def save_version(console: Any, workspace: str, name: str, text: str, *, source: 
             version = f"v{max([int(v['version'][1:]) for v in entry['versions']] or [0]) + 1:04d}"
             entry["versions"].append({"version": version, "sha": sha, "createdAt": _now(), "source": source[:120], "note": note[:500]})
             made.update(version=version, created=True)
-        if make_current or not entry.get("current"):
-            entry["current"] = made["version"]
+        entry["current"] = made["version"]
         entry.update(description=meta["description"], updatedAt=_now())
         all_[name] = entry
         return all_
@@ -624,8 +619,7 @@ def sniff_asset(name: str, data: bytes) -> str:
 
 
 def _missing_object(exc: BaseException) -> bool:
-    code = str(((getattr(exc, "response", None) or {}).get("Error") or {}).get("Code") or "")
-    return code in ("404", "NoSuchKey", "NotFound") or "Not Found" in str(exc) or "NoSuchKey" in str(exc)
+    return error_code(exc) in ("404", "NoSuchKey", "NotFound") or "Not Found" in str(exc) or "NoSuchKey" in str(exc)
 
 
 def _has_object(s3: Any, bucket: str, key: str) -> bool:

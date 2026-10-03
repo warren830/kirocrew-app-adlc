@@ -12,8 +12,7 @@ Routes (under /api/apps/workshop-customizer):
 - GET  /generations/{generation_id}     settle/poll the Kiro result
 - POST /generations/{generation_id}/apply
                                          apply the reviewed draft ({"acknowledged": true}); orphan
-                                         files are deleted behind a snapshot (a legacy {} body keeps
-                                         them: only an explicit acknowledgement deletes files)
+                                         files are deleted behind a snapshot
 - POST /generations/{generation_id}/revert
                                          restore the pre-apply snapshot ({"acknowledged": true})
 
@@ -2422,11 +2421,6 @@ def _compose_task(*, project_id: str, display_name: str, pack_kind: str, custome
     return task, shas
 
 
-def _build_task(*, project_id: str, display_name: str, pack_kind: str, customer: str, brief: str) -> str:
-    """One bounded, data-delimited draft task for the app-owned Kiro drafting agent."""
-    return _compose_task(project_id=project_id, display_name=display_name, pack_kind=pack_kind, customer=customer, brief=brief)[0]
-
-
 # ---------------------------------------------------------------------------
 # prepare / complete / apply
 # ---------------------------------------------------------------------------
@@ -3149,11 +3143,8 @@ def _apply_record(record: dict[str, Any], *, data_dir: Path, body: dict[str, Any
                 "this draft resets customer confirmations ("
                 + ", ".join(f"{r.get('type')} {r.get('id')}" for r in confirmed_reset[:10])
                 + "); apply with acknowledgeConfirmationResets=true to accept that")
-        orphans = sorted(result.get("deleteOrphans") or []) if isinstance(result.get("deleteOrphans"), list) else []
-        # Only an explicit acknowledgement (the SA saw deleteOrphans) deletes files.  The legacy-implicit
-        # path (the pre-P4 UI's {} body, which never shows deletions) keeps them, as apply always did.
-        legacy = body.get("acknowledgement") == "legacy-implicit"
-        delete, kept = ([], orphans) if legacy else (orphans, [])
+        # The acknowledgement (the SA saw deleteOrphans) is what deletes them.
+        delete = sorted(result.get("deleteOrphans") or []) if isinstance(result.get("deleteOrphans"), list) else []
         write = {rel: text for rel, text in files.items() if _disk_text(pdir, rel) != text}
         scenario_text = _dump_scenario(result["scenario"])
         snapshot = _write_snapshot(pdir, record["id"], sorted({*write, *delete, "scenario.yaml"}),
@@ -3209,8 +3200,8 @@ def _apply_record(record: dict[str, Any], *, data_dir: Path, body: dict[str, Any
                     pass
             shutil.rmtree(snapshot, ignore_errors=True)
             raise
-        record.update(status="applied", appliedAt=now, applySeq=apply_seq, deleted=delete, orphansKept=kept,
-                      snapshot=snapshot.relative_to(pdir).as_posix(), acknowledgement="legacy-implicit" if legacy else "explicit")
+        record.update(status="applied", appliedAt=now, applySeq=apply_seq, deleted=delete, orphansKept=[],
+                      snapshot=snapshot.relative_to(pdir).as_posix(), acknowledgement="explicit")
         _write_record(data_dir, record)
         _prune_snapshots(pdir)
     if caller is not record:
@@ -3223,7 +3214,7 @@ def _apply_record(record: dict[str, Any], *, data_dir: Path, body: dict[str, Any
         "files": len(files),
         "written": sorted(write),
         "deleted": delete,
-        "orphansKept": kept,
+        "orphansKept": [],
         "untracked": list(result.get("untracked") or []),
         "confirmationsReset": reset,
         "snapshot": record["snapshot"],
@@ -3338,8 +3329,52 @@ async def _off_loop(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     return await asyncio.get_running_loop().run_in_executor(None, functools.partial(func, *args, **kwargs))
 
 
+def start_refused(exc: Exception) -> tuple[int, dict[str, Any]]:
+    """The status and body for a start ``prepare_generation`` refused (or whose body did not parse): 409 with the live
+    generation, 413, else 400."""
+    if isinstance(exc, GenerationConflict):
+        payload: dict[str, Any] = {"error": str(exc)}
+        if exc.record is not None:
+            payload["generation"] = _public_record(exc.record)
+        return 409, payload
+    if isinstance(exc, GenerationTooLarge):
+        return 413, {"error": str(exc)}
+    return 400, {"error": str(exc)}
+
+
+def generation_route(method: str, parts: list[str], body: dict[str, Any], data_dir: Path, *,
+                     start: Callable[[dict[str, Any]], tuple[int, Any]] | None = None,
+                     request: Any = None) -> tuple[int, Any]:
+    """One generation route, synchronously, as ``(status, payload)``: ``parts`` is the path after the App's prefix
+    (``["generations", ...]``). The KiroCrew routes below, the standalone console's ``KiroRunner`` and the UI harness
+    all serve through it; only the start differs (``start(body)``: KiroCrew's spawn, the local kiro-cli, a simulated
+    answer). Latest and poll settle (``request`` lets ``_settle`` read the gateway's spawns), apply settles then
+    applies, revert restores; a refusal is 404 on a GET, 409 on a POST."""
+    try:
+        if parts == ["generations"] and method == "POST" and start is not None:
+            return start(body)
+        if len(parts) == 3 and parts[:2] == ["generations", "latest"] and method == "GET":
+            _project_dir(data_dir, parts[2])
+            candidates = _project_records(data_dir, parts[2])
+            if not candidates:
+                return 200, {"generation": None}
+            record = max(candidates, key=lambda item: str(item.get("createdAt") or ""))
+            return 200, {"generation": _public_record(_settle(record, request=request, data_dir=data_dir))}
+        if len(parts) == 2 and parts[0] == "generations" and method == "GET":
+            record = _read_record(data_dir, parts[1])
+            return 200, _public_record(_settle(record, request=request, data_dir=data_dir))
+        if len(parts) == 3 and parts[0] == "generations" and parts[2] == "apply" and method == "POST":
+            record = _settle(_read_record(data_dir, parts[1]), request=request, data_dir=data_dir)
+            return 200, apply_generation(record, data_dir, body)
+        if len(parts) == 3 and parts[0] == "generations" and parts[2] == "revert" and method == "POST":
+            return 200, revert_generation(parts[1], data_dir, body)
+    except GenerationError as exc:
+        return (404 if method == "GET" else 409), {"error": str(exc)}
+    return 404, {"error": "no such generation route"}
+
+
 def register_routes(ctx: Any):
-    """KiroCrew App hook contract: return the model-backed route table."""
+    """KiroCrew App hook contract: return the model-backed route table (its sync work is :func:`generation_route`)."""
     from aiohttp import web
     from kiro_crew.apps.route_registry import AppRoute
 
@@ -3355,15 +3390,9 @@ def register_routes(ctx: Any):
                 prepare_generation, data_dir, body, runner="kirocrew-spawn",
                 settle=lambda prior: _settle(prior, request=request, data_dir=data_dir),
             )
-        except GenerationConflict as exc:
-            payload: dict[str, Any] = {"error": str(exc)}
-            if exc.record is not None:
-                payload["generation"] = _public_record(exc.record)
-            return web.json_response(payload, status=409)
-        except GenerationTooLarge as exc:
-            return web.json_response({"error": str(exc)}, status=413)
         except (GenerationError, json.JSONDecodeError) as exc:
-            return web.json_response({"error": str(exc)}, status=400)
+            status, payload = start_refused(exc)
+            return web.json_response(payload, status=status)
         try:
             spawn_id = await app_ctx.spawn.run(task=task, agent=AGENT_NAME, silent=True)
         except Exception as exc:
@@ -3372,27 +3401,16 @@ def register_routes(ctx: Any):
         mark_running(data_dir, record, spawn_id=spawn_id)
         return web.json_response(_public_record(record), status=202)
 
+    def answer(reply: tuple[int, Any]) -> Any:
+        return web.json_response(reply[1], status=reply[0])
+
     async def latest(request: Any, app_ctx: Any):
-        try:
-            data_dir = Path(app_ctx.data_dir)
-            project_id = str(request.match_info["project_id"])
-            _project_dir(data_dir, project_id)
-            candidates = _project_records(data_dir, project_id)
-            if not candidates:
-                return web.json_response({"generation": None})
-            record = max(candidates, key=lambda item: str(item.get("createdAt") or ""))
-            record = _settle(record, request=request, data_dir=data_dir)
-            return web.json_response({"generation": _public_record(record)})
-        except GenerationError as exc:
-            return web.json_response({"error": str(exc)}, status=404)
+        parts = ["generations", "latest", str(request.match_info["project_id"])]
+        return answer(generation_route("GET", parts, {}, Path(app_ctx.data_dir), request=request))
 
     async def poll(request: Any, app_ctx: Any):
-        try:
-            record = _read_record(Path(app_ctx.data_dir), request.match_info["generation_id"])
-            record = _settle(record, request=request, data_dir=Path(app_ctx.data_dir))
-            return web.json_response(_public_record(record))
-        except GenerationError as exc:
-            return web.json_response({"error": str(exc)}, status=404)
+        parts = ["generations", str(request.match_info["generation_id"])]
+        return answer(generation_route("GET", parts, {}, Path(app_ctx.data_dir), request=request))
 
     async def _body(request: Any) -> dict[str, Any]:
         if request.content_length and request.content_length > MAX_REQUEST_BYTES:
@@ -3409,23 +3427,9 @@ def register_routes(ctx: Any):
 
     async def apply(request: Any, app_ctx: Any):
         try:
-            data_dir = Path(app_ctx.data_dir)
             body = await _body(request)
-
-            def work() -> tuple[dict[str, Any], bool]:
-                record = _read_record(data_dir, request.match_info["generation_id"])
-                record = _settle(record, request=request, data_dir=data_dir)
-                legacy = "acknowledged" not in body and str(record.get("mode") or "draft") == "draft"
-                # The current UI posts {} to apply a draft; accept that for drafts only, and say so.
-                ack = {**body, "acknowledged": True, "acknowledgement": "legacy-implicit"} if legacy else body
-                return apply_generation(record, data_dir, ack), legacy
-
-            result, legacy = await _off_loop(work)
-            if legacy:
-                result["acknowledgement"] = "legacy-implicit"
-                result["warning"] = ("applied without an explicit acknowledged:true (accepted for drafts only); orphan files "
-                                     "were kept, apply with acknowledged:true to delete them")
-            return web.json_response(result)
+            parts = ["generations", str(request.match_info["generation_id"]), "apply"]
+            return answer(await _off_loop(generation_route, "POST", parts, body, Path(app_ctx.data_dir), request=request))
         except GenerationError as exc:
             return web.json_response({"error": str(exc)}, status=409)
         except Exception as exc:  # fail closed; no traceback or model text crosses the API
@@ -3435,8 +3439,8 @@ def register_routes(ctx: Any):
     async def revert(request: Any, app_ctx: Any):
         try:
             body = await _body(request)
-            return web.json_response(await _off_loop(revert_generation, request.match_info["generation_id"],
-                                                     Path(app_ctx.data_dir), body))
+            parts = ["generations", str(request.match_info["generation_id"]), "revert"]
+            return answer(await _off_loop(generation_route, "POST", parts, body, Path(app_ctx.data_dir), request=request))
         except GenerationError as exc:
             return web.json_response({"error": str(exc)}, status=409)
         except Exception as exc:  # fail closed
