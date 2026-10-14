@@ -125,6 +125,12 @@ class ExperimentError(ValueError):
         self.status, self.extra = status, extra
 
 
+def clip(text: Any, limit: int) -> str:
+    """``text`` cut to ``limit`` characters, marked "…" when it was cut (a reason the page shows must not end mid-word)."""
+    said = str(text)
+    return said if len(said) <= limit else said[:limit] + "…"
+
+
 class NotOurs(ExperimentError):
     """A resource a record names that is not this experiment's or canary's: cleanup leaves it, by design."""
 
@@ -741,7 +747,7 @@ def _experiments(x: Ctx) -> list[dict[str, Any]]:
 
 
 def list_experiments(x: Ctx) -> list[dict[str, Any]]:
-    keep = ("id", "name", "status", "agent", "weights", "metric", "createdAt", "createdBy", "promotion", "error")
+    keep = ("id", "name", "status", "agent", "weights", "metric", "createdAt", "createdBy", "promotion", "error", "cleanedAt")
     return [{k: e.get(k) for k in keep} for e in sorted(_experiments(x), key=lambda e: e["createdAt"], reverse=True)]
 
 
@@ -977,7 +983,7 @@ def _setup(x: Ctx, eid: str, job: Any) -> dict[str, Any]:
         job.log(f"running: send sessions to {rec['invokeUrl']}")
         return {"experiment": eid, "invokeUrl": rec["invokeUrl"]}
     except Exception as exc:
-        _save(x, eid, status="failed", error=f"{type(exc).__name__}: {str(exc)[:500]}")
+        _save(x, eid, status="failed", error=f"{type(exc).__name__}: {clip(exc, 500)}")
         raise
 
 
@@ -999,6 +1005,12 @@ def _live(x: Ctx, rec: Mapping[str, Any]) -> tuple[dict[str, Any] | None, list[d
             "stoppedAt": str(ab.get("stoppedAt") or "") or None, "expiresAt": str(ab.get("maxDurationExpiresAt") or "") or None,
             "errors": ab.get("errorDetails") or []}
     return live, ab_metrics(ab) or snapshot
+
+
+def cleanup_started(rec: Mapping[str, Any]) -> bool:
+    """Its cleanup started (or finished): the control endpoint and the treatment copy the gate's (c) checks are deleted
+    with it, which says nothing about the evidence."""
+    return bool(rec.get("cleanedAt")) or rec.get("status") in ("cleaning", "cleaned", "cleanup_incomplete")
 
 
 def _arms(ctl: Any, rec: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -1043,7 +1055,7 @@ def _evidence(x: Ctx, rec: Mapping[str, Any], metric: str | None = None) -> dict
         m["band"], m["bandSource"] = band_for(verification, m["evaluator"])
     return {"live": live, "metrics": metrics, "verification": verification, "verifying": verifying, "agentVersion": version,
             "gate": gate(rec, verification=verification, metrics=metrics, metric=chosen, agent_version=version, verifying=verifying,
-                         arms=_arms(ctl, rec))}
+                         arms=[] if cleanup_started(rec) else _arms(ctl, rec))}
 
 
 def experiment_detail(x: Ctx, eid: str) -> dict[str, Any]:
@@ -1061,9 +1073,11 @@ def experiment_detail(x: Ctx, eid: str) -> dict[str, Any]:
 def _ab_wait(data: Any, ab_id: str, *, execution: str) -> dict[str, Any]:
     got: dict[str, Any] = {}
 
-    def probe() -> str:
+    def probe() -> str:  # the test's own status until it is ACTIVE, then its run state: what a slow switch is stuck on
         got.update(data.get_ab_test(abTestId=ab_id))
-        return "READY" if got.get("status") == "ACTIVE" and got.get("executionStatus") == execution else str(got.get("status"))
+        if got.get("status") != "ACTIVE":
+            return str(got.get("status"))
+        return "READY" if got.get("executionStatus") == execution else str(got.get("executionStatus"))
 
     _wait(probe, ("READY",), what=f"A/B test {ab_id}", attempts=60, pause=2.0)
     return got
@@ -1431,16 +1445,21 @@ def _promote(x: Ctx, eid: str, body: Mapping[str, Any]) -> dict[str, Any]:
     if override and len(reason) < 5:
         raise ExperimentError("an override of the gate needs a reason (why promote against the evidence)", status=400, gate=decided)
     if rec.get("abTest") and rec["status"] in ("running", "paused", "stopped"):
-        rec = _stop(x, rec, status=rec["status"])  # the split ends; its results are kept with the record
+        rec = _stop(x, rec)  # the split ends (stopped, should the promotion fail); its results are kept with the record
+    stopped = rec["status"] == "stopped" and bool(rec.get("abTest"))
     ctl = x.ctl()
-    agent = ctl.get_harness(harnessId=rec["agent"]["id"])["harness"]
-    applied = apply_treatment(ctl, agent, rec["treatment"])
+    try:
+        agent = ctl.get_harness(harnessId=rec["agent"]["id"])["harness"]
+        applied = apply_treatment(ctl, agent, rec["treatment"])
+    except Exception as exc:  # the record says why it stopped (the page shows it; the gate's refusal was only the caller's)
+        _save(x, eid, error=f"promotion: {type(exc).__name__}: {clip(exc, 400)}" + ("; the A/B test was stopped first" if stopped else ""))
+        raise
     promotion = {"experiment": eid, "workspace": x.workspace, "agent": rec["agent"]["name"], "at": _now(), "by": x.caller.get("username"),
                  "fromVersion": str(agent.get("harnessVersion")), "toVersion": applied["version"], "changed": applied["changed"], "metric": metric,
                  "requestedMetric": switched, "gate": decided, "override": override, "failed": [c["id"] for c in failed],
                  "reason": reason if override else None, "bundle": rec["bundle"], "fingerprint": rec["treatment"]["fingerprint"]}
     x.console.store.update("promotions", [], lambda all_: [*all_, promotion])
-    _save(x, eid, status="promoted", promotion=promotion)
+    _save(x, eid, status="promoted", promotion=promotion, error=None)
     return promotion
 
 
@@ -1484,7 +1503,7 @@ def cleanup_step(done: list[dict[str, Any]], job: Any, label: str, fn: Callable[
         if _gone(exc):
             done.append({"resource": label, "result": "already gone"})
         else:
-            done.append({"resource": label, "result": f"left: {_code(exc)}: {str(exc)[:200]}", "failed": True})
+            done.append({"resource": label, "result": f"left: {_code(exc)}: {clip(exc, 200)}", "failed": True})
     job.log(f"{label}: {done[-1]['result']}")
 
 
@@ -1501,6 +1520,8 @@ def finish_cleanup(x: Ctx, collection: str, rid: str, done: list[dict[str, Any]]
                        error=f"cleanup left {len(left)} resource(s) ({', '.join(left[:3])}{'…' if len(left) > 3 else ''}): clean up again")
         else:
             rec.update(status=after, cleanup=done, cleanupLeft=None, cleanedAt=_now())
+            if re.match(r"(?:cleanup left |cleanup: |the cleanup job )", str(rec.get("error") or "")):
+                rec["error"] = None  # an earlier cleanup's: this one finished it
         rec["updatedAt"] = _now()
         return {**all_, rid: rec}
 
@@ -1519,8 +1540,11 @@ def _cleanup(x: Ctx, eid: str, job: Any, after: str) -> dict[str, Any]:
     ab = rec.get("abTest")
     if ab:
         def delete_ab() -> None:
-            if data.get_ab_test(abTestId=ab["id"]).get("executionStatus") != "STOPPED":
-                _stop(x, _get(x, eid), status="cleaning")
+            # its results first: a test still running stops with them, one AgentCore stopped on its own (its maximum
+            # duration) has them read once more; _final_results writes AWS only for a test that is still running
+            current = _get(x, eid)
+            if not current.get("finalResults") or data.get_ab_test(abTestId=ab["id"]).get("executionStatus") != "STOPPED":
+                _stop(x, current, status="cleaning")
             data.delete_ab_test(abTestId=ab["id"])
             for _ in range(60):  # deleting is asynchronous; the online evaluations it references refuse deletion until it is gone
                 try:

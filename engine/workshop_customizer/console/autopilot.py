@@ -73,7 +73,7 @@ def command(params: Mapping[str, Any], *, brief: Path, data_dir: Path, out: Path
     return cmd
 
 
-PHASES = (("rounds", "生成与修复"), ("pre-rehearsal", "本地预测"), ("direct", "直连彩排（已完成）"))
+PHASES = (("rounds", "生成与修复"), ("pre-rehearsal", "本地预测"), ("direct", "快速彩排"))
 
 
 def phase(run: Path) -> str | None:
@@ -98,6 +98,35 @@ def summary(out: Path) -> dict[str, Any]:
     ready = bool(last) and last.get("verdict") == "ready" and last.get("robust", True) is not False  # with --direct-repeat: every round
     return {**{k: report.get(k) for k in SUMMARY_KEYS}, "rounds": rounds, "preRehearsals": pre, "directRehearsals": direct,
             "validationOk": final.get("validationOk"), "readyForClassDirect": ready}
+
+
+#: The loop's exits that are outcomes (its report says why): 0 ok, 1 a content stop (not converged, needs input, a
+#: refusal), 4 pre-rehearsal findings left, 5 not ready after the direct repairs. 2 (a refusal or a setup error) and 3
+#: (Kiro CLI, or AWS under the pre-rehearsal or a direct round) fail the job.
+OUTCOME_EXITS = (0, 1, 4, 5)
+
+
+def outcome(code: Any, result: Mapping[str, Any], params: Mapping[str, Any]) -> str | None:
+    """What a finished loop came to, for the page (a run that stopped is no "done"): ``ready`` (every direct round
+    held), ``built`` (no direct rehearsal asked for), ``awaits-customer`` (a customer pack stops before the build: its
+    blocking facts wait for the customer's confirmation), ``needs-input``, ``not-converged``, ``stopped`` (another
+    content stop), ``pre-findings`` (exit 4) or ``not-ready`` (exit 5)."""
+    error = str(result.get("error") or "")
+    if code == 0:
+        return "ready" if result.get("readyForClassDirect") else "built"
+    if code == 4:
+        return "pre-findings"
+    if code == 5:
+        return "not-ready"
+    if code != 1:
+        return None
+    if params.get("packKind") == "customer" and re.search(r"the validation is not ok; build skipped|build refused", error):
+        return "awaits-customer"
+    if "needs input" in error:
+        return "needs-input"
+    if re.search(r"remain after \d+ rounds|no progress: ", error):
+        return "not-converged"
+    return "stopped"
 
 
 def start(console: Any, workspace: str, body: Mapping[str, Any]) -> dict[str, Any]:
@@ -147,15 +176,15 @@ def start(console: Any, workspace: str, body: Mapping[str, Any]) -> dict[str, An
                 if line and not in_report:
                     ctx.log(line[:400])
                     if line.lstrip().startswith("direct "):
-                        ctx.progress(phase="直连彩排 " + line.strip().split(":", 1)[0].split(" ", 1)[-1] + " 进行中")
+                        ctx.progress(phase="快速彩排 " + line.strip().split(":", 1)[0].split(" ", 1)[-1] + " 进行中")
             code = proc.wait()
         finally:
             done.set()
         result = {"exitCode": code, "out": str(out / "run"), **summary(out / "run")}
-        # exit 1 is an outcome (not converged, needs input: the report says why); 2 a refusal or a setup error, 3 Kiro
-        # CLI failing: the job failed. So did a loop that wrote no report.
-        if code >= 2 or (code and result.get("report", True) is None):
+        # an exit that is no outcome (OUTCOME_EXITS) fails the job; so does a loop that wrote no report
+        if code not in OUTCOME_EXITS or result.get("report", True) is None:
             raise AutopilotError(f"the loop exited {code}: {result.get('error') or 'see the job log'}")
+        ctx.progress(outcome=outcome(code, result, params))
         return result
 
     job = console.jobs.start("autopilot", workspace, {k: v for k, v in params.items() if k != "brief"} | {"briefChars": len(params["brief"])}, work,
@@ -163,9 +192,35 @@ def start(console: Any, workspace: str, body: Mapping[str, Any]) -> dict[str, An
     return {"job": job}
 
 
+def records(console: Any, workspace: str) -> list[dict[str, Any]]:
+    """The workspace's autopilot jobs, each with its outcome (a job from before outcomes were recorded: from its
+    result) and whether its project is in the workshop data (a second run of that id is refused)."""
+    projects = Path(console.workshop_data) / "projects"
+    out = []
+    for job in console.jobs.list(workspace=workspace, kind="autopilot"):
+        params = job.get("params") or {}
+        progress = dict(job.get("progress") or {})
+        if job.get("status") == "succeeded" and "outcome" not in progress:
+            try:
+                result = console.jobs.get(job["id"]).get("result") or {}
+            except (OSError, ValueError, KeyError):
+                result = None
+            if result is not None:
+                progress["outcome"] = outcome(result.get("exitCode"), result, params)
+        pid = str(params.get("projectId") or "")
+        out.append({**job, "progress": progress, "projectExists": bool(PROJECT_ID.match(pid)) and (projects / pid / "project.json").is_file()})
+    return out
+
+
+def projects(console: Any) -> list[str]:
+    """The project ids in the workshop data, whoever made them (a run with one of them is refused: the page says so first)."""
+    root = Path(console.workshop_data) / "projects"
+    return sorted(d.name for d in root.iterdir() if (d / "project.json").is_file()) if root.is_dir() else []
+
+
 def register(router: Any) -> None:
     router.add("POST", "/workspaces/{wid}/autopilot", lambda r: (202, start(r.console, r.workspace(), r.body)), admin=True)
-    router.add("GET", "/workspaces/{wid}/autopilot", lambda r: (200, {"jobs": r.console.jobs.list(workspace=r.workspace(), kind="autopilot")}))
+    router.add("GET", "/workspaces/{wid}/autopilot", lambda r: (200, {"jobs": records(r.console, r.workspace()), "projects": projects(r.console)}))
     router.add("GET", "/autopilot/briefs", lambda r: (200, {"briefs": sorted(p.stem for p in (REPO / "acceptance" / "briefs").glob("*.md"))}))
     router.add("GET", "/autopilot/briefs/{name}", lambda r: (200, {"name": r.params["name"], "brief": _brief(r.params["name"])}))
 

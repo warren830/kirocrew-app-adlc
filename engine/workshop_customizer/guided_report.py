@@ -212,7 +212,7 @@ def _per_case_evidence_errors(step_id: str, outputs: Mapping[str, Any], scenario
     l1 = l1_evidence(outputs)
     if l1["status"] in ("missing", "invalid"):
         detail = f" ({l1['error']})" if l1["error"] else ""
-        if not scores:
+        if not scores and outputs:  # the step ran yet tagged no score; a step that never ran blames no document
             detail += (" — no case-tagged scores either: the add-ons RunStep document is probably stale; "
                        "redeploy sync/cfn/customizer-addons.json and run preflight again")
         errors.append(f"L1 scenario assertions (every practice case) from {script}{detail}")

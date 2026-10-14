@@ -104,6 +104,65 @@ def effective_timeout(requested: int | None, record: dict) -> int:
     return max(1, min(routes.TIMEOUT_BOUNDS[1], int(requested)))
 
 
+#: How a staged stage's Kiro CLI run failed, as the stage error records it (routes.drive_stages): the runtime, not
+#: the reply.  A draft that failed that way is a Kiro failure (exit 3), any other failure an unusable reply.
+RUNTIME_FAILURE = re.compile(r"^(KiroTimeout|OSError|FileNotFoundError|PermissionError|ValueError|KiroExit):")
+
+
+class KiroExit(RuntimeError):
+    """The Kiro CLI exited non-zero with nothing on stdout."""
+
+
+class KiroTimeout(RuntimeError):
+    """The Kiro CLI ran past the stage's timeout (TimeoutExpired's own message carries the whole task)."""
+
+
+def run_staged(record: dict, *, data_dir: Path, out: Path, requested_timeout: int | None, model: str | None,
+               kiro_cli: str) -> tuple[dict, list[dict]]:
+    """Drive a staged draft (``routes.drive_stages``) with one kiro-cli run per stage reply, stages that do not need
+    each other in parallel.  Every reply is kept as ``<out>/stages/<stage>.<attempt>.{task,stdout,stderr}.txt`` and
+    the structure's first one also as ``task.txt`` / ``stdout.txt`` / ``stderr.txt`` (where a one-reply draft keeps
+    its own).  Returns the settled record and one entry per run."""
+    import threading
+
+    runs: list[dict] = []
+    lock = threading.Lock()
+
+    def run(stage: str, task: str) -> str:
+        timeout = routes.stage_timeout(stage) if requested_timeout is None else max(1, min(routes.TIMEOUT_BOUNDS[1], int(requested_timeout)))
+        with lock:
+            attempt = 1 + sum(1 for r in runs if r["stage"] == stage)
+            entry = {"stage": stage, "attempt": attempt, "taskChars": len(task), "timeoutSecs": timeout}
+            runs.append(entry)
+        sdir = out / "stages"
+        sdir.mkdir(parents=True, exist_ok=True)
+        (sdir / f"{stage}.{attempt}.task.txt").write_text(task, encoding="utf-8")
+        try:
+            stdout, stderr, code, elapsed = run_kiro(task, model=model, timeout=timeout, kiro_cli=kiro_cli)
+        except subprocess.TimeoutExpired:
+            entry["error"] = f"Kiro CLI timed out after {timeout}s"
+            raise KiroTimeout(entry["error"]) from None
+        (sdir / f"{stage}.{attempt}.stdout.txt").write_text(stdout, encoding="utf-8")
+        (sdir / f"{stage}.{attempt}.stderr.txt").write_text(stderr, encoding="utf-8")
+        if stage == "structure" and attempt == 1:
+            for name, text in (("task.txt", task), ("stdout.txt", stdout), ("stderr.txt", stderr)):
+                (out / name).write_text(text, encoding="utf-8")
+        entry.update(kiroExitCode=code, kiroSeconds=round(elapsed, 1), stdoutChars=len(stdout))
+        if code != 0 and (not stdout.strip() or STREAM_BROKE.search(stderr or "")):
+            # Nothing usable, or the half a reply a broken response stream leaves: run the stage again.
+            raise KiroExit(f"exit {code}: {stderr.strip()[-800:]}")
+        return stdout
+
+    record = routes.drive_stages(data_dir, record, run)
+    return record, runs
+
+
+def runtime_failure(record: dict) -> bool:
+    """Whether a failed staged draft failed on the Kiro CLI itself (a timeout, no output), not on a reply."""
+    return any(s.get("status") == "failed" and RUNTIME_FAILURE.match(str(s.get("error") or ""))
+               for s in record.get("stages") or [])
+
+
 def stats(bundle: dict) -> dict:
     scenario = bundle["scenario"]
     ev = scenario.get("evaluation", {})
@@ -306,21 +365,27 @@ def run_single(args: argparse.Namespace, *, data_dir: Path | None, project_id: s
     # The record carries the timeout this run really uses, so the app's stale rule (timeoutSecs +
     # grace) never abandons it, and lets a second generation start, while kiro-cli is still inside it.
     routes.mark_running(data_dir, record, timeout_secs=timeout)
-    try:
-        stdout, stderr, code, elapsed = run_kiro(task, model=args.model, timeout=timeout, kiro_cli=args.kiro_cli)
-    except subprocess.TimeoutExpired:
-        routes.fail_generation(data_dir, record, f"Kiro CLI timed out after {timeout}s")
-        report["error"] = f"Kiro CLI timed out after {timeout}s"
-        return _finish(args.out, report, 3)
-    except (OSError, ValueError) as exc:
-        routes.fail_generation(data_dir, record, f"Kiro CLI could not run: {exc}")
-        report["error"] = f"Kiro CLI could not run: {exc}"
-        return _finish(args.out, report, 3)
-    (args.out / "stdout.txt").write_text(stdout, encoding="utf-8")
-    (args.out / "stderr.txt").write_text(stderr, encoding="utf-8")
-    report.update(exitCode=code, elapsedSeconds=round(elapsed, 1), stdoutChars=len(stdout))
-
-    record = routes.complete_generation(record, stdout, data_dir=data_dir)
+    if record.get("staged"):
+        record, runs = run_staged(record, data_dir=data_dir, out=args.out, requested_timeout=args.timeout,
+                                  model=args.model, kiro_cli=args.kiro_cli)
+        code = 3 if record["status"] == "failed" and runtime_failure(record) else 0
+        report.update(stages=runs, elapsedSeconds=round(sum(r.get("kiroSeconds") or 0 for r in runs), 1),
+                      stdoutChars=sum(r.get("stdoutChars") or 0 for r in runs))
+    else:
+        try:
+            stdout, stderr, code, elapsed = run_kiro(task, model=args.model, timeout=timeout, kiro_cli=args.kiro_cli)
+        except subprocess.TimeoutExpired:
+            routes.fail_generation(data_dir, record, f"Kiro CLI timed out after {timeout}s")
+            report["error"] = f"Kiro CLI timed out after {timeout}s"
+            return _finish(args.out, report, 3)
+        except (OSError, ValueError) as exc:
+            routes.fail_generation(data_dir, record, f"Kiro CLI could not run: {exc}")
+            report["error"] = f"Kiro CLI could not run: {exc}"
+            return _finish(args.out, report, 3)
+        (args.out / "stdout.txt").write_text(stdout, encoding="utf-8")
+        (args.out / "stderr.txt").write_text(stderr, encoding="utf-8")
+        report.update(exitCode=code, elapsedSeconds=round(elapsed, 1), stdoutChars=len(stdout))
+        record = routes.complete_generation(record, stdout, data_dir=data_dir)
     report["status"] = record["status"]
     if record["status"] == "failed":
         report["error"] = record.get("error")
@@ -467,24 +532,36 @@ def _one_round(args, *, data_dir: Path, project_id: str, service, number: int, m
                    "taskBytes": record["task"]["bytes"], "taskChars": record["task"]["chars"],
                    "estTokens": record["task"]["estTokens"], "taskSha256": record["task"]["sha256"],
                    "timeoutSecs": timeout, "materialsUsed": record.get("materialsUsed") or []}
-    try:
-        stdout, stderr, code, elapsed = run_kiro(task, model=args.model, timeout=timeout, kiro_cli=args.kiro_cli)
-    except subprocess.TimeoutExpired as exc:
-        routes.fail_generation(data_dir, record, f"Kiro CLI timed out after {timeout}s")
-        raise LoopFailure(f"round {number}: Kiro CLI timed out after {timeout}s", 3) from exc
-    except (OSError, ValueError) as exc:
-        routes.fail_generation(data_dir, record, f"Kiro CLI could not run: {exc}")
-        raise LoopFailure(f"round {number}: Kiro CLI could not run: {exc}", 3) from exc
-    _write_round(rdir, "stdout.txt", stdout)
-    _write_round(rdir, "stderr.txt", stderr)
-    entry.update(kiroSeconds=round(elapsed, 1), kiroExitCode=code, stdoutChars=len(stdout))
-    record = routes.complete_generation(record, stdout, data_dir=data_dir)
-    _write_round(rdir, "record.json", record)
-    entry["status"] = record["status"]
-    if record["status"] == "failed":
-        if code == 0 or STREAM_BROKE.search(stderr or ""):
+    if record.get("staged"):
+        record, runs = run_staged(record, data_dir=data_dir, out=rdir, requested_timeout=args.timeout,
+                                  model=args.model, kiro_cli=args.kiro_cli)
+        entry.update(stages=runs, kiroSeconds=round(sum(r.get("kiroSeconds") or 0 for r in runs), 1),
+                     stdoutChars=sum(r.get("stdoutChars") or 0 for r in runs))
+        _write_round(rdir, "record.json", record)
+        entry["status"] = record["status"]
+        if record["status"] == "failed":
+            if runtime_failure(record):
+                raise LoopFailure(f"round {number}: {record.get('error')}", 3)
             raise InvalidOutput(f"round {number}: {record.get('error')}", 1)
-        raise LoopFailure(f"round {number}: {record.get('error')}", 3)
+    else:
+        try:
+            stdout, stderr, code, elapsed = run_kiro(task, model=args.model, timeout=timeout, kiro_cli=args.kiro_cli)
+        except subprocess.TimeoutExpired as exc:
+            routes.fail_generation(data_dir, record, f"Kiro CLI timed out after {timeout}s")
+            raise LoopFailure(f"round {number}: Kiro CLI timed out after {timeout}s", 3) from exc
+        except (OSError, ValueError) as exc:
+            routes.fail_generation(data_dir, record, f"Kiro CLI could not run: {exc}")
+            raise LoopFailure(f"round {number}: Kiro CLI could not run: {exc}", 3) from exc
+        _write_round(rdir, "stdout.txt", stdout)
+        _write_round(rdir, "stderr.txt", stderr)
+        entry.update(kiroSeconds=round(elapsed, 1), kiroExitCode=code, stdoutChars=len(stdout))
+        record = routes.complete_generation(record, stdout, data_dir=data_dir)
+        _write_round(rdir, "record.json", record)
+        entry["status"] = record["status"]
+        if record["status"] == "failed":
+            if code == 0 or STREAM_BROKE.search(stderr or ""):
+                raise InvalidOutput(f"round {number}: {record.get('error')}", 1)
+            raise LoopFailure(f"round {number}: {record.get('error')}", 3)
     if record["status"] == "needs-input":
         entry["openQuestions"] = (record.get("result") or {}).get("openQuestions", [])
         entry["seconds"] = round(time.time() - started, 1)

@@ -65,6 +65,7 @@ import copy
 import errno
 import fcntl
 import hashlib
+import importlib
 import json
 import math
 import os
@@ -73,6 +74,8 @@ import re
 import secrets
 import shutil
 import string
+import sys
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -97,10 +100,34 @@ MAX_FILES = 64
 MAX_FILE_CHARS = 120_000
 MAX_TOTAL_FILE_CHARS = 1_000_000
 GENERATION_TIMEOUT_SECS = 600  # records written before per-mode timeouts existed
-TIMEOUTS = {"draft": 1200, "repair": 900, "regenerate": 900}
+TIMEOUTS = {"draft": 1800, "repair": 900, "regenerate": 900}  # a live draft has taken 21 minutes
 TIMEOUT_ENV = "WORKSHOP_CUSTOMIZER_GENERATION_TIMEOUT_SECS"
 TIMEOUT_BOUNDS = (300, 3600)
 KIRO_CLI_STALE_GRACE_SECS = 120
+#: How often a spawned generation with no gateway run task to wait on is checked again (see ``register_routes``).
+WATCH_INTERVAL_SECS = 10
+#: A draft is written in stages, one Kiro reply each (``staged``; live 2026-10-12 the whole pack in one reply, 29 305
+#: characters of it after 35 526 of thinking, hit the reply's output limit four documents into ``files``).  Stage ->
+#: the stages it needs.  The structure comes first, the golden set and teaching design are written against it, and
+#: the files are written to both, in parallel: ``knowledge-N`` (a batch of documents) and ``guides`` are added when
+#: ``evaluation`` is done, since its teaching design is what the documents must carry.
+STAGE_DEPS: dict[str, tuple[str, ...]] = {
+    "structure": (), "evaluation": ("structure",), "skills": ("structure",), "prompts": ("evaluation",),
+    "knowledge": ("evaluation",), "guides": ("evaluation",)}
+INITIAL_STAGES = ("structure", "evaluation", "skills", "prompts")
+STAGE_TIMEOUTS = {"structure": 1200, "evaluation": 1200, "knowledge": 900, "prompts": 900, "skills": 900, "guides": 900}
+STAGE_RE = re.compile(r"^(structure|evaluation|skills|prompts|guides|knowledge-[1-9][0-9]?)$")
+#: A stage whose reply is unusable or fails its checks is asked once more, with the problems and its last reply.
+STAGE_OUTPUT_RETRIES = 1
+#: A stage whose run failed (the response stream broke off, a timeout, no output, a declined spawn) runs again, on its
+#: own budget: live 2026-10-12 five of six stages' first runs broke off ("dispatch failure") within half a minute.
+STAGE_RUN_RETRIES = 3
+KNOWLEDGE_BATCH = 4  # documents per knowledge reply
+#: A stage claimed for a spawn that never recorded its id (the gateway restarted mid-start) is run again after this.
+STAGE_CLAIM_GRACE_SECS = 120
+#: The stages whose task carries the source materials; the others work from the structure.
+MATERIAL_STAGES = frozenset({"structure", "knowledge"})
+FILE_STAGES = frozenset({"knowledge", "prompts", "skills", "guides"})
 MODES = ("draft", "repair", "regenerate")
 #: Modes whose output is a FULL scenario plus only new or changed files (unchanged files are carried
 #: over from disk); a draft must return every referenced file itself.
@@ -409,6 +436,26 @@ def _safe_relative_file(raw: object) -> str:
     return rel
 
 
+def _unclosed(text: str) -> bool:
+    """Whether JSON text ends inside a string or with an object or array still open (it was cut off)."""
+    depth, in_string, escaped = 0, False, False
+    for char in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "{[":
+            depth += 1
+        elif char in "}]":
+            depth -= 1
+    return in_string or depth > 0
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     """Extract the one JSON object required by the generation contract."""
     raw = text.strip()
@@ -416,6 +463,11 @@ def _extract_json(text: str) -> dict[str, Any]:
     end = raw.rfind("WORKSHOP_PACK_JSON_END")
     if begin >= 0 and end > begin:
         raw = raw[begin + len("WORKSHOP_PACK_JSON_BEGIN") : end].strip()
+    elif begin >= 0 and _unclosed(raw[begin + len("WORKSHOP_PACK_JSON_BEGIN"):]):
+        # Live 2026-10-12: the reply stopped mid-JSON with no end marker (Kiro's per-reply output limit). Say so,
+        # rather than report the JSON error at the cut.
+        raise GenerationError(f"Kiro's reply was cut off after {len(raw)} characters, before WORKSHOP_PACK_JSON_END "
+                              "(it reached Kiro's output limit, or its response stream broke off)")
     if raw.startswith("```"):
         lines = raw.splitlines()
         if lines and lines[0].startswith("```"):
@@ -668,7 +720,15 @@ def allocate_materials(pdir: Path | str, budget: dict[str, Any], *, scale: float
 
 def timeout_for(mode: str) -> int:
     """Per-mode generation timeout; the env override applies to every mode, clamped to 300..3600."""
-    default = TIMEOUTS.get(mode, TIMEOUTS["draft"])
+    return _env_timeout(TIMEOUTS.get(mode, TIMEOUTS["draft"]))
+
+
+def stage_timeout(name: str) -> int:
+    """A staged draft's per-stage timeout (one Kiro reply); the same env override applies."""
+    return _env_timeout(STAGE_TIMEOUTS[_stage_base(name)])
+
+
+def _env_timeout(default: int) -> int:
     raw = os.environ.get(TIMEOUT_ENV, "").strip()
     if not raw:
         return default
@@ -1010,7 +1070,12 @@ def _pt_teaching(value: Any, canon: _Canon, where: str) -> dict[str, Any] | None
                 if kind:
                     row[key] = kind
             elif key in ("caseIds", "defectIds", "documentIds", "baitTerms", "absentTerms"):
-                items = _string_list(item.get(key))
+                items = _string_list(item.get(key)) or []
+                short = [t for t in items if len(t.strip()) < 2] if key in ("baitTerms", "absentTerms") else []
+                if short and len(short) < len(items):  # live 2026-10-12: '猫' broke the schema (2+ characters)
+                    items = [t for t in items if len(t.strip()) >= 2]
+                    canon.warnings.append(f"{where}.phenomena[{_scalar_text(item.get('id')) or '?'}].{key}: dropped the one-character "
+                                          f"term {', '.join(map(repr, short))} (the schema needs 2+ characters; the other terms stay)")
                 if items:
                     row[key] = items
             elif key in ("mechanism", "design"):
@@ -1457,9 +1522,13 @@ def _canonicalize_scenario(raw: dict[str, Any], *, project_id: str, pack_kind: s
             continue
         expected = item.get("expected") if isinstance(item.get("expected"), dict) else {}
         role_id = str(item.get("roleId") or default_role)
-        if role_id not in role_ids:
-            role_id = default_role
         case_id = str(item.get("id") or f"case-{index}")
+        if role_id not in role_ids:
+            canon.warnings.append(f"evaluation.goldenSet[{case_id}].roleId: unknown role {role_id!r} replaced by {default_role!r}; "
+                                  "check who asks this question")
+            role_id = default_role
+        if not item.get("basis"):
+            canon.warnings.append(f"evaluation.goldenSet[{case_id}].basis: none given; set to {default_fact!r}, check it")
         basis = _normalise_basis([str(v) for v in (item.get("basis") or [default_fact])],
                                  where=f"evaluation.goldenSet[{case_id}].basis", fact_ids=fact_set,
                                  document_facts=document_facts, canon=canon)
@@ -2134,6 +2203,9 @@ def _public_record(record: dict[str, Any]) -> dict[str, Any]:
         "parentGenerationId": record.get("parentGenerationId"),
         "timeoutSecs": _record_timeout(record),
         "task": record.get("task"),
+        "staged": bool(record.get("staged")),
+        "stages": [{k: s.get(k) for k in ("name", "status", "attempts", "startedAt", "completedAt", "error", "problems", "history", "write", "kept", "keptAttempt")}
+                   | {"estTokens": (s.get("task") or {}).get("estTokens")} for s in record.get("stages") or []],
         "materialsUsed": record.get("materialsUsed") or [],
         "validationRef": record.get("validationRef"),
         "createdAt": record.get("createdAt"),
@@ -2143,6 +2215,7 @@ def _public_record(record: dict[str, Any]) -> dict[str, Any]:
         "openQuestions": result.get("openQuestions", []) if isinstance(result, dict) else [],
         "truthLedger": result.get("truthLedger", []) if isinstance(result, dict) else [],
         "warnings": result.get("warnings", []) if isinstance(result, dict) else [],
+        "precheck": result.get("precheck"),
         "changes": result.get("changes", []),
         "anchorCandidates": result.get("anchorCandidates"),
         "deleteOrphans": result.get("deleteOrphans", []),
@@ -2684,6 +2757,10 @@ def prepare_generation(data_dir: Path | str, body: Any, *, runner: str = "kirocr
         raise GenerationError("parentGenerationId must be a generation id")
     if mode == "draft" and scope is not None:
         raise GenerationError("a draft covers the whole pack; use regenerate with a scope instead")
+    staged = body.get("staged", True)
+    if not isinstance(staged, bool):
+        raise GenerationError("staged must be a boolean")
+    staged = staged and mode == "draft"
     pdir = _project_dir(data_dir, project_id)
 
     with project_lock(pdir):
@@ -2768,7 +2845,10 @@ def prepare_generation(data_dir: Path | str, body: Any, *, runner: str = "kirocr
         scale = 1.0
         for _attempt in range(TASK_SHRINK_STEPS + 1):
             materials = allocate_materials(pdir, budget, scale=scale, records=records)
-            task, contracts = _compose_task(materials=materials, repair=repair, **common)
+            if staged:
+                task, contracts = _compose_stage_task("structure", context={"common": common, "materials": materials}, outputs={})
+            else:
+                task, contracts = _compose_task(materials=materials, repair=repair, **common)
             if len(task.encode("utf-8")) <= MAX_TASK_BYTES:
                 break
             scale *= 0.8
@@ -2807,13 +2887,17 @@ def prepare_generation(data_dir: Path | str, body: Any, *, runner: str = "kirocr
             "omittedFiles": [row["path"] for row in (repair or {}).get("omittedFiles", [])],
             "task": {"chars": len(task), "bytes": task_bytes, "estTokens": est_tokens(task), "sha256": _sha256_text(task)},
             "contracts": contracts,
-            "timeoutSecs": timeout_for(mode),
+            "timeoutSecs": stage_timeout("structure") if staged else timeout_for(mode),
             "createdAt": now,
             "updatedAt": now,
             "spawnId": None,
             "result": None,
             "error": None,
         }
+        if staged:
+            record["staged"] = True
+            record["stages"] = [_new_stage(name) for name in INITIAL_STAGES]
+            record["stages"][0]["task"] = dict(record["task"])
         if brief:
             _atomic_text(pdir / "generation" / "brief.md", brief + "\n")
         if answers:
@@ -2826,6 +2910,10 @@ def prepare_generation(data_dir: Path | str, body: Any, *, runner: str = "kirocr
                 if prior.get("status") == "ready":
                     prior.update(status="superseded", supersededBy=record["id"], supersededAt=now)
                     _write_record(data_dir, prior)
+            if staged:
+                # What every later stage's task is composed from, so all of them see the brief, answers and
+                # materials of this moment (an upload between two stages changes none of them).
+                _write_stage_json(_stage_dir(data_dir, record["id"]) / "input.json", {"common": common, "materials": materials})
             _write_record(data_dir, record)
     return record, task
 
@@ -2867,7 +2955,12 @@ def mark_running(data_dir: Path | str, record: dict[str, Any], *, spawn_id: Any 
     changes: dict[str, Any] = {"status": "running", "spawnId": None if spawn_id is None else str(spawn_id)}
     if timeout_secs is not None:
         changes["timeoutSecs"] = int(timeout_secs)
-    return _update_live(Path(data_dir), record, changes)
+    record = _update_live(Path(data_dir), record, changes)
+    if record.get("staged") and spawn_id is not None and record.get("status") in LIVE_STATUSES:
+        # The spawn that was started with the task prepare_generation returned runs the structure stage.
+        claim_stage(data_dir, str(record["id"]), "structure", spawn_id=spawn_id)
+        record.update(_read_record(Path(data_dir), str(record["id"])))
+    return record
 
 
 def fail_generation(data_dir: Path | str, record: dict[str, Any], error: str) -> dict[str, Any]:
@@ -2897,12 +2990,26 @@ def complete_generation(record: dict[str, Any] | str, result_text: str, *, data_
     stored = _stored_record(data_dir, str(record.get("id")))
     if stored is not None and stored.get("status") not in LIVE_STATUSES:
         return _update_live(data_dir, record, {})
-    changes: dict[str, Any]
+    if (stored or record).get("staged"):
+        # One reply of a staged draft: the stage still open (a runner that names none answers the structure).
+        settled = finish_stage(data_dir, str(record["id"]), _answered_stage(stored or record), result_text, retries=False)
+        record.clear()
+        record.update(settled)
+        return record
     try:
         text = str(result_text or "")
         if len(text.encode("utf-8")) > MAX_RESULT_BYTES:
             raise GenerationError("Kiro generation result is too large")
         payload = _extract_json(text)
+    except GenerationError as exc:
+        return _update_live(data_dir, record, {"status": "failed", "error": str(exc)})
+    return _update_live(data_dir, record, _bundle_changes(record, payload, data_dir=data_dir))
+
+
+def _bundle_changes(record: dict[str, Any], payload: dict[str, Any], *, data_dir: Path) -> dict[str, Any]:
+    """The record changes for Kiro's parsed answer: ready (with the result), needs-input or failed."""
+    changes: dict[str, Any]
+    try:
         project_id = str(record["projectId"])
         pdir = _project_dir(data_dir, project_id)
         meta = _read_meta(pdir)
@@ -2916,6 +3023,8 @@ def complete_generation(record: dict[str, Any] | str, result_text: str, *, data_
                                    read_only=frozenset(record.get("omittedFiles") or []))
         if result.get("status") == "ready" and payload.get("mode") not in (None, mode):
             result["warnings"].append(f"Kiro answered as mode {payload.get('mode')!r}; the task was {mode!r}")
+        if result.get("status") == "ready":
+            result["precheck"] = _precheck(result, pdir)
     except GenerationError as exc:
         changes = {"status": "failed", "error": str(exc)}
     except Exception as exc:  # noqa: BLE001 - untrusted output must fail the record, not the route
@@ -2924,7 +3033,86 @@ def complete_generation(record: dict[str, Any] | str, result_text: str, *, data_
         result["mode"] = str(record.get("mode") or "draft")
         changes = {"result": result, "error": None,
                    "status": "needs-input" if result["status"] == "needs_input" else "ready"}
-    return _update_live(data_dir, record, changes)
+    return changes
+
+
+#: The provenance gate's reason for an item nobody has reviewed yet (engine scenario.provenance_gate): the SA's review.
+UNREVIEWED_GATE = re.compile(r"^provenance '(ai_draft|pending)' cannot enter a formal pack")
+
+
+def _engine_template_commit(module: Any) -> str | None:
+    """The pinned Workshop template commit of the checkout the engine was loaded from (template-lock.json)."""
+    try:
+        lock = _read_json_file(Path(module.__file__).resolve().parents[2] / "template-lock.json") or {}
+        return str(lock["template"]["commit"])
+    except (KeyError, TypeError, OSError):
+        return None
+
+
+def _precheck(result: dict[str, Any], pdir: Path) -> dict[str, Any] | None:
+    """What validation will report once this result is applied, shown before the SA applies it: the scenario loads
+    (schema, cross-references), the engine policy runs on it with its files, and the pack compiles (holdout leaks,
+    guides, residue), as server.validate does short of rendering the release.  ``review`` counts the items the
+    provenance gate holds until the SA reviews them; ``anchorsMissing`` the customer anchors a workshop pack lacks.
+    ``partial``: a schema or reference error stopped the later checks."""
+    if not isinstance(result.get("scenario"), dict):
+        return None
+    scenario_mod, validator, compiler = _engine_module("scenario"), _engine_module("validator"), _engine_module("compiler")
+    if scenario_mod is None or validator is None:
+        return {"ran": False, "error": "engine not found"}
+
+    def summary(findings: list[dict[str, Any]], *, partial: bool = False, warnings: int = 0, loaded: Any = None) -> dict[str, Any]:
+        errors = [f for f in findings if f["severity"] == "error"]
+        gate = list(getattr(loaded, "gate_violations", None) or [])
+        anchors = scenario_mod.provenance_policy(loaded.data).get("anchorsMissing") if loaded is not None else None
+        hints = [f for f in findings if f["severity"] != "error"]
+        return {"ran": True, "partial": partial, "errorCount": len(errors), "warningCount": warnings,
+                "errors": [f"{f['code']}: {f['message']}" for f in errors][:30], "findings": errors[:30], "warnings": hints[:30],
+                "review": sum(1 for v in gate if not v.waived and UNREVIEWED_GATE.match(str(v.reason))) if loaded is not None else None,
+                "anchorsMissing": anchors or []}
+
+    def rows(source: str, items: list[Any]) -> list[dict[str, Any]]:
+        out = []
+        for item in items:
+            if isinstance(item, str):
+                code = "schema" if source == "schema" else source
+                out.append({"severity": "error", "code": code, "message": item, "path": item.split(":", 1)[0], "source": source})
+            else:
+                out.append({"severity": str(item.severity), "code": str(item.code), "message": str(item.message),
+                            "path": item.path, "source": source, "scopes": list(getattr(item, "scopes", ()) or ())})
+        return out
+    try:
+        files = dict(result.get("files") or {})
+        for rel in _referenced_files(result["scenario"]):
+            if rel not in files and _disk_text(pdir, rel) is not None:
+                files[rel] = _disk_text(pdir, rel)  # a repair or regenerate carries the project's other files over
+        with tempfile.TemporaryDirectory(prefix="wc-precheck-") as tmp:
+            root = Path(tmp) / "pack"
+            for rel, text in files.items():
+                target = root / _safe_relative_file(rel)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(str(text), encoding="utf-8")
+            root.mkdir(parents=True, exist_ok=True)
+            (root / "scenario.yaml").write_text(_dump_scenario(result["scenario"]), encoding="utf-8")
+            try:
+                loaded = scenario_mod.load_scenario(root / "scenario.yaml", enforce_gate=False)
+            except scenario_mod.SchemaViolation as exc:
+                return summary(rows("schema", list(exc.errors)), partial=True)
+            except scenario_mod.CrossReferenceError as exc:
+                return summary(rows("xref", list(exc.errors)), partial=True)
+            report = validator.validate_scenario_policy(loaded.data, root=loaded.root)
+            findings = rows("policy", list(report.findings))
+            commit = _engine_template_commit(scenario_mod)
+            if report.ok and compiler is not None and commit:
+                try:
+                    pack = compiler.compile_pack(loaded, Path(tmp) / "dry", template_commit=commit)
+                    findings += rows("output", list(pack.report.findings))
+                except validator.PackValidationError as exc:
+                    findings += rows("output", list(exc.report.findings))
+            warnings = sum(1 for f in findings if f["severity"] != "error")
+            return summary(findings, warnings=warnings, loaded=loaded)
+    except Exception as exc:  # noqa: BLE001 - the precheck informs; it never fails a result
+        return {"ran": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
 
 
 def _result_text(info: Any) -> str:
@@ -2945,6 +3133,1016 @@ def _result_text(info: Any) -> str:
     return text
 
 
+# ---------------------------------------------------------------------------
+# Staged draft: one Kiro reply per part of the pack
+# ---------------------------------------------------------------------------
+
+STAGE_DIRECTIVES = {
+    "structure": "Create the structure of a Scenario Pack draft for Workshop Customizer (staged draft, stage 1).",
+    "evaluation": "Write the golden set and teaching design of a Scenario Pack draft for Workshop Customizer (staged draft, stage 2).",
+    "knowledge": "Write knowledge documents of a Scenario Pack draft for Workshop Customizer (staged draft, stage 3).",
+    "prompts": "Write the two system prompts of a Scenario Pack draft for Workshop Customizer (staged draft, stage 3).",
+    "skills": "Write the skills of a Scenario Pack draft for Workshop Customizer (staged draft, stage 3).",
+    "guides": "Write the guide supplements of a Scenario Pack draft for Workshop Customizer (staged draft, stage 3).",
+}
+#: The shared contract sections a stage contract may include (the one-shot core includes them all).
+STAGE_INCLUDES = frozenset({"provenance", "teaching", "l1", "guides"})
+RETRY_NOTE = ("Your previous reply to this stage failed the app's checks in RETRY_INPUT.problems "
+              "(RETRY_INPUT.previousOutput is that reply, when it parsed). Fix exactly those problems and return the "
+              "whole stage again in the same shape.")
+
+
+def _stage_base(name: str) -> str:
+    return name.split("-", 1)[0]
+
+
+def _stage_dir(data_dir: Path, generation_id: str) -> Path:
+    """``generations/<id>/``: a staged draft's task input, each stage's parsed reply and retry input."""
+    return _generation_path(data_dir, generation_id).with_suffix("")
+
+
+def _stage_path(data_dir: Path, generation_id: str, name: str, kind: str = "output") -> Path:
+    if not STAGE_RE.fullmatch(name):
+        raise GenerationError(f"unknown draft stage {name!r}")
+    return _stage_dir(data_dir, generation_id) / f"{name}.{kind}.json"
+
+
+def _read_json_file(path: Path) -> dict[str, Any] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _stage_outputs(data_dir: Path, record: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    outputs: dict[str, dict[str, Any]] = {}
+    for stage in record.get("stages") or []:
+        if stage.get("status") == "done":
+            value = _read_json_file(_stage_path(data_dir, str(record["id"]), stage["name"]))
+            if value is not None:
+                outputs[stage["name"]] = value
+    return outputs
+
+
+def _new_stage(name: str, **extra: Any) -> dict[str, Any]:
+    return {"name": name, "deps": list(STAGE_DEPS[_stage_base(name)]), "status": "pending", "attempts": 0,
+            "runFailures": 0, "outputRetries": 0, "spawnId": None, "startedAt": None, "completedAt": None, "error": None,
+            "problems": [], "task": None, **extra}
+
+
+def _stage(record: dict[str, Any], name: str) -> dict[str, Any] | None:
+    return next((s for s in record.get("stages") or [] if s.get("name") == name), None)
+
+
+def _answered_stage(record: dict[str, Any]) -> str:
+    """The stage a runner's reply answers when it names none: the structure until it is done (an older runner or
+    the UI harness answers the draft in one reply), then the one stage that is running."""
+    structure = _stage(record, "structure")
+    if structure is None or structure.get("status") != "done":
+        return "structure"
+    running = [s["name"] for s in record.get("stages") or [] if s.get("status") == "running"]
+    if len(running) != 1:
+        raise GenerationError("this staged draft has several stages open; complete one by name")
+    return running[0]
+
+
+def runnable_stages(record: dict[str, Any]) -> list[str]:
+    """Stages that can start now: pending, with every stage they need done."""
+    if not record.get("staged") or record.get("status") not in LIVE_STATUSES:
+        return []
+    done = {s["name"] for s in record.get("stages") or [] if s.get("status") == "done"}
+    return [s["name"] for s in record.get("stages") or [] if s.get("status") == "pending" and set(s.get("deps") or []) <= done]
+
+
+def _mutate_staged(data_dir: Path, generation_id: str, change: Callable[[dict[str, Any]], Any]) -> tuple[dict[str, Any], Any]:
+    """Read-modify-write a live staged record under the app lock: parallel stages finish into one record."""
+    with _LOCK:
+        record = _read_record(data_dir, generation_id)
+        if record.get("status") not in LIVE_STATUSES:
+            return record, None
+        value = change(record)
+        if record.get("status") not in LIVE_STATUSES and not record.get("completedAt"):
+            record["completedAt"] = _utc_now()
+        _write_record(data_dir, record)
+        return record, value
+
+
+def claim_stage(data_dir: Path | str, generation_id: str, name: str, *, spawn_id: Any = None) -> dict[str, Any] | None:
+    """Mark a runnable stage running for one runner; None when it is not runnable (another runner has it)."""
+    def change(record: dict[str, Any]) -> dict[str, Any] | None:
+        stage = _stage(record, name)
+        if stage is None or name not in runnable_stages(record):
+            return None
+        stage.update(status="running", attempts=int(stage.get("attempts") or 0) + 1, startedAt=_utc_now(),
+                     spawnId=None if spawn_id is None else str(spawn_id), error=None)
+        if record.get("status") == "queued":
+            record["status"] = "running"
+        return dict(stage)
+    return _mutate_staged(Path(data_dir), generation_id, change)[1]
+
+
+def stage_spawned(data_dir: Path | str, generation_id: str, name: str, spawn_id: Any) -> dict[str, Any]:
+    """Record the spawn that runs a claimed stage."""
+    def change(record: dict[str, Any]) -> None:
+        stage = _stage(record, name)
+        if stage is not None and stage.get("status") == "running" and not stage.get("spawnId"):
+            stage["spawnId"] = str(spawn_id)
+    return _mutate_staged(Path(data_dir), generation_id, change)[0]
+
+
+def stage_task(data_dir: Path | str, record: dict[str, Any], name: str) -> str:
+    """The task of one stage, composed from the draft's input and the replies of the stages it needs."""
+    data_dir = Path(data_dir)
+    generation_id = str(record["id"])
+    context = _read_json_file(_stage_dir(data_dir, generation_id) / "input.json")
+    if context is None:
+        raise GenerationError("this staged draft's input is missing; generate again")
+    stage = _stage(record, name)
+    if stage is None:
+        raise GenerationError(f"this draft has no stage {name!r}")
+    retry = _read_json_file(_stage_path(data_dir, generation_id, name, "retry"))
+    task, shas = _compose_stage_task(name, context=context, outputs=_stage_outputs(data_dir, record), stage=stage, retry=retry)
+    stats = {"chars": len(task), "bytes": len(task.encode("utf-8")), "estTokens": est_tokens(task), "sha256": _sha256_text(task)}
+    if stats["bytes"] > MAX_TASK_BYTES:
+        raise GenerationTooLarge(f"stage {name} task is {stats['bytes']} bytes; the limit is {MAX_TASK_BYTES}")
+
+    def change(current: dict[str, Any]) -> None:
+        live = _stage(current, name)
+        if live is not None:
+            live["task"] = stats
+        current["contracts"] = {**(current.get("contracts") or {}), **{k: v for k, v in shas.items() if v}}
+    _mutate_staged(data_dir, generation_id, change)
+    return task
+
+
+def _render_stage_contract(base: str, values: dict[str, str], shared: dict[str, str | None]) -> str:
+    path = CONTRACTS_DIR / f"stage-{base}.md"
+    if not path.is_file():
+        raise GenerationError(f"generation contract stage-{base}.md is missing from the app")
+    lines: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines(keepends=True):
+        match = _INCLUDE_RE.fullmatch(line.rstrip("\n"))
+        if match is None:
+            lines.append(line)
+            continue
+        name = match.group(1)
+        if name not in STAGE_INCLUDES:
+            raise GenerationError(f"stage contract {base} includes an unknown section: {name}")
+        text = shared.get(name)
+        if text is not None:
+            lines.append(text if text.endswith("\n") else text + "\n")
+    try:
+        return string.Template("".join(lines)).substitute(values)
+    except (KeyError, ValueError) as exc:
+        raise GenerationError(f"stage contract {base} has an invalid placeholder: {exc}") from exc
+
+
+def _compose_stage_task(name: str, *, context: dict[str, Any], outputs: dict[str, dict[str, Any]],
+                        stage: dict[str, Any] | None = None, retry: dict[str, Any] | None = None,
+                        contracts: dict[str, str | None] | None = None) -> tuple[str, dict[str, str | None]]:
+    """(task text, {contract name: sha256 | None}) for one stage: the header with the stage, the stage contract
+    (``contracts/stage-<stage>.md`` with its shared includes), INPUT_DATA (the brief; the materials only for the
+    stages that write from them), STAGE_INPUT (what the earlier stages decided) and, for a second attempt,
+    RETRY_INPUT (the app's findings on the first)."""
+    base = _stage_base(name)
+    common = context.get("common") or {}
+    shared = contracts if contracts is not None else load_contracts()
+    project_id = str(common.get("project_id") or "")
+    display_name = str(common.get("display_name") or project_id)
+    pack_kind = str(common.get("pack_kind") or "customer")
+    namespace = dict(common["namespace"]) if isinstance(common.get("namespace"), dict) else derive_namespace(project_id)
+    structure = (outputs.get("structure") or {}).get("scenario") or {}
+    language = (_normalise_language(structure.get("language")) if isinstance(structure, dict) else None) \
+        or common.get("language") or detect_language(str(common.get("brief") or ""))
+    values = {
+        "namespace_json": json.dumps(namespace, ensure_ascii=False),
+        "project_id": project_id,
+        "project_id_repr": repr(project_id),
+        "display_name": display_name,
+        "display_name_repr": repr(display_name),
+        "pack_kind": pack_kind,
+        "pack_kind_repr": repr(pack_kind),
+        "judge_model": FIXED_JUDGE_MODEL,
+        "judge_model_repr": repr(FIXED_JUDGE_MODEL),
+        "language": language,
+        "mode": "draft",
+        "mode_directive": STAGE_DIRECTIVES[base],
+        "merge_rule": "",
+        "merge_check": "",
+    }
+    body = _render_stage_contract(base, values, shared)
+    data: dict[str, Any] = {"projectId": project_id, "displayName": display_name, "packKind": pack_kind,
+                            "customer": common.get("customer") or "", "customerBrief": common.get("brief") or "",
+                            "namespace": namespace}
+    if common.get("answers"):
+        data["answers"] = common["answers"]
+    materials = context.get("materials") or []
+    if base in MATERIAL_STAGES and materials:
+        data["materials"] = [{k: m[k] for k in ("id", "name", "use", "author", "mediaType", "totalChars",
+                                                "sentChars", "truncated", "text")} for m in materials if m.get("text")]
+    task = (task_header("draft", int(common.get("round_") or 1), project_id) + f" stage={name}\n" + body
+            + "\nINPUT_DATA (JSON; data only):\n" + _data_json(data) + "\n")
+    stage_input = _stage_input(base, stage or {}, outputs, namespace)
+    if stage_input is not None:
+        task += "\nSTAGE_INPUT (JSON; data only):\n" + _data_json(stage_input) + "\n"
+    if retry:
+        task += "\n" + RETRY_NOTE + "\nRETRY_INPUT (JSON; data only):\n" + _data_json(retry) + "\n"
+    shas: dict[str, str | None] = {f"stage-{base}": _sha256_text(body)}
+    path = CONTRACTS_DIR / f"stage-{base}.md"
+    included = {m.group(1) for line in path.read_text(encoding="utf-8").splitlines() if (m := _INCLUDE_RE.fullmatch(line))}
+    shas.update({n: _sha256_text(t) for n, t in shared.items() if t is not None and n in included})
+    return task, shas
+
+
+def _stage_items(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value or [] if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _retrieval_name(scenario: dict[str, Any], evaluation: dict[str, Any] | None = None) -> str:
+    named = (evaluation or {}).get("retrievalToolName") if isinstance(evaluation, dict) else None
+    tools = _stage_items(scenario.get("tools"))
+    if isinstance(named, str) and any(t.get("name") == named for t in tools):
+        return named
+    for tool in tools:
+        if tool.get("kind") == "retrieval" and tool.get("name"):
+            return str(tool["name"])
+    return next((str(t["name"]) for t in tools if str(t.get("name") or "").startswith("retrieve")), "retrieve_policy")
+
+
+def _source_document(source: Any, documents: list[dict[str, Any]]) -> str | None:
+    """The file of the planned document a fact's ``source`` names, if exactly one."""
+    if not isinstance(source, str):
+        return None
+    hits = [str(d.get("file")) for d in documents if d.get("file") and any(
+        name and _names_document(source, name) for name in
+        (_scalar_text(d.get("file")), _scalar_text(d.get("id")), posixpath.basename(_scalar_text(d.get("file")))))]
+    return hits[0] if len(set(hits)) == 1 else None
+
+
+def _teaching_of(evaluation_output: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    scenario = evaluation_output.get("scenario") if isinstance(evaluation_output.get("scenario"), dict) else {}
+    labs = scenario.get("labs") if isinstance(scenario.get("labs"), dict) else {}
+    teaching = labs.get("teaching") if isinstance(labs.get("teaching"), dict) else {}
+    evaluation = scenario.get("evaluation") if isinstance(scenario.get("evaluation"), dict) else {}
+    return teaching, _stage_items(evaluation.get("goldenSet"))
+
+
+def knowledge_requirements(structure: dict[str, Any], evaluation_output: dict[str, Any]) -> dict[str, Any]:
+    """What the teaching design puts on the documents: per file, the literal answer terms of its prompt_fixable
+    probes and its bait phrases; overall, the absent gap's terms (in no document) and topic."""
+    documents = _stage_items((structure.get("knowledge") or {}).get("documents") if isinstance(structure.get("knowledge"), dict) else [])
+    noise = [str(d["file"]) for d in documents if d.get("noise") and d.get("file")]
+    facts = {str(f.get("id")): f for f in _stage_items(structure.get("facts"))}
+    teaching, cases = _teaching_of(evaluation_output)
+    by_id = {str(c.get("id")): c for c in cases}
+    files: dict[str, dict[str, Any]] = {str(d["file"]): {"noise": bool(d.get("noise")), "mustContain": [], "baitPhrases": []}
+                                        for d in documents if d.get("file")}
+    absent: list[str] = []
+    for phenomenon in _stage_items(teaching.get("phenomena")):
+        kind = phenomenon.get("kind")
+        if kind == "prompt_fixable":
+            for case_id in phenomenon.get("caseIds") or []:
+                case = by_id.get(str(case_id)) or {}
+                terms = [t for t in ((case.get("expected") or {}).get("mustMention") or []) if isinstance(t, str) and t.strip()]
+                sources = [_source_document(facts.get(str(b), {}).get("source"), documents) for b in case.get("basis") or []]
+                sources = [s for s in sources if s in files]
+                target = next((s for s in sources if s in noise), None) or (sources[0] if sources else (noise[0] if noise else None))
+                if target is not None:
+                    files[target]["mustContain"] += [t for t in terms if t not in files[target]["mustContain"]]
+        elif kind == "retrieval_gap":
+            absent += [t for t in phenomenon.get("absentTerms") or [] if isinstance(t, str) and len(t.strip()) >= 2 and t not in absent]
+            bait = [t for t in phenomenon.get("baitTerms") or [] if isinstance(t, str) and len(t.strip()) >= 2]
+            if bait and noise:
+                files[noise[-1]]["baitPhrases"] += [t for t in bait if t not in files[noise[-1]]["baitPhrases"]]
+    return {"files": files, "absentTerms": absent}
+
+
+def _stage_input(base: str, stage: dict[str, Any], outputs: dict[str, dict[str, Any]], namespace: dict[str, str]) -> dict[str, Any] | None:
+    """STAGE_INPUT: the slice of the earlier stages' replies a stage writes from.  The file stages never see a
+    holdout case: no document, prompt, skill or guide can repeat one."""
+    if base == "structure":
+        return None
+    first = outputs.get("structure") or {}
+    scenario = first.get("scenario") if isinstance(first.get("scenario"), dict) else {}
+    plan = first.get("plan") if isinstance(first.get("plan"), dict) else {}
+    agent = scenario.get("agent") if isinstance(scenario.get("agent"), dict) else {}
+    tools = [{k: t[k] for k in ("name", "description", "kind", "inputSchema") if k in t} for t in _stage_items(scenario.get("tools"))]
+    if base == "evaluation":
+        terms = [t for t in plan.get("absentTerms") or [] if isinstance(t, str) and len(t.strip()) >= 2]
+        return {"scenario": scenario, "plan": {**plan, "absentTerms": terms} if "absentTerms" in plan else plan,
+                "openQuestions": [q for q in first.get("openQuestions") or [] if isinstance(q, str)]}
+    if base == "skills":
+        return {"agent": agent, "tools": tools, "retrievalToolName": _retrieval_name(scenario),
+                "facts": [{"id": f.get("id"), "statement": f.get("statement")} for f in _stage_items(scenario.get("facts"))],
+                "skills": _stage_items(scenario.get("skills"))}
+    second = outputs.get("evaluation") or {}
+    teaching, cases = _teaching_of(second)
+    evaluation = (second.get("scenario") or {}).get("evaluation") if isinstance(second.get("scenario"), dict) else {}
+    practice = [c for c in cases if c.get("set") != "holdout"]
+    if base == "knowledge":
+        requirements = knowledge_requirements(scenario, second)
+        write = list(stage.get("write") or [])
+        return {"write": write, "agent": {k: agent.get(k) for k in ("audience", "purpose", "scope", "outOfScope")},
+                "facts": _stage_items(scenario.get("facts")), "documents": _stage_items((scenario.get("knowledge") or {}).get("documents")),
+                "requirements": {f: requirements["files"].get(f, {}) for f in write},
+                "absentTopic": plan.get("absentTopic"),
+                "absentTerms": requirements["absentTerms"] or [t for t in plan.get("absentTerms") or [] if isinstance(t, str) and len(t.strip()) >= 2]}
+    if base == "prompts":
+        roles = {str(r.get("id")): r.get("name") for r in _stage_items(agent.get("roles"))}
+        designs = {str(c): p.get("design") for p in _stage_items(teaching.get("phenomena")) if p.get("kind") == "refusal" for c in p.get("caseIds") or []}
+        refusals = [{"query": c.get("query"), "roleId": c.get("roleId"), "role": roles.get(str(c.get("roleId"))),
+                     "forbiddenTools": (c.get("expected") or {}).get("forbiddenTools") or [], "design": designs.get(str(c.get("id")))}
+                    for c in practice if (c.get("expected") or {}).get("shouldRefuse")]
+        return {"agent": agent, "tools": tools, "toolTargetName": namespace.get("toolTargetName"),
+                "retrievalToolName": _retrieval_name(scenario, evaluation), "baselineDefects": _stage_items(teaching.get("baselineDefects")),
+                "refusals": refusals, "skills": [s.get("name") for s in _stage_items(scenario.get("skills"))]}
+    if base == "guides":
+        labs = (second.get("scenario") or {}).get("labs") if isinstance(second.get("scenario"), dict) else {}
+        return {"write": list(stage.get("write") or []), "agent": agent, "guide": (labs or {}).get("guide"),
+                "teaching": {k: teaching.get(k) for k in ("firstConversation", "baselineDefects", "phenomena")},
+                "practiceCases": [{k: c.get(k) for k in ("id", "label", "category")} for c in practice],
+                "stepIds": sorted(GUIDE_STEP_IDS)}
+    raise GenerationError(f"unknown draft stage {base!r}")
+
+
+def _file_stages(structure: dict[str, Any], evaluation_output: dict[str, Any]) -> list[dict[str, Any]]:
+    """The stages added once the golden set is written: the documents in balanced batches, and the guides when
+    labs declares guide files."""
+    documents = [str(d["file"]) for d in _stage_items((structure.get("knowledge") or {}).get("documents")) if d.get("file")]
+    documents = list(dict.fromkeys(documents))
+    count = max(1, math.ceil(len(documents) / KNOWLEDGE_BATCH)) if documents else 0
+    stages = [_new_stage(f"knowledge-{i + 1}", write=documents[i::count]) for i in range(count)]
+    labs = (evaluation_output.get("scenario") or {}).get("labs") if isinstance(evaluation_output.get("scenario"), dict) else {}
+    guides = [str(labs[k]) for k in ("studentGuideFile", "instructorGuideFile") if isinstance(labs, dict) and labs.get(k)]
+    if guides:
+        stages.append(_new_stage("guides", write=guides))
+    return stages
+
+
+def _whole_pack(payload: dict[str, Any]) -> bool:
+    """A reply that is the whole pack at once (an agent or harness answering a draft in one reply)."""
+    scenario = payload.get("scenario") if isinstance(payload.get("scenario"), dict) else {}
+    evaluation = scenario.get("evaluation") if isinstance(scenario.get("evaluation"), dict) else {}
+    return bool(_stage_items(evaluation.get("goldenSet"))) and isinstance(payload.get("files"), dict) and bool(payload["files"])
+
+
+def _present(term: str, text: str) -> bool:
+    return term.casefold() in text.casefold()
+
+
+#: The engine's live-learned teaching warnings the evaluation stage can fix itself (the role argument of a tool is the
+#: structure's, checked there), plus too many practice cases; with every teaching error they ask the stage again.
+EVALUATION_TEACHING_CODES = (LIVE_LEARNED_WARNING_CODES - {"teaching.gated_tool_role_argument"}) | {"teaching.too_many_practice"}
+MIN_DOCUMENT_CHARS = 500  # the reference packs' documents are 600-1 800 characters; a live staged one was 240
+_ENGINE: dict[str, Any] = {}
+
+
+def _engine_homes() -> list[Path]:
+    """Checkouts that may hold the engine, as the process backend finds its home (server.resolve_home)."""
+    here = Path(__file__).resolve()
+    homes = [Path(os.environ["WORKSHOP_CUSTOMIZER_HOME"])] if os.environ.get("WORKSHOP_CUSTOMIZER_HOME") else []
+    homes.append(here.parents[2])  # app/backend/routes.py in the checkout itself
+    installed = _read_json_file(here.parents[1] / "installed.json") or {}
+    source = str(installed.get("source") or "")
+    if source.startswith("registry:"):
+        homes.append(here.parents[3] / "app-sources" / source[len("registry:"):])  # ~/.kiro/crew/app-sources/<name>
+    elif source:
+        homes.append(Path(source).expanduser().parent)
+    return homes
+
+
+def _teaching_policy() -> Any | None:
+    """The engine's teaching rules (stdlib only) for the stage checks, or None when no engine is found (the final
+    validation still runs them all)."""
+    if "policy" in _ENGINE:
+        return _ENGINE["policy"]
+    policy = None
+    try:
+        from workshop_customizer import teaching_policy as policy  # type: ignore[no-redef]
+    except ImportError:
+        for home in _engine_homes():
+            engine = home / "engine"
+            if (engine / "workshop_customizer" / "teaching_policy.py").is_file():
+                sys.path.append(str(engine))
+                try:
+                    from workshop_customizer import teaching_policy as policy  # type: ignore[no-redef]
+                    break
+                except ImportError:
+                    sys.path.remove(str(engine))
+    _ENGINE["policy"] = policy
+    return policy
+
+
+def _engine_module(name: str) -> Any | None:
+    """An engine module (``scenario`` needs jsonschema, which the KiroCrew Python has), loaded like the teaching rules."""
+    if _teaching_policy() is None:
+        return None
+    try:
+        return importlib.import_module(f"workshop_customizer.{name}")
+    except ImportError:
+        return None
+
+
+#: The scenario sections each stage writes: a schema error under another section is not that stage's to fix.
+STAGE_SCHEMA_SECTIONS = {"structure": ("description", "language", "agent", "facts", "knowledge", "tools", "skills", "prompts"),
+                         "evaluation": ("evaluation", "labs")}
+#: The engine's cross-reference errors the golden set or the teaching design causes (the structure's own ids were
+#: checked with its reply): the evaluation stage is asked again with them.
+EVALUATION_XREF = re.compile(r"golden case|labs\.|evaluation\.|phenomenon|baseline defect|id used by more than one item type")
+
+
+def _engine_schema_problems(raw: dict[str, Any], base: str, *, project_id: str, pack_kind: str) -> list[str]:
+    """The schema errors the final validation would report in the sections this stage wrote (live 2026-10-12: an
+    absentTerm of one character, '猫', passed every stage check and failed the schema after Apply). The raw reply is
+    canonicalized first, exactly as the assembled draft will be."""
+    module = _engine_module("scenario")
+    if module is None:
+        return []
+    try:
+        scenario = _canonicalize_scenario(copy.deepcopy(raw), project_id=project_id, pack_kind=pack_kind, canon=_Canon())
+        errors = module.validate_schema(scenario)
+    except Exception:  # noqa: BLE001 - an odd draft shape is the final validation's to report
+        return []
+    sections = STAGE_SCHEMA_SECTIONS[base]
+    problems = [f"schema: {e}" for e in errors if e.split("/", 1)[0].split(":", 1)[0] in sections]
+    if base == "evaluation" and not problems:
+        try:
+            xref = module.cross_reference_errors(scenario, None, check_files=False)
+        except Exception:  # noqa: BLE001
+            xref = []
+        problems += [f"xref: {e}" for e in xref if EVALUATION_XREF.search(e)]
+    return problems
+
+
+def _engine_teaching_problems(scenario: dict[str, Any]) -> list[str]:
+    """The engine's structure-only teaching rules on the structure plus the golden set (no files yet)."""
+    policy = _teaching_policy()
+    if policy is None:
+        return []
+    try:
+        report = policy.check_teaching(scenario)
+    except Exception:  # noqa: BLE001 - an odd draft shape is the final validation's to report
+        return []
+    return list(dict.fromkeys(f"{f.code}: {f.message}" for f in report.findings
+                              if f.code.startswith("teaching.") and (f.severity == "error" or f.code in EVALUATION_TEACHING_CODES)))
+
+
+def check_stage(name: str, payload: dict[str, Any], *, stage: dict[str, Any], outputs: dict[str, dict[str, Any]],
+                project_id: str = "draft", pack_kind: str = "customer") -> list[str]:
+    """The app's deterministic checks of one stage's reply (problems for a second attempt; the final validation
+    still decides).  They cover what a later stage cannot repair: counts, ids, and the literal links between the
+    teaching design and the files."""
+    base = _stage_base(name)
+    problems: list[str] = []
+    scenario = payload.get("scenario") if isinstance(payload.get("scenario"), dict) else None
+    if base == "structure":
+        if scenario is None:
+            return ["the reply has no scenario object"]
+        facts, roles = _stage_items(scenario.get("facts")), _stage_items((scenario.get("agent") or {}).get("roles"))
+        documents = _stage_items((scenario.get("knowledge") or {}).get("documents"))
+        tools, skills = _stage_items(scenario.get("tools")), _stage_items(scenario.get("skills"))
+        if not 5 <= len(facts) <= 25:  # the contract asks 8-20; only a clear miss is worth another reply
+            problems.append(f"facts has {len(facts)} entries; write 8-20")
+        if not roles:
+            problems.append("agent.roles is empty")
+        if not 3 <= len(documents) <= 12:  # the contract asks 5-9 (the HR reference has 11)
+            problems.append(f"knowledge.documents plans {len(documents)} documents; plan 5-9")
+        if not any(d.get("noise") for d in documents):
+            problems.append("no knowledge document has noise:true; plan 2-3")
+        files = [str(d.get("file") or "") for d in documents]
+        bad = [f for f in files if not (f.startswith("knowledge-base/docs/") and f.endswith(".md"))]
+        if bad:
+            problems.append("knowledge document files must be knowledge-base/docs/<name>.md: " + ", ".join(bad or ["<empty>"]))
+        retrieval = [t.get("name") for t in tools if t.get("kind") == "retrieval"]
+        if len(retrieval) != 1:
+            problems.append(f"{len(retrieval)} tools have kind=retrieval; exactly one must")
+        for tool in tools:
+            name_ = str(tool.get("name") or "")
+            if tool.get("kind") != "retrieval" and any(m in name_ for m in RETRIEVAL_SPAN_MARKERS + ("___",)):
+                problems.append(f"mock tool name {name_!r} contains retrieve/knowledge/kb_/___")
+        for skill in skills:
+            if not str(skill.get("file") or "").startswith("skills/"):
+                problems.append(f"skill {skill.get('name')!r}: file must be under skills/")
+        policy = _teaching_policy()
+        for tool in tools if policy is not None else []:
+            argument = policy.role_argument(tool) if tool.get("kind") != "retrieval" else None
+            if argument:
+                problems.append(f"teaching.gated_tool_role_argument: mock tool {tool.get('name')!r} takes the caller's role as "
+                                f"argument {argument!r}: the agent fills it in and calls the tool before refusing; drop the "
+                                "argument and the fixture branches on it (the access rule goes into the prompts)")
+        ids = [str(i.get("id")) for i in facts + documents + roles] + [str(t.get("name")) for t in tools] + [str(s.get("name")) for s in skills]
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        if dupes:
+            problems.append("ids repeat across facts, documents, roles, tools and skills: " + ", ".join(dupes))
+        unsourced = [str(f.get("id")) for f in facts if _source_document(f.get("source"), documents) is None]
+        if unsourced and len(unsourced) == len(facts):
+            problems.append("no fact's source names a planned document; give each fact the document that will state it")
+        plan = payload.get("plan") if isinstance(payload.get("plan"), dict) else {}
+        terms = plan.get("absentTerms") if isinstance(plan.get("absentTerms"), list) else []
+        usable = [t for t in terms if isinstance(t, str) and len(t.strip()) >= 2]
+        if terms and not usable:  # the gap's absentTerms are schema strings of 2+ characters; a shorter one is dropped
+            problems.append(f"plan.absentTerms {terms}: write 1-3 concept words of at least 2 characters each "
+                            "(a single character breaks the schema and matches inside unrelated words)")
+        problems += [p for p in _engine_schema_problems(scenario, "structure", project_id=project_id, pack_kind=pack_kind)
+                     if p not in problems]
+        return problems
+    if base == "evaluation":
+        if scenario is None:
+            return ["the reply has no scenario object"]
+        first = (outputs.get("structure") or {}).get("scenario") or {}
+        evaluation = scenario.get("evaluation") if isinstance(scenario.get("evaluation"), dict) else {}
+        labs = scenario.get("labs") if isinstance(scenario.get("labs"), dict) else {}
+        teaching = labs.get("teaching") if isinstance(labs.get("teaching"), dict) else None
+        cases = _stage_items(evaluation.get("goldenSet"))
+        counts = {c: sum(1 for x in cases if x.get("category") == c) for c in ("normal", "boundary", "prohibited")}
+        holdout = sum(1 for x in cases if x.get("set") == "holdout")
+        if len(cases) < 12 or min(counts.values()) < 3:
+            problems.append(f"S1: {len(cases)} golden cases ({counts}); write >= 12 with >= 3 per category")
+        if holdout < math.ceil(len(cases) / 3):
+            problems.append(f"S1: {holdout} holdout of {len(cases)} cases; holdout must be >= {math.ceil(len(cases) / 3)}")
+        fact_ids = {str(f.get("id")) for f in _stage_items(first.get("facts"))}
+        role_ids = {str(r.get("id")) for r in _stage_items((first.get("agent") or {}).get("roles"))}
+        tool_names = {str(t.get("name")) for t in _stage_items(first.get("tools"))}
+        for case in cases:
+            cid = case.get("id")
+            wrong = [b for b in case.get("basis") or [] if str(b) not in fact_ids]
+            if wrong or not case.get("basis"):
+                problems.append(f"S2: case {cid}: basis {wrong or '[]'} must be fact ids of STAGE_INPUT")
+            if str(case.get("roleId")) not in role_ids:
+                problems.append(f"S3: case {cid}: roleId {case.get('roleId')!r} is not a role id")
+            expected = case.get("expected") if isinstance(case.get("expected"), dict) else {}
+            unknown = [t for t in (expected.get("requiredTools") or []) + (expected.get("forbiddenTools") or []) if str(t) not in tool_names]
+            if unknown:
+                problems.append(f"S3: case {cid}: tools {unknown} are not tools of STAGE_INPUT")
+        if teaching is None:
+            problems.append("labs.teaching is missing")
+            return problems
+        practice = {str(c.get("id")) for c in cases if c.get("set") != "holdout"}
+        retrieval = _retrieval_name(first, evaluation)
+        by_id = {str(c.get("id")): c for c in cases}
+        phenomena = _stage_items(teaching.get("phenomena"))
+        probes: set[str] = set()
+        for p in phenomena:
+            for cid in p.get("caseIds") or []:
+                if str(cid) not in practice:
+                    problems.append(f"T1: phenomenon {p.get('id')}: case {cid} is not a practice case")
+            if p.get("kind") in ("prompt_fixable", "retrieval_gap"):
+                probes.update(str(c) for c in p.get("caseIds") or [])
+        for cid in sorted(probes & practice):
+            tools = ((by_id.get(cid) or {}).get("expected") or {}).get("requiredTools")
+            if tools != [retrieval]:
+                problems.append(f"T1: probe {cid}: requiredTools must be exactly [{retrieval!r}]")
+        gaps = [p for p in phenomena if p.get("kind") == "retrieval_gap" and p.get("mechanism") == "absent"]
+        if len(gaps) != 1:
+            problems.append(f"{len(gaps)} retrieval_gap phenomena with mechanism absent; declare exactly 1")
+        fixable = {str(c) for p in phenomena if p.get("kind") == "prompt_fixable" for c in p.get("caseIds") or []}
+        if str(teaching.get("stabilityCaseId")) not in fixable:
+            problems.append("T1: stabilityCaseId must be a prompt_fixable probe")
+        used = {str(d) for p in phenomena if p.get("kind") in ("prompt_fixable", "retrieval_gap") for d in p.get("defectIds") or []}
+        for defect in _stage_items(teaching.get("baselineDefects")):
+            if str(defect.get("id")) not in used:
+                problems.append(f"T2: baselineDefect {defect.get('id')} is in no prompt_fixable or retrieval_gap defectIds")
+            if not str(defect.get("candidateFix") or "").strip():
+                problems.append(f"baselineDefect {defect.get('id')}: candidateFix is empty")
+            elif defect.get("candidateFix") == defect.get("baselineMarker"):
+                problems.append(f"T3: baselineDefect {defect.get('id')}: candidateFix and baselineMarker are the same sentence")
+        for key in ("studentGuideFile", "instructorGuideFile"):
+            if labs.get(key) and not str(labs[key]).startswith("guides/"):
+                problems.append(f"labs.{key} must be under guides/")
+        merged = {**copy.deepcopy(first), "evaluation": evaluation, "labs": labs}
+        schema = _engine_schema_problems(merged, "evaluation", project_id=project_id, pack_kind=pack_kind)
+        problems += [p for p in schema + _engine_teaching_problems(merged) if p not in problems]
+        return problems
+    files = payload.get("files")
+    if not isinstance(files, dict):
+        return ["the reply has no files object"]
+    first = (outputs.get("structure") or {}).get("scenario") or {}
+    if base in ("knowledge", "guides"):
+        expected_files = list(stage.get("write") or [])
+    elif base == "prompts":
+        prompts = first.get("prompts") if isinstance(first.get("prompts"), dict) else {}
+        expected_files = [str(prompts.get("baselineFile") or "agent/baseline-prompt.md"),
+                          str(prompts.get("optimizationCandidateFile") or "agent/optimization-candidate.md")]
+    else:
+        expected_files = [str(s.get("file")) for s in _stage_items(first.get("skills")) if s.get("file")]
+    missing = [f for f in expected_files if f not in files]
+    extra = [f for f in files if f not in expected_files]
+    if missing:
+        problems.append("files is missing: " + ", ".join(missing))
+    if extra:
+        problems.append("files has paths this stage does not write: " + ", ".join(extra))
+    texts = {path: value for path, value in files.items() if isinstance(value, str)}
+    for path, value in files.items():
+        if not (isinstance(value, str) and value.strip()) and not (base == "knowledge" and isinstance(value, dict) and value.get("fromMaterial")):
+            problems.append(f"{path}: the content is empty")
+    if base == "knowledge":
+        requirements = knowledge_requirements(first, outputs.get("evaluation") or {})
+        for path in expected_files:
+            text = texts.get(path)
+            if text is None:
+                continue
+            lacking = [t for t in requirements["files"].get(path, {}).get("mustContain", []) if not _present(t, text)]
+            if lacking:
+                problems.append(f"K3: {path} lacks the literal probe answer terms {lacking}")
+            leaked = [t for t in requirements["absentTerms"] if _present(t, text)]
+            if leaked:
+                problems.append(f"K3: {path} contains absentTerms {leaked}; no document may contain them")
+            if len(text.strip()) < MIN_DOCUMENT_CHARS:
+                problems.append(f"K1: {path} is {len(text.strip())} characters; write a complete document (900-2000 characters)")
+    elif base == "prompts" and len(expected_files) == 2:
+        baseline, candidate = texts.get(expected_files[0], ""), texts.get(expected_files[1], "")
+        teaching, _cases = _teaching_of(outputs.get("evaluation") or {})
+        for defect in _stage_items(teaching.get("baselineDefects")):
+            fix, marker = str(defect.get("candidateFix") or ""), str(defect.get("baselineMarker") or "")
+            if fix and fix not in candidate:
+                problems.append(f"P1: candidateFix of {defect.get('id')} is not in the candidate verbatim: {fix!r}")
+            if fix and fix in baseline:
+                problems.append(f"P1: candidateFix of {defect.get('id')} also occurs in the baseline")
+            if marker and marker not in baseline:
+                problems.append(f"P1: baselineMarker of {defect.get('id')} is not in the baseline verbatim: {marker!r}")
+            if marker and marker in candidate:
+                problems.append(f"P1: baselineMarker of {defect.get('id')} also occurs in the candidate")
+        retrieval = _retrieval_name(first, ((outputs.get("evaluation") or {}).get("scenario") or {}).get("evaluation"))
+        target = str((first.get("namespace") or {}).get("toolTargetName") or "") if isinstance(first.get("namespace"), dict) else ""
+        for label, text in (("baseline", baseline), ("candidate", candidate)):
+            if text and retrieval not in text and not (target and target in text):
+                problems.append(f"P2: the {label} names neither the retrieval tool {retrieval} nor the tool target {target}")
+    return problems
+
+
+def _write_stage_json(path: Path, payload: dict[str, Any]) -> None:
+    _atomic_text(path, json.dumps(payload, ensure_ascii=False, indent=1) + "\n")
+
+
+def stage_failed(data_dir: Path | str, generation_id: str, name: str, error: str, *, kind: str = "run",
+                 retry: dict[str, Any] | None = None) -> dict[str, Any]:
+    """A stage's run (``kind="run"``: Kiro did not answer) or reply (``"output"``) failed: it runs again while that
+    kind has retries left (``retry`` is what the next task tells Kiro about the last reply), otherwise the draft
+    fails."""
+    data_dir = Path(data_dir)
+    earlier = _read_json_file(_stage_path(data_dir, generation_id, name, "retry")) or {}
+    rerun = earlier.get("kind") == "precheck" and isinstance(earlier.get("previousOutput"), dict)
+    # a rewrite of a usable first reply (it failed only the stage's checks) whose runs keep failing keeps that reply
+    first = (kind == "run" and earlier.get("kind", "output") == "output" and isinstance(earlier.get("previousOutput"), dict)
+             and isinstance(earlier.get("problems"), list))
+    if retry is not None and not rerun:
+        _write_stage_json(_stage_path(data_dir, generation_id, name, "retry"), retry)
+    counter, budget = ("outputRetries", STAGE_OUTPUT_RETRIES) if kind == "output" else ("runFailures", STAGE_RUN_RETRIES)
+    fell_back: list[str] = []
+
+    def change(record: dict[str, Any]) -> None:
+        stage = _stage(record, name)
+        if stage is None or stage.get("status") not in ("pending", "running"):
+            return
+        stage[counter] = int(stage.get(counter) or 0) + 1
+        # Why each earlier attempt was not kept: the page shows it next to the stage after it is done.
+        entry: dict[str, Any] = {"kind": kind, "error": str(error)[:600], "at": _utc_now(), "attempt": int(stage.get("attempts") or 0)}
+        if isinstance((retry or {}).get("problems"), list):
+            entry["problems"] = [str(p)[:600] for p in retry["problems"][:12]]  # one per check (a message may hold "; ")
+        stage["history"] = (list(stage.get("history") or []) + [entry])[-6:]
+        if stage[counter] <= budget:
+            stage.update(status="pending", error=str(error)[:1000], spawnId=None)
+        elif rerun:  # its output file still holds the reply the precheck rerun was asked to redo
+            stage.update(status="done", completedAt=_utc_now(), error=None, kept="before-precheck",
+                         problems=[str(p) for p in earlier.get("keptProblems") or []][:20])
+            fell_back.append("before-precheck")
+        elif first and int(stage.get("outputRetries") or 0) >= STAGE_OUTPUT_RETRIES:
+            stage.update(status="done", completedAt=_utc_now(), error=None, kept="first", keptAttempt=1,
+                         problems=[str(p) for p in earlier["problems"]][:20])
+            fell_back.append("first")
+        else:
+            stage.update(status="failed", error=str(error)[:1000], completedAt=_utc_now())
+            record.update(status="failed", error=f"draft stage {name} failed: {error}"[:1000])
+    record = _mutate_staged(data_dir, generation_id, change)[0]
+    if fell_back == ["first"]:
+        _write_stage_json(_stage_path(data_dir, generation_id, name), earlier["previousOutput"])
+        if name == "evaluation":  # the file stages come with the golden set, as when the reply is accepted
+            added = _file_stages((_stage_outputs(data_dir, record).get("structure") or {}).get("scenario") or {}, earlier["previousOutput"])
+
+            def add(current: dict[str, Any]) -> None:
+                names = {x["name"] for x in current["stages"]}
+                current["stages"] += [x for x in added if x["name"] not in names]
+            record = _mutate_staged(data_dir, generation_id, add)[0]
+    if fell_back and record.get("status") in LIVE_STATUSES and all(s.get("status") == "done" for s in record.get("stages") or []):
+        return _complete_staged(data_dir, record)
+    return record
+
+
+def _problem_rank(problems: list[str]) -> tuple[int, int, int]:
+    """How bad a reply's problems are: those that block the build (the scenario does not load, an engine teaching
+    error), then the stage's own checks, then the engine's teaching warnings and the slips the app fixes itself (an
+    unknown roleId becomes the first role).  A count alone kept a schema error over two id slips."""
+    def tier(problem: str) -> int:
+        if problem.startswith(("schema:", "xref:", "the reply has no", "the reply could not", "files is missing")):
+            return 0  # the scenario does not load, or the assembly misses a file (live: a rewrite dropped a document)
+        if problem.startswith("teaching."):
+            return 2 if problem.split(":", 1)[0] in EVALUATION_TEACHING_CODES else 0
+        return 2 if re.match(r"S3: case \S+: roleId ", problem) else 1
+    tiers = [tier(str(p)) for p in problems]
+    return tiers.count(0), tiers.count(1), tiers.count(2)
+
+
+def _kept_attempt(data_dir: Path, generation_id: str, name: str, stage: dict[str, Any]) -> tuple[dict[str, Any], list[str], str] | None:
+    """The usable earlier reply of a stage whose last reply is unusable: the one the precheck rerun was asked to
+    redo, or the first reply once the stage's quality retry is spent."""
+    earlier = _read_json_file(_stage_path(data_dir, generation_id, name, "retry")) or {}
+    previous = earlier.get("previousOutput")
+    if not isinstance(previous, dict):
+        return None
+    if earlier.get("kind") == "precheck":
+        return previous, [str(p) for p in earlier.get("keptProblems") or []], "before-precheck"
+    if int(stage.get("outputRetries") or 0) >= STAGE_OUTPUT_RETRIES:
+        return previous, [str(p) for p in earlier.get("problems") or []], "first"
+    return None
+
+
+def finish_stage(data_dir: Path | str, generation_id: str, name: str, result_text: str, *,
+                 retries: bool = True) -> dict[str, Any]:
+    """Store one stage's reply.  A reply that fails the stage's checks is asked once more with its problems; of the
+    two replies the less bad one is kept, and an unusable rewrite never discards a usable first reply.  The last
+    stage to finish assembles the draft, which then completes like a one-reply draft.  ``retries=False`` (a runner
+    that answers through ``complete_generation`` and never runs a stage again) fails the draft instead."""
+    data_dir = Path(data_dir)
+    record = _read_record(data_dir, generation_id)
+    stage = _stage(record, name)
+    if record.get("status") not in LIVE_STATUSES or stage is None or stage.get("status") not in ("pending", "running"):
+        return record
+    text = str(result_text or "")
+    try:
+        if len(text.encode("utf-8")) > MAX_RESULT_BYTES:
+            raise GenerationError("Kiro generation result is too large")
+        payload = _extract_json(text)
+    except GenerationError as exc:
+        if not retries:
+            return fail_generation(data_dir, record, str(exc))
+        kept = _kept_attempt(data_dir, generation_id, name, stage)
+        if kept is not None:  # the rewrite is unusable (cut off, no JSON): the earlier usable reply stands
+            return _accept_stage(data_dir, generation_id, name, kept[0], kept[1], kept=kept[2])
+        return stage_failed(data_dir, generation_id, name, str(exc), kind="output", retry={"kind": "output", "problems": [str(exc)]})
+    if name == "structure" and (_whole_pack(payload) or payload.get("status") == "needs_input"):
+        return _finish_staged(data_dir, generation_id, payload, [])
+    if not retries:
+        return fail_generation(data_dir, record, "Kiro answered one stage of a staged draft, and this runner runs no "
+                                                 "further stages: start the draft from the app, or run it with routes.drive_stages")
+    outputs = _stage_outputs(data_dir, record)
+    try:
+        problems = check_stage(name, payload, stage=stage, outputs=outputs, project_id=str(record.get("projectId")),
+                               pack_kind=str(record.get("packKind") or "customer"))
+    except Exception as exc:  # noqa: BLE001 - an odd reply must reach the retry, never break the runner
+        problems = [f"the reply could not be checked: {type(exc).__name__}"]
+    earlier = _read_json_file(_stage_path(data_dir, generation_id, name, "retry")) or {}
+    if earlier.get("kind") == "precheck" and isinstance(earlier.get("previousOutput"), dict):
+        if problems:  # the once-per-draft precheck rerun is best effort: a reply its own checks refuse keeps the earlier one
+            return _accept_stage(data_dir, generation_id, name, earlier["previousOutput"],
+                                 [str(p) for p in earlier.get("keptProblems") or []], kept="before-precheck")
+        return _accept_stage(data_dir, generation_id, name, payload, [])
+    if problems and int(stage.get("outputRetries") or 0) < STAGE_OUTPUT_RETRIES:
+        return stage_failed(data_dir, generation_id, name, "; ".join(problems)[:1000], kind="output",
+                            retry={"kind": "output", "problems": problems, "previousOutput": payload})
+    kept = None
+    if (problems and earlier.get("kind", "output") == "output" and isinstance(earlier.get("previousOutput"), dict)
+            and isinstance(earlier.get("problems"), list) and _problem_rank([str(p) for p in earlier["problems"]]) < _problem_rank(problems)):
+        payload, problems, kept = earlier["previousOutput"], [str(p) for p in earlier["problems"]], "first"
+    return _accept_stage(data_dir, generation_id, name, payload, problems, kept=kept)
+
+
+def _accept_stage(data_dir: Path, generation_id: str, name: str, payload: dict[str, Any], problems: list[str], *,
+                  kept: str | None = None) -> dict[str, Any]:
+    """A stage's reply is final (``kept`` says when it is an earlier reply than the last one): store it, add the file
+    stages once the golden set is written, and assemble the draft when every stage is done."""
+    record = _read_record(data_dir, generation_id)
+    outputs = _stage_outputs(data_dir, record)
+    _write_stage_json(_stage_path(data_dir, generation_id, name), payload)
+    added = _file_stages((outputs.get("structure") or {}).get("scenario") or {}, payload) if name == "evaluation" else []
+
+    def change(current: dict[str, Any]) -> bool:
+        live = _stage(current, name)
+        if live is None or live.get("status") not in ("pending", "running"):
+            return False
+        attempt = int(live.get("attempts") or 0)
+        kept_attempt = 1 if kept == "first" else live.get("keptAttempt") if kept == "before-precheck" else attempt
+        live.update(status="done", completedAt=_utc_now(), problems=problems[:20], error=None, kept=kept, keptAttempt=kept_attempt)
+        names = {s["name"] for s in current["stages"]}
+        current["stages"] += [s for s in added if s["name"] not in names]
+        return all(s.get("status") == "done" for s in current["stages"])
+    record, complete = _mutate_staged(data_dir, generation_id, change)
+    if not complete:
+        return record
+    return _complete_staged(data_dir, record)
+
+
+def _complete_staged(data_dir: Path, record: dict[str, Any]) -> dict[str, Any]:
+    """Every stage is done: the assembled draft, after at most one precheck rerun of the file stages it blames.  A
+    rerun that leaves the precheck with more errors than before is undone (its stages keep the replies it reran)."""
+    payload, warnings = _assemble_staged(data_dir, record)
+    changes = _bundle_changes(record, payload, data_dir=data_dir)
+    after = int(((changes.get("result") or {}).get("precheck") or {}).get("errorCount") or 0)
+    if record.get("precheckRedo") and after > int(record.get("precheckBefore") or 0):
+        gid = str(record["id"])
+        kept: dict[str, tuple[list[str], Any]] = {}
+        for name in record["precheckRedo"]:
+            earlier = _read_json_file(_stage_path(data_dir, gid, name, "retry")) or {}
+            if earlier.get("kind") == "precheck" and isinstance(earlier.get("previousOutput"), dict):
+                _write_stage_json(_stage_path(data_dir, gid, name), earlier["previousOutput"])
+                kept[name] = ([str(p) for p in earlier.get("keptProblems") or []], earlier.get("keptAttempt"))
+
+        def undo(current: dict[str, Any]) -> None:
+            current["precheckUndone"] = True
+            for stage in current.get("stages") or []:
+                if stage.get("name") in kept:
+                    problems, attempt = kept[stage["name"]]
+                    stage.update(kept="before-precheck", problems=problems[:20], keptAttempt=attempt or stage.get("keptAttempt"))
+        record = _mutate_staged(data_dir, gid, undo)[0]
+        payload, warnings = _assemble_staged(data_dir, record)
+        changes = _bundle_changes(record, payload, data_dir=data_dir)
+        return _finish_staged(data_dir, gid, payload, warnings, changes=changes)
+    redo = _precheck_redo(data_dir, record, changes)
+    return redo if redo is not None else _finish_staged(data_dir, str(record["id"]), payload, warnings, changes=changes)
+
+
+#: Precheck errors without a file in their message that a file stage owns: the prompts', and the noise documents'.
+PRECHECK_PROMPT_CODES = frozenset({"teaching.defect_fix_missing", "teaching.defect_already_fixed", "teaching.defect_marker_missing",
+                                   "teaching.defect_marker_kept"})
+PRECHECK_NOISE_CODES = frozenset({"teaching.bait_missing", "teaching.fixable_answer_not_in_kb"})
+#: ... and the ones the structure or the golden set owns even when they name a document (no file stage can fix them).
+PRECHECK_STRUCTURE_CODES = frozenset({"teaching.noise_doc_flag", "teaching.noise_disabled", "teaching.missing_kind"})
+
+
+def _precheck_redo(data_dir: Path, record: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any] | None:
+    """Once per draft: a precheck error in a file one file stage wrote (a document, a prompt, a skill, a guide) asks
+    that stage again with the error.  An error in the structure or the golden set stays on the draft for the SA."""
+    if record.get("precheckRedo"):
+        return None
+    findings = [f for f in ((changes.get("result") or {}).get("precheck") or {}).get("findings") or [] if isinstance(f, dict)]
+    outputs = _stage_outputs(data_dir, record)
+    owner = {str(path): s["name"] for s in record.get("stages") or [] if _stage_base(s["name"]) in FILE_STAGES
+             for path in ((outputs.get(s["name"]) or {}).get("files") or {})}
+    structure = (outputs.get("structure") or {}).get("scenario") or {}
+    documents = _stage_items((structure.get("knowledge") or {}).get("documents"))
+    noise_stages = [owner[str(d.get("file"))] for d in documents if d.get("noise") and str(d.get("file")) in owner]
+    redo: dict[str, list[str]] = {}
+    for finding in findings:
+        text = f"{finding.get('path') or ''} {finding.get('message') or ''}"
+        named = [] if str(finding.get("code")) in PRECHECK_STRUCTURE_CODES else [
+            owner[str(d.get("file"))] for d in documents if str(d.get("file")) in owner and d.get("id") and f"'{d.get('id')}'" in text]
+        stages = [name for path, name in owner.items() if path in text] + named
+        if not stages and str(finding.get("code")) in PRECHECK_PROMPT_CODES:
+            stages = [name for name in set(owner.values()) if _stage_base(name) == "prompts"]
+        elif not stages and str(finding.get("code")) in PRECHECK_NOISE_CODES:
+            stages = noise_stages  # the bait phrases and the probe answers live in the noise documents
+        for name in dict.fromkeys(stages):
+            redo.setdefault(name, []).append(f"precheck {finding.get('code')}: {finding.get('message')}"[:600])
+    if not redo:
+        return None
+    kept = {s["name"]: (list(s.get("problems") or []), s.get("keptAttempt")) for s in record.get("stages") or []}
+    for name, problems in redo.items():
+        _write_stage_json(_stage_path(data_dir, str(record["id"]), name, "retry"),
+                          {"kind": "precheck", "problems": problems, "previousOutput": outputs.get(name),
+                           "keptProblems": kept.get(name, ([], None))[0], "keptAttempt": kept.get(name, ([], None))[1]})
+
+    before = int(((changes.get("result") or {}).get("precheck") or {}).get("errorCount") or 0)
+
+    def change(current: dict[str, Any]) -> None:
+        current["precheckRedo"] = sorted(redo)
+        current["precheckBefore"] = before
+        for stage in current.get("stages") or []:
+            if stage.get("name") in redo and stage.get("status") == "done":
+                entry = {"kind": "precheck", "error": "; ".join(redo[stage["name"]])[:600], "problems": redo[stage["name"]][:12], "at": _utc_now(),
+                         "attempt": int(stage.get("attempts") or 0)}
+                stage["history"] = (list(stage.get("history") or []) + [entry])[-6:]
+                stage.update(status="pending", spawnId=None, completedAt=None, error=None, problems=[])
+    return _mutate_staged(data_dir, str(record["id"]), change)[0]
+
+
+def _assemble_staged(data_dir: Path, record: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """The draft the stages wrote, in the one-reply shape ``_normalise_bundle`` takes."""
+    outputs = _stage_outputs(data_dir, record)
+    first, second = outputs.get("structure") or {}, outputs.get("evaluation") or {}
+    scenario = copy.deepcopy(first.get("scenario") or {})
+    written = second.get("scenario") if isinstance(second.get("scenario"), dict) else {}
+    for key in ("evaluation", "labs"):
+        if key in written:
+            scenario[key] = written[key]
+    files: dict[str, Any] = {}
+    for stage in record.get("stages") or []:
+        if _stage_base(stage["name"]) in FILE_STAGES and isinstance((outputs.get(stage["name"]) or {}).get("files"), dict):
+            files.update(outputs[stage["name"]]["files"])
+    questions = [q for q in (first.get("openQuestions") or []) + (second.get("openQuestions") or []) if isinstance(q, str)]
+    payload = {"status": "ready", "summary": first.get("summary"), "openQuestions": list(dict.fromkeys(questions)),
+               "truthLedger": first.get("truthLedger") or [], "anchorCandidates": second.get("anchorCandidates"),
+               "scenario": scenario, "files": files}
+    warnings = [f"draft stage {s['name']}: {p}" for s in record.get("stages") or [] for p in s.get("problems") or []]
+    return payload, warnings
+
+
+def _finish_staged(data_dir: Path, generation_id: str, payload: dict[str, Any], warnings: list[str], *,
+                   changes: dict[str, Any] | None = None) -> dict[str, Any]:
+    record = _read_record(data_dir, generation_id)
+    if record.get("status") not in LIVE_STATUSES:
+        return record
+    changes = copy.deepcopy(changes) if changes is not None else _bundle_changes(record, payload, data_dir=data_dir)
+    if warnings and isinstance(changes.get("result"), dict):
+        changes["result"]["warnings"] = (warnings + list(changes["result"].get("warnings") or []))[:100]
+    stages = copy.deepcopy(record.get("stages") or [])
+    for stage in stages:
+        if stage.get("status") in ("pending", "running"):
+            stage["status"] = "skipped"  # the structure reply was the whole pack, or asked for input
+    changes["stages"] = stages
+    return _update_live(data_dir, record, changes)
+
+
+def drive_stages(data_dir: Path | str, record: dict[str, Any], run: Callable[[str, str], str], *,
+                 workers: int = 4) -> dict[str, Any]:
+    """Run a staged draft to its end with ``run(stage, task) -> reply text`` (the local kiro-cli), stages that do
+    not need each other in parallel.  ``run`` raises when Kiro could not answer (timeout, no output); that is a
+    failed attempt like an unusable reply.  Returns the settled record."""
+    import concurrent.futures
+
+    data_dir = Path(data_dir)
+    generation_id = str(record["id"])
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers, thread_name_prefix=f"stage-{generation_id}") as pool:
+        running: dict[Any, str] = {}
+        while True:
+            current = _read_record(data_dir, generation_id)
+            if current.get("status") not in LIVE_STATUSES:
+                break
+            for name in runnable_stages(current):
+                if claim_stage(data_dir, generation_id, name) is None:
+                    continue
+                try:
+                    task = stage_task(data_dir, _read_record(data_dir, generation_id), name)
+                except GenerationError as exc:
+                    fail_generation(data_dir, _read_record(data_dir, generation_id), f"draft stage {name}: {exc}")
+                    break
+                running[pool.submit(run, name, task)] = name
+            if not running:
+                break
+            done, _pending = concurrent.futures.wait(running, return_when=concurrent.futures.FIRST_COMPLETED)
+            for future in done:
+                name = running.pop(future)
+                try:
+                    reply = future.result()
+                except Exception as exc:  # noqa: BLE001 - recorded on the stage; the runner's own message
+                    stage_failed(data_dir, generation_id, name, f"{type(exc).__name__}: {exc}"[:1000])
+                    continue
+                finish_stage(data_dir, generation_id, name, reply)
+    settled = _read_record(data_dir, generation_id)
+    if settled.get("status") in LIVE_STATUSES:  # nothing left to run, yet not finished: never leave it live
+        open_ = ", ".join(s["name"] for s in settled.get("stages") or [] if s.get("status") != "done")
+        settled = fail_generation(data_dir, settled, f"the staged draft stopped with stages open: {open_}")
+    record.clear()
+    record.update(settled)
+    return record
+
+
+def _settle_staged(record: dict[str, Any], *, request: Any, data_dir: Path) -> dict[str, Any]:
+    """Settle each running stage of a spawned staged draft from the gateway's spawns, as ``_settle`` does a
+    one-reply draft: done -> its reply, failed or timed out -> a failed attempt."""
+    manager = _spawn_manager(request)
+    generation_id = str(record["id"])
+    now = time.time()
+    for stage in list(record.get("stages") or []):
+        if stage.get("status") != "running":
+            continue
+        name = stage["name"]
+        elapsed = now - _epoch(str(stage.get("startedAt") or record.get("createdAt") or ""))
+        spawn_id = str(stage.get("spawnId") or "")
+        if not spawn_id:
+            if elapsed > STAGE_CLAIM_GRACE_SECS:
+                stage_failed(data_dir, generation_id, name, "the stage's Kiro run never started")
+            continue
+        info = manager.get(spawn_id) if manager is not None else None
+        if info is None:
+            if elapsed > stage_timeout(name):
+                stage_failed(data_dir, generation_id, name, "Kiro generation timed out or its result expired")
+            continue
+        if str(getattr(info, "app", "") or APP_NAME) != APP_NAME:
+            fail_generation(data_dir, _read_record(data_dir, generation_id), "spawn ownership mismatch")
+            break
+        error = str(getattr(info, "error", "") or "")
+        if error:
+            stage_failed(data_dir, generation_id, name, f"Kiro generation failed: {error[:1000]}")
+        elif not bool(getattr(info, "done", False)):
+            if elapsed > stage_timeout(name):
+                stage_failed(data_dir, generation_id, name, "Kiro generation timed out")
+        else:
+            try:
+                text = _result_text(info)
+            except GenerationError as exc:
+                stage_failed(data_dir, generation_id, name, str(exc))
+                continue
+            finish_stage(data_dir, generation_id, name, text)
+    return _read_record(data_dir, generation_id)
+
+
+def _spawn_manager(request: Any) -> Any:
+    """The gateway's ``SubagentManager`` (its spawns), reached through ``request.app``; None outside KiroCrew."""
+    app = getattr(request, "app", None) if request is not None else None
+    state = app.get("state") if app is not None else None
+    return getattr(state, "subagents", None) if state is not None else None
+
+
 def _settle(record: dict[str, Any], *, request: Any = None, data_dir: Path) -> dict[str, Any]:
     if record.get("status") not in LIVE_STATUSES:
         return record
@@ -2956,10 +4154,10 @@ def _settle(record: dict[str, Any], *, request: Any = None, data_dir: Path) -> d
         if now - last > timeout + KIRO_CLI_STALE_GRACE_SECS:
             fail_generation(data_dir, record, "Kiro CLI generation was abandoned: no result arrived in time")
         return record
+    if record.get("staged"):
+        return _settle_staged(record, request=request, data_dir=data_dir)
     elapsed = now - _epoch(str(record.get("createdAt") or ""))
-    app = getattr(request, "app", None) if request is not None else None
-    state = app.get("state") if app is not None else None
-    manager = getattr(state, "subagents", None) if state is not None else None
+    manager = _spawn_manager(request)
     info = manager.get(str(record.get("spawnId") or "")) if manager is not None else None
     if info is None:
         if elapsed > timeout:
@@ -3125,7 +4323,8 @@ def _apply_record(record: dict[str, Any], *, data_dir: Path, body: dict[str, Any
         meta_path = pdir / "project.json"
         current_text = scenario_path.read_text(encoding="utf-8")
         if _sha256_text(current_text) != record.get("sourceScenarioSha256"):
-            raise GenerationError("project changed after generation started; generate again before applying")
+            raise GenerationError("project changed after generation started (a review recorded, the pack kind switched or a "
+                                  "file saved); generate again before applying")
         source_digest = record.get("sourcePackDigest")
         if source_digest and pack_digest(pdir) != source_digest:
             raise GenerationError("project files changed after generation started; generate again before applying")
@@ -3342,6 +4541,31 @@ def start_refused(exc: Exception) -> tuple[int, dict[str, Any]]:
     return 400, {"error": str(exc)}
 
 
+def _with_stale(public: dict[str, Any], record: dict[str, Any], data_dir: Path) -> dict[str, Any]:
+    """``stale``: a ready result whose project changed after the generation started (a review recorded, the pack
+    kind switched, a file saved), which apply refuses; the page says so before the SA tries. ``revertable``: an
+    applied result the project still matches exactly (revert's own check), so the page offers undo only then."""
+    if public.get("status") == "applied":
+        try:
+            pdir = _project_dir(data_dir, str(record.get("projectId") or ""))
+            manifest = json.loads((_snapshot_dir(pdir, str(record.get("id"))) / "snapshot.json").read_text(encoding="utf-8"))
+            public["revertable"] = (_sha256_text((pdir / "scenario.yaml").read_text(encoding="utf-8")) == manifest.get("scenarioShaAfter")
+                                    and pack_digest(pdir) == manifest.get("packDigestAfter"))
+        except (GenerationError, OSError, ValueError):
+            public["revertable"] = False
+        return public
+    if public.get("status") != "ready":
+        return public
+    try:
+        pdir = _project_dir(data_dir, str(record.get("projectId") or ""))
+        text = (pdir / "scenario.yaml").read_text(encoding="utf-8")
+        digest = record.get("sourcePackDigest")
+        public["stale"] = _sha256_text(text) != record.get("sourceScenarioSha256") or bool(digest and pack_digest(pdir) != digest)
+    except (GenerationError, OSError):
+        pass
+    return public
+
+
 def generation_route(method: str, parts: list[str], body: dict[str, Any], data_dir: Path, *,
                      start: Callable[[dict[str, Any]], tuple[int, Any]] | None = None,
                      request: Any = None) -> tuple[int, Any]:
@@ -3359,10 +4583,10 @@ def generation_route(method: str, parts: list[str], body: dict[str, Any], data_d
             if not candidates:
                 return 200, {"generation": None}
             record = max(candidates, key=lambda item: str(item.get("createdAt") or ""))
-            return 200, {"generation": _public_record(_settle(record, request=request, data_dir=data_dir))}
+            return 200, {"generation": _with_stale(_public_record(_settle(record, request=request, data_dir=data_dir)), record, data_dir)}
         if len(parts) == 2 and parts[0] == "generations" and method == "GET":
             record = _read_record(data_dir, parts[1])
-            return 200, _public_record(_settle(record, request=request, data_dir=data_dir))
+            return 200, _with_stale(_public_record(_settle(record, request=request, data_dir=data_dir)), record, data_dir)
         if len(parts) == 3 and parts[0] == "generations" and parts[2] == "apply" and method == "POST":
             record = _settle(_read_record(data_dir, parts[1]), request=request, data_dir=data_dir)
             return 200, apply_generation(record, data_dir, body)
@@ -3373,10 +4597,109 @@ def generation_route(method: str, parts: list[str], body: dict[str, Any], data_d
     return 404, {"error": "no such generation route"}
 
 
+class _Gateway:
+    """What ``_settle`` needs of a request (its ``app``, for the gateway's spawns), kept by a background watcher."""
+
+    def __init__(self, app: Any):
+        self.app = app
+
+
 def register_routes(ctx: Any):
     """KiroCrew App hook contract: return the model-backed route table (its sync work is :func:`generation_route`)."""
+    import asyncio
+
     from aiohttp import web
     from kiro_crew.apps.route_registry import AppRoute
+
+    watches: dict[str, Any] = {}  # generation id -> its one watch task (also keeps it from being garbage-collected)
+
+    async def run_ends(gateway: Any, spawn_ids: list[str], deadline: float, seen: set[str]) -> None:
+        """Return when one of the spawns' runs ends, or by ``deadline``. The gateway keeps each running spawn's asyncio
+        task in ``SubagentManager._tasks`` (private, KiroCrew 0.8): waiting on it wakes the moment Kiro finishes. A spawn
+        with none to wait on (still queued, between a run and its continuation, or a KiroCrew without that map) is
+        checked again after WATCH_INTERVAL_SECS instead."""
+        tasks = getattr(_spawn_manager(gateway), "_tasks", None)
+        loop = asyncio.get_running_loop()
+        known = {s: run for s, run in ((s, tasks.get(s)) for s in spawn_ids) if isinstance(run, asyncio.Future)
+                 and run.get_loop() is loop} if isinstance(tasks, dict) else {}
+        ended = {s for s, run in known.items() if run.done()} - seen
+        seen.update(ended)
+        if ended:
+            return  # a run ended before this wait began: settle it now (once; then it is checked on the interval)
+        runs = {run for run in known.values() if not run.done()}
+        left = max(0.0, deadline - time.time())
+        if not runs:
+            await asyncio.sleep(min(WATCH_INTERVAL_SECS, left))
+            return
+        # asyncio.wait, unlike awaiting a run, never cancels it when the watch stops.
+        await asyncio.wait(runs, timeout=left if len(runs) == len(spawn_ids) else min(WATCH_INTERVAL_SECS, left),
+                           return_when=asyncio.FIRST_COMPLETED)
+
+    async def start_stages(data_dir: Path, generation_id: str, app_ctx: Any) -> None:
+        """Spawn every stage of a staged draft that can run now (each claimed first, so only one runner starts it)."""
+        record = await _off_loop(_read_record, data_dir, generation_id)
+        if record.get("status") != "running":
+            return
+        for name in runnable_stages(record):
+            if await _off_loop(claim_stage, data_dir, generation_id, name) is None:
+                continue
+            try:
+                task = await _off_loop(stage_task, data_dir, await _off_loop(_read_record, data_dir, generation_id), name)
+            except GenerationError as exc:
+                current = await _off_loop(_read_record, data_dir, generation_id)
+                await _off_loop(fail_generation, data_dir, current, f"draft stage {name}: {exc}")
+                return
+            try:
+                spawn_id = await app_ctx.spawn.run(task=task, agent=AGENT_NAME, silent=True)
+            except Exception as exc:  # noqa: BLE001 - a declined spawn is a failed attempt of the stage
+                await _off_loop(stage_failed, data_dir, generation_id, name, f"KiroCrew declined the stage: {str(exc)[:500]}")
+                continue
+            await _off_loop(stage_spawned, data_dir, generation_id, name, spawn_id)
+
+    async def watch(data_dir: Path, generation_id: str, gateway: Any, app_ctx: Any) -> None:
+        """Settle a spawned generation as soon as Kiro finishes, not when the page next polls: KiroCrew prunes a
+        finished spawn's result.txt an hour after it ends, so a page left closed that long found nothing to read.
+        A staged draft's watch also spawns each stage once the stages it needs are done. ``_settle`` fails a run
+        once its timeout passes, which ends the watch."""
+        seen: set[str] = set()  # spawns whose ended run was already settled once
+        try:
+            while True:
+                record = await _off_loop(_read_record, data_dir, generation_id)
+                if record.get("status") not in LIVE_STATUSES:
+                    return
+                if record.get("staged"):
+                    await start_stages(data_dir, generation_id, app_ctx)
+                    record = await _off_loop(_read_record, data_dir, generation_id)
+                    running = [s for s in record.get("stages") or [] if s.get("status") == "running" and s.get("spawnId")]
+                    spawn_ids = [str(s["spawnId"]) for s in running]
+                    deadline = min((_epoch(str(s.get("startedAt") or "")) + stage_timeout(s["name"]) + 1 for s in running),
+                                   default=time.time() + WATCH_INTERVAL_SECS)
+                else:
+                    spawn_ids = [str(record.get("spawnId") or "")]
+                    deadline = _epoch(str(record.get("createdAt") or "")) + _record_timeout(record) + 1
+                await run_ends(gateway, spawn_ids, deadline, seen)
+                record = await _off_loop(_read_record, data_dir, generation_id)
+                await _off_loop(_settle, record, request=gateway, data_dir=data_dir)
+        except Exception:  # noqa: BLE001 - the page's poll still settles; the gateway must not see this
+            app_ctx.logger.exception("watching Kiro generation %s failed", generation_id)
+
+    def ensure_watch(data_dir: Path, generation_id: str, request: Any, app_ctx: Any) -> None:
+        """Start the generation's watch unless one is running (a poll restarts it after a gateway restart)."""
+        current = watches.get(generation_id)
+        if current is not None and not current.done():
+            return
+        # ``_settle`` reads the spawns from ``request.app``; keep only that past this request.
+        task = asyncio.ensure_future(watch(data_dir, generation_id, _Gateway(request.app), app_ctx))
+        watches[generation_id] = task
+        task.add_done_callback(lambda done: watches.pop(generation_id, None) if watches.get(generation_id) is done else None)
+
+    def keep_driving(reply: tuple[int, Any], request: Any, app_ctx: Any) -> tuple[int, Any]:
+        """A poll of a live staged draft makes sure its watch runs: it is what starts the next stages."""
+        body = reply[1].get("generation") if isinstance(reply[1], dict) and "generation" in reply[1] else reply[1]
+        if (isinstance(body, dict) and body.get("staged") and body.get("status") == "running" and body.get("id")
+                and app_ctx.spawn is not None):
+            ensure_watch(Path(app_ctx.data_dir), str(body["id"]), request, app_ctx)
+        return reply
 
     async def start(request: Any, app_ctx: Any):
         data_dir = Path(app_ctx.data_dir)
@@ -3399,6 +4722,7 @@ def register_routes(ctx: Any):
             fail_generation(data_dir, record, f"KiroCrew declined generation: {str(exc)[:1000]}")
             return web.json_response(_public_record(record), status=503)
         mark_running(data_dir, record, spawn_id=spawn_id)
+        ensure_watch(data_dir, str(record["id"]), request, app_ctx)
         return web.json_response(_public_record(record), status=202)
 
     def answer(reply: tuple[int, Any]) -> Any:
@@ -3406,11 +4730,11 @@ def register_routes(ctx: Any):
 
     async def latest(request: Any, app_ctx: Any):
         parts = ["generations", "latest", str(request.match_info["project_id"])]
-        return answer(generation_route("GET", parts, {}, Path(app_ctx.data_dir), request=request))
+        return answer(keep_driving(generation_route("GET", parts, {}, Path(app_ctx.data_dir), request=request), request, app_ctx))
 
     async def poll(request: Any, app_ctx: Any):
         parts = ["generations", str(request.match_info["generation_id"])]
-        return answer(generation_route("GET", parts, {}, Path(app_ctx.data_dir), request=request))
+        return answer(keep_driving(generation_route("GET", parts, {}, Path(app_ctx.data_dir), request=request), request, app_ctx))
 
     async def _body(request: Any) -> dict[str, Any]:
         if request.content_length and request.content_length > MAX_REQUEST_BYTES:

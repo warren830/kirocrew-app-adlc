@@ -256,7 +256,7 @@ def test_safety_copy_is_kept():
     assert "不是 Git 提交" in TEXT
     assert "startOneclick: (pid) => call('POST', `/projects/${pid}/oneclick`, { acknowledged: true })" in TEXT
     assert "confirmToken: preflight.confirmToken" in TEXT
-    assert "保留题只给导师" in TEXT and "不要发给学员" in TEXT
+    assert "留出题只给导师" in TEXT and "不要发给学员" in TEXT
     assert "不存任何凭证" in TEXT
 
 
@@ -404,7 +404,7 @@ def test_entry_page_shows_read_errors_and_class_mode_names_the_current_build():
 
 
 def test_prototype_structure_guides_tab_and_three_rehearsal_modes():
-    assert "{ value: 'guides', label: '学员与导师材料' }" in _function_body("ContentStep") and "guides: GuidesCard" in TEXT
+    assert "{ value: 'guides', label: '学员与导师手册' }" in _function_body("ContentStep") and "guides: GuidesCard" in TEXT
     assert "const REHEARSAL_MODES = [['rehearse', '彩排'], ['class', '上课'], ['after', '课后']]" in TEXT
 
 
@@ -593,3 +593,20 @@ def test_direct_mode_is_a_fast_rehearsal_never_a_class_verdict():
     cleanup = _function_body("DirectCleanup")
     assert "checked: ack" in cleanup and "!ack" in cleanup and "不碰 Workshop 的资源" in cleanup
     assert "readyForClass" not in _function_body("DirectRunCard")
+
+
+@pytest.mark.skipif(NODE is None, reason="node not installed")
+def test_readiness_survives_a_waiting_result_before_the_validation_loads():
+    """Live 2026-10-13: a Kiro result that loaded before the validation crashed the whole page (`vv.fresh` of nothing)."""
+    prelude = ("const CATEGORY_LABEL = {}; const DIRECT_VERDICT = {}; const GEN_MODE = { draft: '起草', repair: '修复' }; "
+               "const STEP_LABEL = {}; const VERDICT = {}; const UNREVIEWED_GATE = /^provenance/; "
+               "const wsMaterialsBlock = () => null; const jobActive = () => false; const pick = (m, k) => m[k] || ['', k];\n")
+    names = ("listOf", "isLive", "goldenOf", "precheckErrors", "pendingDraft", "draftRunning", "holdingResult",
+             "contentErrorCount", "otherGateCount", "readiness")
+    for case in ("{ status: 'ready', mode: 'draft', scenarioPreview: {} }", "{ status: 'running', mode: 'draft' }",
+                 "{ status: 'ready', mode: 'repair' }"):
+        for sc in ("{}", "{ evaluation: { goldenSet: [{ id: 'c1' }] } }"):
+            got = _js(names, f"readiness({{ project: {{}}, generation: {case}, sc: {sc}, validationView: null, items: null }}).map((r) => r.text)",
+                      prelude=prelude)
+            assert isinstance(got, list)
+            assert "内容改过，需重新校验" not in got  # nothing was validated, nothing changed

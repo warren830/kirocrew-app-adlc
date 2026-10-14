@@ -7,7 +7,7 @@
 // picture, sees — and the results show (pictures as thumbnails).
 import React from 'react'
 import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, useJob, Tabs, JOB_TONE,
-  JOB_LABEL } from '../ui.mjs'
+  JOB_LABEL, NeedWorkspace, loadFailed, loaded, firstChoice, At, JobError, cancelled, jsonText, logLines, quiet, parseJson } from '../ui.mjs'
 import { listUnder } from './shared.mjs'
 
 const { useState, useEffect, createElement: h, Fragment } = React
@@ -16,7 +16,8 @@ const useList = listUnder(ws)
 // Another team's agent: the backend refuses without acknowledged, the person confirms, and only then is it sent again.
 async function confirmed(send, what) {
   try { return await send(undefined) } catch (err) {
-    if (!String(err.message || '').includes('acknowledged') || !window.confirm(`${what} 不是这个控制台创建的：确定继续？（会改它的技能或执行角色的权限）`)) throw err
+    if (!/acknowledged/.test(`${err.said || ''} ${err.message || ''}`)) throw err
+    if (!window.confirm(`${what} 不是这个控制台创建的：确定继续？（会改它的技能或执行角色的权限）`)) throw cancelled()
     return send(true)
   }
 }
@@ -65,11 +66,13 @@ function Thumbs({ list, height }) {
     height > 60 ? h('figcaption', { className: 'cs-mut', style: { fontSize: 11 } }, p.title) : null)))
 }
 
-// What a skill can be evaluated on: the workspace's Harnesses and its Claude Agent SDK runtimes (deployed from the template).
+// What a skill can be evaluated on: the workspace's Harnesses and its Claude Agent SDK runtimes (deployed from the template):
+// {all, list (null while loading), error}.
 function useTargets(wid) {
-  const [targets, setTargets] = useState([])
-  useEffect(() => { if (wid) call('GET', ws(wid, '/targets')).then((r) => setTargets(listOf(r.targets))).catch(() => {}) }, [wid])
-  return targets
+  const [list, setList] = useState(null)
+  const [error, setError] = useState(null)
+  useEffect(() => { if (wid) call('GET', ws(wid, '/targets')).then((r) => { setList(listOf(r.targets)); setError(null) }).catch(setError) }, [wid])
+  return { all: listOf(list), list, error }
 }
 
 const targetKey = (t) => `${t.kind}:${t.id}`
@@ -86,7 +89,7 @@ function Outcome({ x }) {
   if (!x) return '—'
   const files = x.artifacts ? listOf(x.artifacts) : null
   const first = files ? files.flatMap(pictures)[0] : null
-  return h('span', { className: 'cs-row' }, h(Chip, { tone: x.invalid ? 'warn' : x.pass ? 'ok' : 'bad' }, x.invalid ? '无效' : x.pass ? '通过' : '未过'), num(x.score),
+  return h('span', { className: 'cs-row' }, h(Chip, { tone: x.invalid ? 'warn' : x.pass ? 'ok' : 'bad' }, x.invalid ? '无效' : x.pass ? '通过' : '没过'), num(x.score),
     x.skillLoaded ? h(Chip, { tone: 'info', title: '这次回答加载了这个技能（Harness 的 skills 工具 / Claude Agent SDK 的 Skill 工具）' }, '加载了') : null,
     files ? h(Chip, { tone: files.length ? undefined : 'warn', title: files.map((a) => a.path).join('\n') || '这一轮没有生成或改动文件' },
       files.length ? `文件 ${files.length}` : '没有文件') : null,
@@ -198,7 +201,7 @@ function Diff({ text }) {
 
 // -- library ------------------------------------------------------------------------------------------------------------
 
-function SkillDetail({ name, harnesses, onChanged }) { // applying a version to an agent: a Harness (a runtime gets it by publishing, a rebuild)
+function SkillDetail({ name, harnesses, harnessesError, onChanged }) { // applying a version to an agent: a Harness (a runtime gets it by publishing, a rebuild)
   const { wid } = useCtx()
   const [doc, setDoc] = useState(null)
   const [version, setVersion] = useState('')
@@ -211,7 +214,7 @@ function SkillDetail({ name, harnesses, onChanged }) { // applying a version to 
     setDoc(d); setVersion(d.version); setText(d.text)
   })
   useEffect(() => { load('') }, [name])
-  if (!doc) return h(Fragment, null, h(ErrorLine, { error }), h(Empty, null, '加载中…'))
+  if (!doc) return loaded(null, error)
   const save = () => run('save', () => call('POST', ws(wid, '/skills'), { name, text, note }), (r) => (r.created ? `已保存为 ${r.version}（当前版本）` : `和 ${r.version} 一样，没有新建`))
     .then((r) => { if (r) { setNote(''); load(r.version); onChanged() } })
   const current = () => run('cur', () => call('POST', ws(wid, `/skills/${name}/current`), { version }), `${version} 已设为当前版本`).then(() => { load(version); onChanged() })
@@ -232,20 +235,24 @@ function SkillDetail({ name, harnesses, onChanged }) { // applying a version to 
     h(Card, { title: '用在 Agent 上', extra: h(Button, { kind: 'pri', onClick: apply, busy: busy === 'apply', disabled: !target }, `用 ${version}`) },
       listOf(doc.agents).length ? h(Table, { head: ['Agent', '版本', ''], rows: doc.agents.map((a) => ({ key: a.harnessId,
         cells: [h('b', null, a.name), a.version, h(Button, { onClick: () => remove(a.harnessId), busy: busy === `rm-${a.harnessId}` }, '取下')] })) }) : null,
-      h(Select, { value: target, onChange: setTarget, options: [['', '选一个 Harness'], ...harnesses.map((a) => [a.id, a.name])] }),
-      h(Note, null, '会替换这个 Agent 上该技能的其他版本，并让它的执行角色能读技能库。不是控制台建的 Agent 也会被更新（已确认）。')),
+      h(Select, { value: target, onChange: setTarget, options: [['', firstChoice(harnesses, harnessesError, '这个工作区还没有 Harness', '选一个 Harness')], ...listOf(harnesses).map((a) => [a.id, a.name])] }),
+      h(Note, null, '会替换这个 Agent 上该技能的其他版本，并让它的执行角色能读技能库。不是控制台建的 Agent 会先问你确认。'),
+      h(ErrorLine, { error: quiet(harnessesError) })),
     h(ErrorLine, { error }))
 }
 
 function Library() {
   const { wid } = useCtx()
-  const harnesses = useTargets(wid).filter((t) => t.kind === 'harness')
+  const targets = useTargets(wid)
+  const harnesses = targets.list && targets.all.filter((t) => t.kind === 'harness')
   const [list, load, listError] = useList(wid, '/skills', 'skills')
-  const [samples] = useList(wid, '/samples', 'samples')
+  const [samples, , samplesError] = useList(wid, '/samples', 'samples')
   const [open, setOpen] = useState(null)
   const [form, setForm] = useState({ name: '', text: TEMPLATE, uri: '', project: '', sample: '' })
   const { busy, error, run } = useAction()
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }))
+  // the frontmatter's name follows the 名称 field while it still says the template's or the previous name
+  const setName = (v) => setForm((f) => ({ ...f, name: v, text: f.text.replace(/^(---\s*\nname:[ \t]*)(\S*)/, (all, head, was) => (was === 'my-skill' || was === f.name ? `${head}${v}` : all)) }))
   const create = () => run('create', () => call('POST', ws(wid, '/skills'), { name: form.name, text: form.text }), (r) => `已创建 ${r.name} ${r.version}`)
     .then((r) => { if (r) { load(); setOpen(r.name) } })
   const chosen = form.sample || (listOf(samples)[0] || {}).name || ''
@@ -257,15 +264,16 @@ function Library() {
   return h(Fragment, null,
     h(Card, { title: '技能库', extra: h('span', { className: 'cs-row' },
       listOf(samples).length > 1 ? h(Select, { value: chosen, onChange: set('sample'), options: listOf(samples).map((s) => [s.name, `样例 ${s.name}`]) }) : null,
-      h(Button, { onClick: sample, busy: busy === 'sample', disabled: !chosen }, '导入样例'), h(Button, { onClick: load }, '刷新')) },
+      h(Button, { onClick: sample, busy: busy === 'sample', disabled: !chosen, title: chosen ? undefined : samples === null ? (samplesError ? '读不到样例列表' : '样例列表加载中') : '没有可导入的样例' }, '导入样例'), h(Button, { onClick: load }, '刷新')) },
+      samplesError ? h(ErrorLine, { error: Object.assign(samplesError, { lead: '读不到样例列表' }) }) : null,
       listOf(samples).filter((s) => s.name === chosen && s.about).map((s) => h(Note, { key: s.name }, `样例 ${s.name}：${s.about}${s.files ? `（${s.files} 道题带输入文件，导入时上传）` : ''}`)),
-      h(ErrorLine, { error: listError }), list === null ? h(Empty, null, '加载中…') : h(Table, { head: ['技能', '当前版本', '版本数', '用它的 Agent', '更新'],
-        rows: list.map((s) => ({ key: s.name, onClick: () => setOpen(s.name), cells: [h('span', null, h('b', null, s.name), h('div', { className: 'cs-mut' }, String(s.description || '').slice(0, 60))),
-          s.current, s.versions, listOf(s.agents).map((a) => `${a.name}（${a.version}）`).join('，') || '—', (s.updatedAt || '').slice(0, 19)] })),
-        empty: '还没有技能：新建一个，或导入样例、S3 上已有的技能、工作坊项目里的技能。' })),
-    open ? h(SkillDetail, { name: open, harnesses, onChanged: load }) : h(Fragment, null,
+      loaded(list, listError, (all) => h(Table, { head: ['技能', '当前版本', '版本数', '用它的 Agent', '更新'],
+        rows: all.map((s) => ({ key: s.name, onClick: () => setOpen(s.name), cells: [h('span', null, h('b', null, s.name), h('div', { className: 'cs-mut' }, String(s.description || '').slice(0, 60))),
+          s.current, s.versions, listOf(s.agents).map((a) => `${a.name}（${a.version}）`).join('，') || '—', h(At, { iso: s.updatedAt })] })),
+        empty: '还没有技能：新建一个，或导入样例、S3 上已有的技能、工作坊项目里的技能。' }))),
+    open ? h(SkillDetail, { name: open, harnesses, harnessesError: targets.error, onChanged: load }) : h(Fragment, null,
       h(Card, { title: '新建技能', extra: h(Button, { kind: 'pri', onClick: create, busy: busy === 'create', disabled: !form.name }, '创建') },
-        h(Field, { label: '名称（小写字母、数字、连字符；要和 frontmatter 的 name 一致）' }, h(Input, { value: form.name, onChange: set('name'), mono: true, placeholder: 'reply-style' })),
+        h(Field, { label: '名称（小写字母、数字、连字符）', hint: '下面 SKILL.md 开头的 name: 会跟着改成这个名称（两者必须一样）' }, h(Input, { value: form.name, onChange: setName, mono: true, placeholder: '例：reply-style' })),
         h(TextArea, { value: form.text, onChange: set('text'), rows: 10, mono: true })),
       h(Card, { title: '导入' }, h('div', { className: 'cs-grid' },
         h(Field, { label: 'S3 上的技能（含 SKILL.md 的前缀）' }, h('div', { className: 'cs-row' }, h(Input, { value: form.uri, onChange: set('uri'), mono: true, placeholder: 's3://bucket/skills/name/' }),
@@ -288,21 +296,21 @@ function parseSet(json) {
       : ['train', 'val', 'test'].map((k) => [k, (parsed || {})[k]])
     return { tasks: groups.flatMap(([k, list]) => listOf(list).map((t, i) => ({ split: k, index: i, id: String((t && t.id) || `${k}-${i + 1}`),
       question: String((t && t.question) || ''), files: listOf(t && t.files) }))) }
-  } catch (err) { return { tasks: [], error: err.message } }
+  } catch (err) { return { tasks: [], error: jsonText(err, json) } }
 }
 
 // The files uploaded for tasks: each kept once by its content, deleted only when no task set names it.
-function Assets({ list, onChanged }) {
+function Assets({ list, error: loadError, onChanged }) {
   const { wid } = useCtx()
   const { busy, error, run } = useAction()
   const del = (a) => window.confirm(`删除 ${listOf(a.names).join('、')}？`) && run(`del-${a.sha256}`, () => call('DELETE', ws(wid, `/assets/${a.sha256}`)), '已删除').then(onChanged)
   return h(Card, { title: '输入文件（题目带给 Agent 的文件，同样的内容只存一份）', extra: h(Button, { onClick: onChanged }, '刷新') },
-    h(Table, { head: ['文件', '类型', '大小', '用在', ''], rows: listOf(list).map((a) => ({ key: a.sha256, cells: [
+    loaded(list, loadError, (all) => h(Table, { head: ['文件', '类型', '大小', '用在', ''], rows: all.map((a) => ({ key: a.sha256, cells: [
       h('span', null, h('b', null, listOf(a.names).join('、')), h('div', { className: 'cs-mut cs-mono' }, `sha256:${String(a.sha256).slice(0, 12)}…`)),
       a.type, size(a.bytes || 0), listOf(a.usedBy).map((u) => `${u.name}（${u.tasks} 题）`).join('，') || '—',
       listOf(a.usedBy).length ? null : h(Button, { kind: 'danger', onClick: () => del(a), busy: busy === `del-${a.sha256}` }, '删除')] })),
-    empty: '还没有上传过文件：在下面「新建任务集」的题目行上添加，或导入带文件的样例（points-chart-png）。' }),
-    h(Note, null, 'xlsx、pdf、png、jpg、webp、md、txt、csv，每个最多 25 MiB，每题最多 32 个、共 100 MiB（和 Launchpad 一样）。评估时 Claude Agent SDK Runtime 在答题前把文件放进这次调用的工作目录，'
+    empty: '还没有上传过文件：在下面「新建任务集」的题目行上添加，或导入带文件的样例（points-chart-png）。' })),
+    h(Note, null, 'xlsx、pdf、png、jpg、webp、md、txt、csv，每个最多 25 MiB，每题最多 32 个、共 100 MiB。评估时 Claude Agent SDK Runtime 在答题前把文件放进这次调用的工作目录，'
       + '没改动的输入文件不算它生成的文件；Harness 的沙箱放不进文件，带文件的题不能在 Harness 上评估。'),
     h(ErrorLine, { error }))
 }
@@ -310,8 +318,8 @@ function Assets({ list, onChanged }) {
 function TaskSets() {
   const { wid } = useCtx()
   const [sets, load, listError] = useList(wid, '/tasksets', 'tasksets')
-  const [skills] = useList(wid, '/skills', 'skills')
-  const [assets, loadAssets] = useList(wid, '/assets', 'assets')
+  const [skills, , skillsError] = useList(wid, '/skills', 'skills')
+  const [assets, loadAssets, assetsError] = useList(wid, '/assets', 'assets')
   const [open, setOpen] = useState(null)
   const [detail, setDetail] = useState(null)
   const [form, setForm] = useState({ name: '', description: '', json: SET_TEMPLATE })
@@ -338,7 +346,7 @@ function TaskSets() {
   }
   const detach = (taskId, path) => setAttached((m) => ({ ...m, [taskId]: listOf(m[taskId]).filter((d) => d.path !== path) }))
   const save = () => run('save', () => {
-    const raw = JSON.parse(form.json)
+    const raw = parseJson(form.json, '任务集')
     const withFiles = (k) => (t, i) => {
       const extra = listOf(attached[String((t && t.id) || `${k}-${i + 1}`)]).map((d) => ({ path: d.path, asset: d.asset }))
       return extra.length ? { ...t, files: [...listOf(t.files), ...extra] } : t
@@ -351,26 +359,26 @@ function TaskSets() {
     const r = await call('POST', ws(wid, '/tasksets/generate'), { skill: gen.skill, count: Number(gen.count), guidance: gen.guidance })
     setForm((f) => ({ ...f, name: f.name || `${gen.skill} · 生成`, json: JSON.stringify(r.tasks, null, 1) }))
     return r
-  }, (r) => `${r.model} 出了 ${r.tasks.length} 道题：检查、修改后保存（一个列表会按 4:3:3 自动分成 train / val / test）`)
+  }, (r) => `${r.model} 出了 ${r.tasks.length} 道题：检查、修改后保存（${r.tasks.length >= 4 ? '一个列表训练时按 4:3:3 分成 train / val / test' : '不到 4 题只能评估，训练至少要 4 题'}）`)
   const remove = (tid) => window.confirm('删除这个任务集？') && run('del', () => call('DELETE', ws(wid, `/tasksets/${tid}`)), '已删除').then(() => { setOpen(null); setDetail(null); load(); loadAssets() })
-  const parts = detail ? (detail.mode === 'single' ? [['tasks', '全部（训练时按 4:3:3 分）']] : [['train', 'train（用来改技能）'], ['val', 'val（决定接不接受改动）'], ['test', 'test（最后对比，不参与训练）']]) : []
+  const parts = detail ? (detail.mode === 'single' ? [['tasks', listOf(detail.tasks).length >= 4 ? '全部（训练时按 4:3:3 分）' : '全部（不到 4 题：只能评估，训练至少要 4 题）']] : [['train', 'train（用来改技能）'], ['val', 'val（决定接不接受改动）'], ['test', 'test（最后对比，不参与训练）']]) : []
   return h(Fragment, null,
-    h(Card, { title: '任务集', extra: h(Button, { onClick: load }, '刷新') }, h(ErrorLine, { error: listError }), sets === null ? h(Empty, null, '加载中…') : h(Table, {
-      head: ['名称', '题数', '输入文件', '更新'], rows: sets.map((t) => ({ key: t.id, onClick: () => setOpen(t.id), cells: [h('span', null, h('b', null, t.name), h('div', { className: 'cs-mut' }, t.description || '')),
-        Object.entries(t.counts).map(([k, v]) => `${k} ${v}`).join(' · '), t.files ? `${t.files} 题带文件` : '—', (t.updatedAt || '').slice(0, 19)] })), empty: '还没有任务集。' })),
+    h(Card, { title: '任务集', extra: h(Button, { onClick: load }, '刷新') }, loaded(sets, listError, (all) => h(Table, {
+      head: ['名称', '题数', '输入文件', '更新'], rows: all.map((t) => ({ key: t.id, onClick: () => setOpen(t.id), cells: [h('span', null, h('b', null, t.name), h('div', { className: 'cs-mut' }, t.description || '')),
+        Object.entries(t.counts).map(([k, v]) => `${k === 'tasks' ? '全部' : k} ${v} 题`).join(' · '), t.files ? `${t.files} 题带文件` : '—', h(At, { iso: t.updatedAt })] })), empty: '还没有任务集：在下面新建，或在「技能库」导入样例。' }))),
     detail ? h(Card, { title: detail.name, extra: h('span', { className: 'cs-row' }, h(Button, { onClick: () => { setOpen(null); setDetail(null) } }, '关闭'),
       h(Button, { kind: 'danger', onClick: () => remove(detail.id) }, '删除')) },
       parts.map(([k, label]) => h(Fragment, { key: k }, h('div', { className: 'cs-mut' }, `${label} · ${listOf(detail[k]).length} 题`),
         h(Table, { head: ['id', '问题', '输入文件', '评分标准'], rows: listOf(detail[k]).map((t) => ({ key: t.id, cells: [h('span', { className: 'cs-mono' }, t.id), t.question,
           listOf(t.files).length ? h('div', { className: 'cs-row', style: { flexWrap: 'wrap' } }, listOf(t.files).map(fileChip)) : '—',
           h('div', { style: { whiteSpace: 'pre-wrap' }, className: 'cs-mut' }, t.rubric)] })) })))) : null,
-    h(Assets, { list: assets, onChanged: loadAssets }),
+    h(Assets, { list: assets, error: assetsError, onChanged: loadAssets }),
     h(Card, { title: '让模型按技能出题' },
       h('div', { className: 'cs-grid' },
-        h(Field, { label: '技能' }, h(Select, { value: gen.skill, onChange: (v) => setGen((g) => ({ ...g, skill: v })), options: [['', '选择'], ...listOf(skills).map((s) => [s.name, s.name])] })),
+        h(Field, { label: '技能' }, h(Select, { value: gen.skill, onChange: (v) => setGen((g) => ({ ...g, skill: v })), options: [['', firstChoice(skills, skillsError, '技能库是空的（在「技能库」里新建或导入）')], ...listOf(skills).map((s) => [s.name, s.name])] })),
         h(Field, { label: '题数' }, h(Input, { value: gen.count, onChange: (v) => setGen((g) => ({ ...g, count: v })) }))),
       h(Field, { label: '补充说明（例如事实依据、要覆盖的边界情况）' }, h(TextArea, { value: gen.guidance, onChange: (v) => setGen((g) => ({ ...g, guidance: v })), rows: 3 })),
-      h(Button, { onClick: generate, busy: busy === 'gen', disabled: !gen.skill }, '出题（约 30 秒，不保存）')),
+      h(Button, { onClick: generate, busy: busy === 'gen', disabled: !gen.skill }, '出题（约 30 秒，不保存）'), h(ErrorLine, { error: quiet(skillsError) })),
     h(Card, { title: '新建任务集', extra: h(Button, { kind: 'pri', onClick: save, busy: busy === 'save', disabled: !form.name || !!parsed.error }, '保存') },
       h('div', { className: 'cs-grid' }, h(Field, { label: '名称' }, h(Input, { value: form.name, onChange: set('name') })),
         h(Field, { label: '说明' }, h(Input, { value: form.description, onChange: set('description') }))),
@@ -391,11 +399,10 @@ function TaskSets() {
 
 // -- evaluation ---------------------------------------------------------------------------------------------------------
 
-function JobList({ jobs, kind, open, onOpen }) {
-  const mine = listOf(jobs).filter((j) => j.kind === kind)
-  return h(Table, { head: ['', '状态', '开始', ''], rows: mine.map((j) => ({ key: j.id, onClick: () => onOpen(j.id),
-    cells: [h('b', null, j.label), h(Chip, { tone: JOB_TONE[j.status] }, JOB_LABEL[j.status] || j.status), (j.createdAt || '').slice(0, 19), j.id === open ? '在看' : '查看'] })),
-    empty: '还没有。' })
+function JobList({ jobs, error, kind, open, onOpen }) {
+  return loaded(jobs, error, (all) => h(Table, { head: ['', '状态', '开始', ''], rows: all.filter((j) => j.kind === kind).map((j) => ({ key: j.id, onClick: () => onOpen(j.id),
+    cells: [h('b', null, j.label), h(Chip, { tone: JOB_TONE[j.status] }, JOB_LABEL[j.status] || j.status), h(At, { iso: j.createdAt }), j.id === open ? '在看' : '查看'] })),
+    empty: '还没有记录。' }))
 }
 
 function TargetNote({ targets, value, taskset }) {
@@ -415,13 +422,13 @@ function TargetNote({ targets, value, taskset }) {
     + '裁判同时看回答和文件——图片（以及文档里的图片）直接给裁判看。'))
 }
 
-function SkillForm({ form, set, targets, skills, sets, versions, extra }) {
+function SkillForm({ form, set, targets, skills, sets, versions, extra, errors = {} }) {
   return h('div', { className: 'cs-grid' },
     h(Field, { label: 'Agent（Harness 或 Claude Agent SDK Runtime）' }, h(Select, { value: form.target, onChange: set('target'),
-      options: [['', '选择'], ...targetOptions(targets)] })),
-    h(Field, { label: '技能' }, h(Select, { value: form.skill, onChange: set('skill'), options: [['', '选择'], ...listOf(skills).map((s) => [s.name, s.name])] })),
+      options: [['', firstChoice(targets.list, targets.error, '这个工作区还没有可评估的 Agent')], ...targetOptions(targets.all)] })),
+    h(Field, { label: '技能' }, h(Select, { value: form.skill, onChange: set('skill'), options: [['', firstChoice(skills, errors.skills, '技能库是空的（在「技能库」里新建或导入）')], ...listOf(skills).map((s) => [s.name, s.name])] })),
     h(Field, { label: '版本' }, h(Select, { value: form.version, onChange: set('version'), options: [['', '当前版本'], ...versions.map((v) => [v.version, `${v.version} · ${v.source}`])] })),
-    h(Field, { label: '任务集' }, h(Select, { value: form.tasksetId, onChange: set('tasksetId'), options: [['', '选择'], ...listOf(sets).map((t) => [t.id, t.name])] })),
+    h(Field, { label: '任务集' }, h(Select, { value: form.tasksetId, onChange: set('tasksetId'), options: [['', firstChoice(sets, errors.sets, '还没有任务集（在「任务集」里建）')], ...listOf(sets).map((t) => [t.id, t.name])] })),
     h(Field, { label: '换模型试（空 = 用 Agent 自己的模型）', hint: '只影响这次评估，不改 Agent' }, h(Input, { value: form.model, onChange: set('model'), mono: true, placeholder: 'us.anthropic.claude-haiku-4-5-20251001-v1:0' })),
     h(Field, { label: '裁判模型' }, h(Input, { value: form.judgeModel, onChange: set('judgeModel'), mono: true })),
     h(Field, { label: '并发' }, h(Select, { value: form.workers, onChange: set('workers'), options: [['2', '2'], ['4', '4'], ['8', '8']] })),
@@ -432,16 +439,16 @@ function SkillForm({ form, set, targets, skills, sets, versions, extra }) {
 
 function useVersions(wid, skill) {
   const [versions, setVersions] = useState([])
-  useEffect(() => { setVersions([]); if (skill) call('GET', ws(wid, `/skills/${skill}`)).then((d) => setVersions(listOf(d.versions))).catch(() => {}) }, [wid, skill])
+  useEffect(() => { setVersions([]); if (skill) call('GET', ws(wid, `/skills/${skill}`)).then((d) => setVersions(listOf(d.versions))).catch(loadFailed(`技能 ${skill} 的版本`)) }, [wid, skill])
   return versions
 }
 
 function Evaluate() {
   const { wid } = useCtx()
   const targets = useTargets(wid)
-  const [skills] = useList(wid, '/skills', 'skills')
-  const [sets] = useList(wid, '/tasksets', 'tasksets')
-  const [jobs, loadJobs] = useList(wid, '/jobs', 'jobs')
+  const [skills, , skillsError] = useList(wid, '/skills', 'skills')
+  const [sets, , setsError] = useList(wid, '/tasksets', 'tasksets')
+  const [jobs, loadJobs, jobsError] = useList(wid, '/jobs', 'jobs')
   const [form, setForm] = useState({ target: '', skill: '', version: '', tasksetId: '', split: '', model: '', judgeModel: JUDGE, workers: '4', repeats: '1' })
   const [open, setOpen] = useState(null)
   const job = useJob(open)
@@ -457,12 +464,12 @@ function Evaluate() {
   return h(Fragment, null,
     h(Card, { title: '这个技能到底有没有用：同一个 Agent，有技能和没技能各答一遍', extra: h(Button, { kind: 'pri', onClick: start, busy: busy === 'start',
       disabled: !form.target || !form.skill || !form.tasksetId }, '开始评估') },
-      h(SkillForm, { form, set, targets, skills, sets, versions, extra: h(Field, { label: '用哪组题' }, h(Select, { value: form.split, onChange: set('split'),
+      h(SkillForm, { form, set, targets, skills, sets, versions, errors: { skills: skillsError, sets: setsError }, extra: h(Field, { label: '用哪组题' }, h(Select, { value: form.split, onChange: set('split'),
         options: [['', '默认（test；一个列表就用全部）'], ['test', 'test'], ['val', 'val'], ['train', 'train'], ['all', '全部']] })) }),
-      h(TargetNote, { targets, value: form.target, taskset: listOf(sets).find((x) => x.id === form.tasksetId) }),
+      h(TargetNote, { targets: targets.all, value: form.target, taskset: listOf(sets).find((x) => x.id === form.tasksetId) }),
       h(Note, null, '每道题两个新会话、两个独立的 actor（记忆不会串）：一个带技能，一个不带，其余完全相同。裁判按评分标准给两份回答打分。Agent 的执行角色会获得读技能库的权限。'),
-      h(ErrorLine, { error })),
-    h(Card, { title: '评估记录', extra: h(Button, { onClick: loadJobs }, '刷新') }, h(JobList, { jobs, kind: 'skill-eval', open, onOpen: setOpen })),
+      h(ErrorLine, { error: error || quiet(targets.error) || quiet(skillsError) || quiet(setsError) })),
+    h(Card, { title: '评估记录', extra: h(Button, { onClick: loadJobs }, '刷新') }, h(JobList, { jobs, error: jobsError, kind: 'skill-eval', open, onOpen: setOpen })),
     job ? h(Card, { title: job.label, extra: h('span', { className: 'cs-row' }, h(Chip, { tone: JOB_TONE[job.status] }, JOB_LABEL[job.status] || job.status),
       job.progress && job.progress.total ? h('span', { className: 'cs-mut' }, `${job.progress.done}/${job.progress.total}`) : null) },
       h('div', { className: 'cs-mut' }, `${job.params.runtime ? `Claude Agent SDK Runtime ${job.params.runtime}` : `Harness ${job.params.harness}`} · `
@@ -471,13 +478,14 @@ function Evaluate() {
       res ? h(Fragment, null, h(Verdict, { v: res.verdict }), h(Arms, { arms: res.arms, order: ['with', 'without'] }),
         res.comparison ? h(Note, null, `提升：通过率 ${pct(res.comparison.lift.passRate)}，得分 ${num(res.comparison.lift.softMean)} · 通过上 赢 ${res.comparison.wins.length} / 输 ${res.comparison.losses.length} / 平 ${res.comparison.ties}`
           + (res.comparison.p !== null ? `（p=${res.comparison.p}）` : '') + ` · 得分上 好 ${listOf(res.comparison.softWins).length} / 差 ${listOf(res.comparison.softLosses).length}`) : null,
-        h(Rows, { rows: res.rows, order: ['with', 'without'].filter((k) => res.arms[k]) })) : h('pre', { className: 'cs-pre' }, listOf(job.log).slice(-12).join('\n') || '…'),
-      job.error ? h('div', { className: 'cs-err' }, job.error) : null) : null)
+        h(Rows, { rows: res.rows, order: ['with', 'without'].filter((k) => res.arms[k]) })) : h('pre', { className: 'cs-pre' }, logLines(job.log, 12) || (job.status === 'unreadable' ? '（读不到这个任务的日志）' : '…')),
+      h(JobError, { error: job.error })) : null)
 }
 
 // -- training -----------------------------------------------------------------------------------------------------------
 
-function Publish({ job, targets }) {
+function Publish({ job, targets: known }) {
+  const targets = listOf(known)
   const { wid } = useCtx()
   const [target, setTarget] = useState(jobTarget(job.params))
   const [force, setForce] = useState(false)
@@ -489,7 +497,7 @@ function Publish({ job, targets }) {
       + `${r.redeploy ? `，${r.redeploy.runtime} 的新版本开始部署（任务 ${r.redeploy.jobId}，在「部署代码」看进度）` : ''}`)
   if (!res.best || !res.best.step) return h(Note, null, '训练没有找到比初始版本更好的改法：没有可发布的新版本。')
   return h(Card, { title: '发布最佳版本', extra: h(Button, { kind: 'pri', onClick: publish, busy: busy === 'pub', disabled: !res.improved && !force }, '发布') },
-    res.improved ? h(Note, { tone: 'ok' }, '最佳版本在留出的题上也比初始版本好。') : h(Note, { tone: 'warn' }, '最佳版本在 val 上更好，但在留出的题上没有超过初始版本：可能是过拟合 val。确实要发布就勾选「仍然发布」。'),
+    res.improved ? h(Note, { tone: 'ok' }, '最佳版本在留出的 test 题（训练没用过的题）上也比初始版本好。') : h(Note, { tone: 'warn' }, '最佳版本在 val 上更好，但在留出的 test 题上没有超过初始版本：可能是过拟合 val。确实要发布就勾选「仍然发布」。'),
     h('div', { className: 'cs-row' }, h(Select, { value: target, onChange: setTarget, options: [['', '只存进技能库'], ...targets.filter((t) => !t.note).map((t) => [targetKey(t),
       t.kind === 'runtime' ? `并给 ${t.name} 部署新版本（重新构建镜像）` : `并让 ${t.name} 改用它`])] }),
       res.improved ? null : h('label', { className: 'cs-row' }, h('input', { type: 'checkbox', checked: force, onChange: (e) => setForce(e.target.checked) }), '仍然发布')),
@@ -515,7 +523,7 @@ function TrainResult({ job, targets }) {
           x.failures ? h('div', { className: 'cs-mut' }, `据 ${x.failures.length} 道没过的题：${x.failures.join('，')}`) : null) : ''] })) }),
     chosen ? h(Card, { title: `第 ${chosen.step} 步的候选` }, h(Note, null, chosen.rationale), h('pre', { className: 'cs-pre' }, chosen.text)) : null,
     res ? h(Fragment, null,
-      h(Card, { title: `留出的题（${res.final.split}，${listOf(res.final.rows).length} 题）：初始 vs 最佳 vs 没技能` },
+      h(Card, { title: `留出的 test 题（${res.final.split}，训练没用过；${listOf(res.final.rows).length} 题）：初始 vs 最佳 vs 没技能` },
         h(Arms, { arms: res.final, order: ['best', 'seed', 'without'] }),
         h(Note, null, `最佳 vs 初始：通过 赢 ${res.final.bestVsSeed.wins.length} / 输 ${res.final.bestVsSeed.losses.length}，得分 ${num(res.final.bestVsSeed.lift.softMean)}`
           + ` · 最佳 vs 没技能：通过率 ${pct(res.final.bestVsNone.lift.passRate)}，得分 ${num(res.final.bestVsNone.lift.softMean)}`),
@@ -527,9 +535,9 @@ function TrainResult({ job, targets }) {
 function Train() {
   const { wid } = useCtx()
   const targets = useTargets(wid)
-  const [skills] = useList(wid, '/skills', 'skills')
-  const [sets] = useList(wid, '/tasksets', 'tasksets')
-  const [jobs, loadJobs] = useList(wid, '/jobs', 'jobs')
+  const [skills, , skillsError] = useList(wid, '/skills', 'skills')
+  const [sets, , setsError] = useList(wid, '/tasksets', 'tasksets')
+  const [jobs, loadJobs, jobsError] = useList(wid, '/jobs', 'jobs')
   const [form, setForm] = useState({ target: '', skill: '', version: '', tasksetId: '', model: '', judgeModel: JUDGE, workers: '4', repeats: '2',
     optimizerModel: OPTIMIZER, epochs: '1', batchSize: '4', editBudget: '4', gateMetric: 'soft', gateMargin: '0.05' })
   const [open, setOpen] = useState(null)
@@ -546,30 +554,30 @@ function Train() {
   return h(Fragment, null,
     h(Card, { title: '训练：从没过的题里改技能，只留在 val 上更好的改动', extra: h(Button, { kind: 'pri', onClick: start, busy: busy === 'start',
       disabled: !form.target || !form.skill || !form.tasksetId }, '开始训练') },
-      h(SkillForm, { form, set, targets, skills, sets, versions, extra: h(Fragment, null,
+      h(SkillForm, { form, set, targets, skills, sets, versions, errors: { skills: skillsError, sets: setsError }, extra: h(Fragment, null,
         h(Field, { label: '轮数' }, h(Select, { value: form.epochs, onChange: set('epochs'), options: [['1', '1'], ['2', '2'], ['3', '3']] })),
         h(Field, { label: '每批题数' }, h(Select, { value: form.batchSize, onChange: set('batchSize'), options: [['2', '2'], ['3', '3'], ['4', '4'], ['6', '6'], ['8', '8']] })),
         h(Field, { label: '每步最多改几处（逐步减到 2）' }, h(Select, { value: form.editBudget, onChange: set('editBudget'), options: [['2', '2'], ['4', '4'], ['6', '6'], ['8', '8']] })),
         h(Field, { label: '接受改动看' }, h(Select, { value: form.gateMetric, onChange: set('gateMetric'), options: [['soft', '平均得分'], ['hard', '通过率'], ['mixed', '两者平均']] })),
         h(Field, { label: '至少要高出当前版本', hint: '候选和当前版本同时重答 val，差距够大才接受' }, h(Input, { value: form.gateMargin, onChange: set('gateMargin') })),
         h(Field, { label: '改写技能的模型' }, h(Input, { value: form.optimizerModel, onChange: set('optimizerModel'), mono: true }))) }),
-      h(TargetNote, { targets, value: form.target, taskset: listOf(sets).find((x) => x.id === form.tasksetId) }),
+      h(TargetNote, { targets: targets.all, value: form.target, taskset: listOf(sets).find((x) => x.id === form.tasksetId) }),
       h(Note, null, '先在 val 上测初始版本；每一步用当前技能答一批 train 题，改写模型只看没过的题来改 SKILL.md（不许把评分标准里的事实抄进技能）。'
         + '候选和当前版本同时重答 val，候选高出至少设定的差距、且变好的题不少于变差的题才接受。最后在 test 上比较初始、最佳和没技能。'),
-      h(ErrorLine, { error })),
-    h(Card, { title: '训练记录', extra: h(Button, { onClick: loadJobs }, '刷新') }, h(JobList, { jobs, kind: 'skill-train', open, onOpen: setOpen })),
+      h(ErrorLine, { error: error || quiet(targets.error) || quiet(skillsError) || quiet(setsError) })),
+    h(Card, { title: '训练记录', extra: h(Button, { onClick: loadJobs }, '刷新') }, h(JobList, { jobs, error: jobsError, kind: 'skill-train', open, onOpen: setOpen })),
     job ? h(Card, { title: job.label, extra: h('span', { className: 'cs-row' }, h(Chip, { tone: JOB_TONE[job.status] }, JOB_LABEL[job.status] || job.status),
       p.steps ? h('span', { className: 'cs-mut' }, `第 ${p.step}/${p.steps} 步 · 当前 ${num(p.current)} · 最佳 ${num(p.best)}`) : null) },
       h('div', { className: 'cs-mut' }, `${job.params.runtime ? `Claude Agent SDK Runtime ${job.params.runtime}` : `Harness ${job.params.harness}`} · 模型 ${job.params.model} · 改写 ${job.params.optimizerModel} · 裁判 ${job.params.judgeModel} · train ${job.params.counts.train} / val ${job.params.counts.val} / test ${job.params.counts.test}`),
-      h(TrainResult, { job, targets }),
-      job.status === 'running' ? h('pre', { className: 'cs-pre' }, listOf(job.log).slice(-6).join('\n')) : null,
-      job.error ? h('div', { className: 'cs-err' }, job.error) : null) : null)
+      h(TrainResult, { job, targets: targets.all }),
+      job.status === 'running' ? h('pre', { className: 'cs-pre' }, logLines(job.log, 6)) : null,
+      h(JobError, { error: job.error })) : null)
 }
 
 function SkillLabPage() {
   const { workspace } = useCtx()
   const [tab, setTab] = useState('library')
-  if (!workspace) return h(Empty, null, '先添加工作区。')
+  if (!workspace) return h(NeedWorkspace, { title: 'Skill Lab' })
   return h(Fragment, null, h('h1', null, 'Skill Lab'),
     h(Tabs, { value: tab, onChange: setTab, options: [['library', '技能库'], ['sets', '任务集'], ['eval', '评估'], ['train', '训练']] }),
     tab === 'library' ? h(Library) : tab === 'sets' ? h(TaskSets) : tab === 'eval' ? h(Evaluate) : h(Train))

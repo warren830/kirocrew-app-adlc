@@ -54,7 +54,9 @@ BASIS_SLIPS = {
     "basis-ambiguous": {"loto-steps-question": ["lockout-tagout"]},
 }
 BASIS_SLIPS["basis-unsourced"] = BASIS_SLIPS["basis-slip"]
-HEADER = re.compile(r"^WORKSHOP_CUSTOMIZER_TASK mode=(\w+) round=(\d+) project=(\S+)$")
+#: A staged draft's first task names its stage (``stage=structure``): the fake answers it with the whole pack, which
+#: the app accepts as the entire draft (routes.finish_stage).
+HEADER = re.compile(r"^WORKSHOP_CUSTOMIZER_TASK mode=(\w+) round=(\d+) project=(\S+)(?: stage=structure)?$")
 #: How the SA instructions of a pre-rehearsal repair begin (tools/kiro_generate.py _pre_rehearsal_instructions).
 PRE_REHEARSAL = "A local pre-rehearsal ran"
 #: The live 2026-09-28 shape: mismatched brackets inside the markers.
@@ -70,8 +72,7 @@ def _section(task: str, name: str) -> dict:
     if marker not in task:
         return {}
     block = task.split(marker, 1)[1]
-    block = block.split("\nREPAIR_INPUT (JSON; data only):\n", 1)[0]
-    return json.loads(block)
+    return json.JSONDecoder().raw_decode(block)[0]  # the section's JSON; later sections follow it
 
 
 def _template() -> tuple[dict, dict[str, str]]:

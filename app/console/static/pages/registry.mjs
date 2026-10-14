@@ -2,11 +2,14 @@
 // Runtime, MCP tools from a Gateway or a server URL, a skill's SKILL.md in S3); submit → approve / reject / deprecate;
 // semantic search over what is approved; and an agent's latest console verification attached as evidence.
 import React from 'react'
-import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, Tabs } from '../ui.mjs'
+import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, Tabs, NeedWorkspace, loaded,
+  firstChoice, AwsStatus, when, quiet, parseJson } from '../ui.mjs'
 
 const { useState, useEffect, createElement: h, Fragment } = React
 const reg = (wid, rid, path = '') => `/workspaces/${wid}/registries${rid ? `/${rid}` : ''}${path}`
-const time = (s) => (s || '').slice(0, 19).replace('T', ' ')
+const time = when
+// How a registry's discovery is signed in to (its authorizer type).
+const AUTHORIZER = { AWS_IAM: 'IAM 签名（SigV4）', CUSTOM_JWT: 'JWT（OAuth 令牌）', NONE: '不需要登录' }
 
 const STATUS = {
   DRAFT: ['草稿', ''], PENDING_APPROVAL: ['待审批', 'info'], APPROVED: ['已批准', 'ok'], REJECTED: ['已拒绝', 'bad'], DEPRECATED: ['已下线', 'warn'],
@@ -57,14 +60,13 @@ function Records({ rid, status, version, open, onOpen, empty }) {
     h('div', { className: 'cs-row' },
       h(Select, { value: kind, onChange: setKind, options: [['', '全部类型'], ['agent', 'Agent'], ['mcp', 'MCP 工具'], ['skill', '技能']] }),
       h(Input, { value: text, onChange: setText, placeholder: '按名称、说明、ID 过滤' })),
-    h(ErrorLine, { error: listError }),
-    list === null ? h(Empty, null, '加载中…') : h(Table, {
+    loaded(list, listError, () => h(Table, {
       head: ['名称', '类型', '版本', '状态', '更新'],
       rows: rows.map((r) => ({ key: r.id, onClick: () => onOpen(r.id), cells: [
         h('span', null, h('b', null, r.displayName || r.name), r.id === open ? ' ◂' : null, r.description ? h('div', { className: 'cs-mut' }, r.description.slice(0, 90)) : null),
         KIND[r.type] || r.type, h('span', { className: 'cs-mono' }, r.version || '—'), h(StatusChip, { status: r.status }), time(r.updatedAt)] })),
       empty: empty || '这个 Registry 还没有记录。到「登记」添加 Agent、MCP 工具或技能。',
-    }))
+    })))
 }
 
 function Evidence({ evidence, latest }) {
@@ -74,7 +76,7 @@ function Evidence({ evidence, latest }) {
     evidence ? h(Note, { tone: evidence.robust ? 'ok' : 'warn' },
       h('div', null, h('b', null, '审批证据　'), line(evidence)),
       listOf(evidence.notHolding).length ? h('div', null, `没有每轮都通过的契约：${evidence.notHolding.join('，')}`) : null,
-      h('div', { className: 'cs-mut' }, `契约集 ${evidence.contractSet || '—'} · 模型 ${evidence.model || '—'} · ${evidence.panel ? '含 AgentCore 评估器' : '只有 L1'} · 验证于 ${time(evidence.verifiedAt)}`))
+      h('div', { className: 'cs-mut' }, `契约集 ${evidence.contractSet || '—'} · 模型 ${evidence.model || '—'} · ${evidence.panel ? '含 AgentCore 评估器' : '只有 L1 检查（不含模型裁判）'} · 验证于 ${time(evidence.verifiedAt)}`))
       : h(Note, { tone: 'warn' }, '没有附验证证据：审批人看不到这个 Agent 做到了什么。'),
     newer ? h(Note, null, `控制台里有更新的验证：${line(latest)}（「附验证证据并提交」会附上它）`) : null)
 }
@@ -104,7 +106,7 @@ function EditRecord({ rid, rec, onSaved }) {
     const body = {}
     if (form.description !== (rec.description || '')) body.description = form.description
     if (form.version && form.version !== rec.version) body.version = form.version
-    if (rec.type === 'agent' && form.card !== JSON.stringify(rec.card, null, 1)) body.card = JSON.parse(form.card)
+    if (rec.type === 'agent' && form.card !== JSON.stringify(rec.card, null, 1)) body.card = parseJson(form.card, '名片')
     if (rec.type === 'mcp' && form.url && form.url !== rec.url) body.url = form.url
     if (rec.type === 'skill' && form.resync) body.uri = form.uri
     return call('PUT', reg(wid, rid, `/records/${rec.id}`), body)
@@ -200,12 +202,13 @@ function useCreate(rid, onCreated) {
 
 function AgentForm({ rid, onCreated }) {
   const { wid } = useCtx()
-  const [agents, setAgents] = useState([])
+  const [agents, setAgents] = useState(null)
+  const [agentsError, setAgentsError] = useState(null)
   const [target, setTarget] = useState('')
   const [form, setForm] = useState({ name: '', version: '1.0.0', description: '', card: '' })
   const { busy, error, run, create } = useCreate(rid, onCreated)
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }))
-  useEffect(() => { if (wid) call('GET', `/workspaces/${wid}/agents`).then((r) => setAgents(listOf(r.agents))).catch(() => {}) }, [wid])
+  useEffect(() => { if (wid) call('GET', `/workspaces/${wid}/agents`).then((r) => { setAgents(listOf(r.agents)); setAgentsError(null) }).catch(setAgentsError) }, [wid])
   const fill = () => {
     const [kind, ident] = target.split(':')
     run('fill', async () => {
@@ -215,12 +218,12 @@ function AgentForm({ rid, onCreated }) {
   }
   const register = () => {
     let card
-    try { card = JSON.parse(form.card) } catch (err) { window.dispatchEvent(new CustomEvent('adlc-notify', { detail: { kind: 'error', message: `名片不是 JSON：${err.message}` } })); return }
+    try { card = parseJson(form.card, '名片') } catch (err) { window.dispatchEvent(new CustomEvent('adlc-notify', { detail: { kind: 'error', message: err.message } })); return }
     create({ type: 'agent', name: form.name, version: form.version, description: form.description, card })
   }
   return h(Card, { title: '登记 Agent（A2A 名片）', extra: h(Button, { kind: 'pri', onClick: register, busy: busy === 'create', disabled: !form.card || !form.name }, '登记') },
     h('div', { className: 'cs-row' },
-      h(Select, { value: target, onChange: setTarget, options: [['', '选一个 Agent'], ...agents.map((a) => [`${a.kind}:${a.id}`, `${a.name}（${a.kind === 'harness' ? 'Harness' : 'Runtime'}）`])] }),
+      h(Select, { value: target, onChange: setTarget, options: [['', firstChoice(agents, agentsError, '这个工作区还没有 Agent', '选一个 Agent')], ...listOf(agents).map((a) => [`${a.kind}:${a.id}`, `${a.name}（${a.kind === 'harness' ? 'Harness' : 'Runtime'}）`])] }),
       h(Button, { onClick: fill, busy: busy === 'fill', disabled: !target }, '从 Agent 生成名片')),
     h(Note, null, '名片从 Agent 读出：Prompt 开头作说明，每个 Gateway 工具目标、每个 S3 技能各是一项技能，并写明它对应的 Harness / Runtime（之后据此附上它的验证证据）。登记前可以改。'),
     h('div', { className: 'cs-grid' },
@@ -229,16 +232,17 @@ function AgentForm({ rid, onCreated }) {
       h(Field, { label: '说明' }, h(Input, { value: form.description, onChange: set('description') }))),
     h(Field, { label: 'A2A 名片（JSON：protocolVersion、name、description、url、version、capabilities、defaultInputModes、defaultOutputModes、skills）' },
       h(TextArea, { value: form.card, onChange: set('card'), rows: 14, mono: true, placeholder: '先选 Agent 生成，或粘贴一张 A2A 0.3 名片' })),
-    h(ErrorLine, { error }))
+    h(ErrorLine, { error: error || quiet(agentsError) }))
 }
 
 function McpForm({ rid, onCreated }) {
   const { wid } = useCtx()
   const [gateways, setGateways] = useState(null)
+  const [gatewaysError, setGatewaysError] = useState(null)  // a list that did not load is not "no Gateway"
   const [form, setForm] = useState({ mode: 'gateway', gatewayId: '', url: '', transport: 'streamable-http', name: '', description: '', version: '1.0.0' })
   const { busy, error, create } = useCreate(rid, onCreated)
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }))
-  useEffect(() => { if (wid) call('GET', reg(wid, '', '/gateways')).then((r) => setGateways(listOf(r.gateways))).catch(() => setGateways([])) }, [wid])
+  useEffect(() => { if (wid) call('GET', reg(wid, '', '/gateways')).then((r) => { setGateways(listOf(r.gateways)); setGatewaysError(null) }).catch(setGatewaysError) }, [wid])
   const pick = (id) => {
     const g = listOf(gateways).find((x) => x.id === id)
     setForm((f) => ({ ...f, gatewayId: id, name: f.name || (g ? g.name : ''), description: f.description || (g ? g.description : '') }))
@@ -252,13 +256,13 @@ function McpForm({ rid, onCreated }) {
       h(Field, { label: '来源' }, h(Select, { value: form.mode, onChange: set('mode'), options: [['gateway', '这个工作区的 AgentCore Gateway'], ['url', 'MCP 服务地址']] })),
       form.mode === 'gateway'
         ? h(Field, { label: 'Gateway', hint: gateways && !gateways.length ? '这个工作区没有 MCP Gateway' : '工具从各目标的内联定义读出（<目标>___<工具>）' },
-          h(Select, { value: form.gatewayId, onChange: pick, options: [['', gateways === null ? '加载中…' : '选择'], ...listOf(gateways).map((g) => [g.id, `${g.name}（${g.authorizer || ''}）`])] }))
+          h(Select, { value: form.gatewayId, onChange: pick, options: [['', firstChoice(gateways, gatewaysError, '没有 MCP Gateway')], ...listOf(gateways).map((g) => [g.id, `${g.name}（${AUTHORIZER[g.authorizer] || g.authorizer || ''}）`])] }))
         : h(Field, { label: '地址' }, h(Input, { value: form.url, onChange: set('url'), mono: true, placeholder: 'https://example.com/mcp' })),
       form.mode === 'url' ? h(Field, { label: '传输' }, h(Select, { value: form.transport, onChange: set('transport'), options: [['streamable-http', 'Streamable HTTP'], ['sse', 'SSE']] })) : null,
       h(Field, { label: '记录名称' }, h(Input, { value: form.name, onChange: set('name'), mono: true })),
       h(Field, { label: '版本' }, h(Input, { value: form.version, onChange: set('version'), mono: true })),
       h(Field, { label: '说明', hint: 'MCP 的 server.json 只留前 100 个字符' }, h(Input, { value: form.description, onChange: set('description') }))),
-    h(ErrorLine, { error }))
+    h(ErrorLine, { error: error || (form.mode === 'gateway' ? quiet(gatewaysError) : null) }))
 }
 
 function SkillForm({ rid, onCreated }) {
@@ -325,7 +329,7 @@ function RegistryPage() {
     setRid((current) => (found.some((x) => x.id === current) ? current : (found.find((x) => x.status === 'READY') || found[0] || {}).id || ''))
   }).catch(setListError)
   useEffect(() => { setList(null); setOpen(null); if (wid) load() }, [wid])
-  if (!workspace) return h(Empty, null, '先添加工作区。')
+  if (!workspace) return h(NeedWorkspace, { title: 'Registry' })
   const pickRegistry = (v) => { setRid(v); setOpen(null) }
   const pickTab = (v) => { setTab(v); setOpen(null) }
   const sel = listOf(list).find((x) => x.id === rid)
@@ -345,17 +349,17 @@ function RegistryPage() {
   return h(Fragment, null,
     h('h1', null, 'Registry'),
     h(Card, { title: 'Agent、MCP 工具和技能的目录', extra: h('span', { className: 'cs-row' },
-      h(Select, { value: rid, onChange: pickRegistry, options: list && list.length ? list.map((x) => [x.id, `${x.name} · ${x.autoApproval ? '自动批准' : '人工审批'}`]) : [['', list === null ? '加载中…' : '没有 Registry']] }),
+      h(Select, { value: rid, onChange: pickRegistry, options: list && list.length ? list.map((x) => [x.id, `${x.name} · ${x.autoApproval ? '自动批准' : '人工审批'}`]) : [['', list === null ? (listError ? '读不到 Registry 列表' : '加载中…') : '没有 Registry']] }),
       h(Button, { onClick: () => { load(); changed() } }, '刷新'),
       admin ? h(Button, { onClick: () => setCreating(!creating) }, creating ? '收起' : '新建 Registry') : null) },
     h(ErrorLine, { error: listError }),
     sel ? h('div', { className: 'cs-row' },
-      h(Chip, { tone: REGISTRY_TONE[sel.status] }, sel.status), h(Chip, null, sel.autoApproval ? '自动批准：提交即上架' : '人工审批：管理员批准后上架'),
-      h(Chip, null, `发现授权 ${sel.authorizer || '—'}`), sel.console ? h(Chip, { tone: 'info' }, '控制台创建') : null,
+      h(AwsStatus, { status: sel.status, tone: REGISTRY_TONE[sel.status] || '' }), h(Chip, null, sel.autoApproval ? '自动批准：提交即上架' : '人工审批：管理员批准后上架'),
+      h(Chip, { title: sel.authorizer }, `发现时的登录方式：${AUTHORIZER[sel.authorizer] || sel.authorizer || '—'}`), sel.console ? h(Chip, { tone: 'info' }, '控制台创建') : null,
       h('span', { className: 'cs-mut cs-mono' }, sel.id), sel.description ? h('span', { className: 'cs-mut' }, sel.description) : null,
       admin && sel.console ? h(Button, { kind: 'danger', onClick: removeRegistry, busy: busy === 'delreg' }, '删除 Registry') : null)
       : list && !list.length ? h(Empty, null, admin ? '这个账号和区域还没有 Registry：新建一个。' : '这个账号和区域还没有 Registry：请管理员新建。') : null,
-    sel && sel.status !== 'READY' ? h(Note, { tone: 'warn' }, `Registry 是 ${sel.status}：就绪（READY，新建约一分钟）后才能登记记录。`) : null,
+    sel && sel.status !== 'READY' ? h(Note, { tone: 'warn' }, `Registry 现在是「${(STATUS[sel.status] || [sel.status])[0]}」：就绪后（新建约一分钟）才能登记记录。`) : null,
     h(ErrorLine, { error })),
     creating && admin ? h(NewRegistry, { onCreated: (r) => { setCreating(false); load().then(() => setRid(r.id)) } }) : null,
     sel ? h(Fragment, null,

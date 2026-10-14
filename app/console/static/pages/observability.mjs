@@ -1,6 +1,6 @@
 // 观测: an agent's AgentCore metrics, its recent sessions, and one session's trace (spans, tokens, the conversation).
 import React from 'react'
-import { call, useCtx, listOf, Card, Button, Select, Chip, Empty, ErrorLine, Table, useAction, Note, Field, Input, TextArea } from '../ui.mjs'
+import { call, useCtx, listOf, Card, Button, Select, Chip, Empty, ErrorLine, Table, useAction, Note, Field, Input, TextArea, NeedWorkspace, loaded, At, quiet, firstChoice } from '../ui.mjs'
 
 const { useState, useEffect, createElement: h, Fragment } = React
 
@@ -66,7 +66,8 @@ function ScoreSession({ base, sessionId, hours }) {
 
 function ObservabilityPage({ selected }) {
   const { wid, workspace } = useCtx()
-  const [agents, setAgents] = useState([])
+  const [agents, setAgents] = useState(null)
+  const [agentsError, setAgentsError] = useState(null)
   const [target, setTarget] = useState(selected ? `${selected.kind}:${selected.id}` : '')
   const [hours, setHours] = useState('24')
   const [metrics, setMetrics] = useState(null)
@@ -74,7 +75,7 @@ function ObservabilityPage({ selected }) {
   const [evaluations, setEvaluations] = useState([])
   const [trace, setTrace] = useState(null)
   const { busy, error, run } = useAction()
-  useEffect(() => { if (wid) call('GET', `/workspaces/${wid}/agents`).then((r) => setAgents(listOf(r.agents))).catch(() => {}) }, [wid])
+  useEffect(() => { if (wid) call('GET', `/workspaces/${wid}/agents`).then((r) => { setAgents(listOf(r.agents)); setAgentsError(null) }).catch(setAgentsError) }, [wid])
   const [kind, id] = target.split(':')
   const load = () => run('load', async () => {
     setTrace(null)
@@ -83,20 +84,22 @@ function ObservabilityPage({ selected }) {
     setMetrics(m); setSessions(listOf(s.sessions)); setEvaluations(listOf(s.evaluations))
   })
   useEffect(() => { if (id) load() }, [target, hours])
-  if (!workspace) return h(Empty, null, '先添加工作区。')
+  if (!workspace) return h(NeedWorkspace, { title: '观测' })
   const open = (sid) => run('trace', async () => setTrace(await call('GET', `/workspaces/${wid}/agents/${kind}/${id}/sessions/${sid}?hours=${hours}`)))
   return h(Fragment, null,
     h('h1', null, '观测'),
     h(Card, { title: '指标与会话', extra: h('span', { className: 'cs-row' },
-      h(Select, { value: target, onChange: setTarget, options: [['', '选一个 Agent'], ...agents.map((a) => [`${a.kind}:${a.id}`, a.name])] }),
+      h(Select, { value: target, onChange: setTarget, options: [['', firstChoice(agents, agentsError, '这个工作区还没有 Agent', '选一个 Agent')],
+        ...listOf(agents).map((a) => [`${a.kind}:${a.id}`, a.name])] }),
       h(Select, { value: hours, onChange: setHours, options: [['3', '3 小时'], ['24', '24 小时'], ['168', '7 天']] }),
       h(Button, { onClick: load, busy: busy === 'load', disabled: !id }, '刷新')) },
-    h(ErrorLine, { error }),
-    !id ? h(Empty, null, '选一个 Agent。') : metrics ? h(Metrics, { data: metrics }) : h(Empty, null, '加载中…')),
+    h(ErrorLine, { error: quiet(agentsError) }),
+    !id ? h(Empty, null, agents === null && agentsError ? `Agent 列表读不到，现在选不了 Agent${agentsError.credential ? '（AWS 凭证用不了，见页面顶部）' : '（原因见上面）'}。` : agents && !agents.length ? '这个工作区还没有 Agent。' : '在右上角选一个 Agent。')
+      : loaded(metrics, error, (data) => h(Metrics, { data }))),
     sessions ? h(Card, { title: `最近的会话（${sessions.length}）` },
       h('div', { className: 'cs-mut' }, evaluations.length ? `在线评估：${evaluations.join('，')}（打分约在会话后 10 分钟出现；红色 = 没过）` : '这个 Agent 没有在线评估：会话没有打分（「评估」页可以据验证结果创建）。'),
       h(Table, { head: ['会话', '记录', '开始', '结束', '在线评估打分'], rows: sessions.map((s) => ({ key: s.sessionId,
-        onClick: () => open(s.sessionId), cells: [h('span', { className: 'cs-mono' }, s.sessionId), s.records, (s.first || '').slice(0, 19), (s.last || '').slice(0, 19),
+        onClick: () => open(s.sessionId), cells: [h('span', { className: 'cs-mono' }, s.sessionId), s.records, h(At, { iso: s.first }), h(At, { iso: s.last }),
           Object.keys(s.scores || {}).length ? h('span', { className: 'cs-row' }, Object.entries(s.scores).map(([name, sc]) => h(Chip, { key: name, tone: sc.failed ? 'bad' : 'ok',
             title: `${name}: ${sc.label || ''}` }, `${name.replace(/^Builtin\./, '')} ${typeof sc.value === 'number' ? sc.value.toFixed(2) : sc.label || '—'}`))) : '—'] })),
         empty: '这段时间没有会话。' })) : null,

@@ -749,7 +749,7 @@ def _setup(x: ex.Ctx, cid: str, req: Mapping[str, Any], job: Any) -> dict[str, A
         job.log(f"running: the console's chat and /v1 go through {rec['invokeUrl']}")
         return {"canary": cid, "invokeUrl": rec["invokeUrl"], "copy": copied["name"]}
     except Exception as exc:
-        _save(x, cid, status="failed", error=f"{type(exc).__name__}: {str(exc)[:500]}")
+        _save(x, cid, status="failed", error=f"{type(exc).__name__}: {ex.clip(exc, 500)}")
         raise
 
 
@@ -801,7 +801,7 @@ def _gate(x: ex.Ctx, rec: Mapping[str, Any], metric: str | None = None) -> dict[
     for m in metrics:
         m["band"], m["bandSource"] = ex.band_for(verification, m["evaluator"])
     decided = ex.gate(rec, verification=verification, metrics=metrics, metric=chosen, agent_version=state["version"] if state else None,
-                      verifying=verifying, arms=_arms(ctl, rec))
+                      verifying=verifying, arms=[] if ex.cleanup_started(rec) else _arms(ctl, rec))
     first = decided["conditions"][0]
     if verification is None and not verifying:
         first["evidence"] = "no console verification of the candidate: verify the candidate runtime against a contract set"
@@ -809,8 +809,8 @@ def _gate(x: ex.Ctx, rec: Mapping[str, Any], metric: str | None = None) -> dict[
 
 
 def canary_detail(x: ex.Ctx, cid: str) -> dict[str, Any]:
-    """The record, the A/B test as AgentCore has it now, its metrics, production as it is now and the gate; once
-    promoted, the gate as it was decided."""
+    """The record, the A/B test as AgentCore has it now, its metrics, production as it is now and the gate; while
+    promoting and once promoted, the gate as it was decided (the promotion itself moves production)."""
     rec = _get(x, cid)
     if rec["status"] in ("creating", "failed", "cleanup_incomplete") or rec.get("cleanedAt"):
         production = None
@@ -832,6 +832,8 @@ def canary_detail(x: ex.Ctx, cid: str) -> dict[str, Any]:
     out = {**rec, **_gate(x, rec)}
     if rec.get("promotion") and rec["promotion"].get("gate"):
         out["gate"] = {**rec["promotion"]["gate"], "decidedAt": rec["promotion"]["at"]}
+    elif rec["status"] == "promoting" and (rec.get("decision") or {}).get("gate"):  # the job moves production: the gate it went by
+        out["gate"] = {**rec["decision"]["gate"], "decidedAt": rec["decision"]["at"]}
     return out
 
 
@@ -1236,7 +1238,7 @@ def _promote(x: ex.Ctx, cid: str, decision: Mapping[str, Any], job: Any) -> dict
         _save(x, cid, status="promoted", promotion=promotion, error=None)
         return promotion
     except Exception as exc:
-        error = f"promotion: {type(exc).__name__}: {str(exc)[:400]}"
+        error = f"promotion: {type(exc).__name__}: {ex.clip(exc, 400)}"
         if production:  # the candidate's version may exist (a later stage failed): production runs it, which a rollback undoes
             _promotion_cut(x, rec, decision, str(production.get("agentRuntimeVersion")), error, job.job["id"], expect={"status": "promoting"})
         else:
@@ -1332,7 +1334,7 @@ def _undo_promotion(x: ex.Ctx, cid: str, reason: str, job: Any) -> dict[str, Any
         ctl = x.ctl()
         production = ctl.get_agent_runtime(agentRuntimeId=runtime_id)
     except Exception as exc:
-        _save(x, cid, status="promoted", error=f"rollback: {type(exc).__name__}: {str(exc)[:400]}: roll back again")
+        _save(x, cid, status="promoted", error=f"rollback: {type(exc).__name__}: {ex.clip(exc, 400)}: roll back again")
         raise
     if str(production.get("agentRuntimeVersion")) != str(promotion["toVersion"]):
         refused = ExperimentError(f"{rec['agent']['name']} is version {production.get('agentRuntimeVersion')} now, not the promoted "
@@ -1363,7 +1365,7 @@ def _undo_promotion(x: ex.Ctx, cid: str, reason: str, job: Any) -> dict[str, Any
         _rolled_back(x, rec, done, expect={"status": "rolling_back"})
         return done
     except Exception as exc:  # rolled back if its new version exists
-        _rollback_cut(x, rec, f"rollback: {type(exc).__name__}: {str(exc)[:400]}", job.job["id"], expect={"status": "rolling_back"})
+        _rollback_cut(x, rec, f"rollback: {type(exc).__name__}: {ex.clip(exc, 400)}", job.job["id"], expect={"status": "rolling_back"})
         raise
 
 
@@ -1426,8 +1428,10 @@ def _cleanup(x: ex.Ctx, cid: str, job: Any, after: str) -> dict[str, Any]:
     ab = rec.get("abTest")
     if ab:
         def delete_ab() -> None:
-            if data.get_ab_test(abTestId=ab["id"]).get("executionStatus") != "STOPPED":
-                _stop(x, _get(x, cid), status="cleaning")
+            # its results first, also when AgentCore stopped it on its own (see experiments.cleanup's delete_ab)
+            current = _get(x, cid)
+            if not current.get("finalResults") or data.get_ab_test(abTestId=ab["id"]).get("executionStatus") != "STOPPED":
+                _stop(x, current, status="cleaning")
             data.delete_ab_test(abTestId=ab["id"])
             for _ in range(60):  # deleting is asynchronous; the online evaluations it references refuse deletion until it is gone
                 try:

@@ -941,11 +941,13 @@ def _case_hints(hints: _Hints, assets: _Assets, phenomenon: Mapping[str, Any], c
     return ids
 
 
-def _advisory_hints(hints: _Hints, assets: _Assets, advisory: Sequence[Mapping[str, Any]]) -> None:
+def _advisory_hints(hints: _Hints, assets: _Assets, advisory: Sequence[Mapping[str, Any]], *, conversation_ran: bool = True) -> None:
     for item in advisory:
         if item.get("kind") == "memory":
             path = "labs.teaching.firstConversation"
             if item.get("evidence") == "missing":
+                if not conversation_ran:  # 06 has not run: RUN_INCOMPLETE says what to do, no document is to blame
+                    continue
                 hints.add("CONVERSATION_EVIDENCE_MISSING", _asset("ops"), Msg("fix.CONVERSATION_EVIDENCE_MISSING"),
                           Msg("why.CONVERSATION_EVIDENCE_MISSING"), severity="advisory")
             elif item.get("reading") == "personalized":
@@ -1127,8 +1129,11 @@ def build_rehearsal(
     current_report = current["report"]
     if current_report["status"] != "complete":
         missing = current_report["completion"]["missingEvidence"]
-        hints.add("RUN_INCOMPLETE", _asset("run"), Msg("fix.RUN_INCOMPLETE"),
-                  Msg("why.RUN_INCOMPLETE.missing", missing=Join(missing, "sep.clause")) if missing else Msg("why.RUN_INCOMPLETE"))
+        if not current_report["completion"]["passed"]:  # nothing ran yet: the evidence list would only alarm
+            hints.add("RUN_INCOMPLETE", _asset("run"), Msg("fix.RUN_NOT_STARTED"), Msg("why.RUN_NOT_STARTED"))
+        else:
+            hints.add("RUN_INCOMPLETE", _asset("run"), Msg("fix.RUN_INCOMPLETE"),
+                      Msg("why.RUN_INCOMPLETE.missing", missing=Join(missing, "sep.clause")) if missing else Msg("why.RUN_INCOMPLETE"))
     guide_flags = {name: bool((guides or {}).get(name)) for name in GUIDE_FILES}
     if not all(guide_flags.values()):
         absent = [("/".join(("build",) + GUIDE_FILES[name])) for name, ok in guide_flags.items() if not ok]
@@ -1140,7 +1145,7 @@ def build_rehearsal(
         hints.add("RELEASE_NOT_VERIFIED", _asset("run"), Msg("fix.RELEASE_NOT_VERIFIED"),
                   Msg("why.RELEASE_NOT_VERIFIED", release=str(state.get("releaseVersion"))))
     advisory = [dict(a) for a in contrast.get("advisory") or []]
-    _advisory_hints(hints, assets, advisory)
+    _advisory_hints(hints, assets, advisory, conversation_ran=_step(evidence["state"], "conversation").get("status") == "passed")
     for item in advisory:
         item["source"] = evidence["source"]
 

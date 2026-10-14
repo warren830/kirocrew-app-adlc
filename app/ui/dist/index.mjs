@@ -31,7 +31,7 @@ const PACK_KIND = {
   customer: { tone: 'warn', label: '客户严格确认', help: '最严格：所有阻断项都要客户确认（确认人 + 凭证）；用于交付和上线。' },
 }
 const PROJECT_STATUS = {
-  intake: ['', '新建'], 'truth-review': ['warn', '待审核'], validated: ['info', '已校验'], built: ['ok', '已构建'],
+  intake: ['', '新建'], 'truth-review': ['warn', '待校验通过'], validated: ['info', '已校验'], built: ['ok', '已构建'],
   'synced-pending-commit': ['warn', '待确认保留'], synced: ['ok', '已同步到 Workshop'], 'rolled-back': ['bad', '已回滚'],
   'rollback-incomplete': ['bad', '回滚不完整'],
 }
@@ -40,8 +40,8 @@ const TEMPLATE_LABEL = {
   maintenance: '设备维修参考包（虚构）', 'kiro-generated': 'Kiro 生成',
 }
 const SCOPE_LABEL = {
-  agent: '智能体', facts: '业务规则', knowledge: '知识材料', tools: '工具', skills: 'Skills', prompts: 'Prompt',
-  golden: '黄金集', labs: '教学设计', guides: '手册',
+  agent: '智能体', facts: '业务规则', knowledge: '知识文档', tools: '工具', skills: 'Skill', prompts: 'Prompt',
+  golden: '题目与判据', labs: '教学设计', guides: '学员与导师手册',
 }
 const SCOPES = Object.keys(SCOPE_LABEL)
 const CLASS_LABEL = {
@@ -50,17 +50,91 @@ const CLASS_LABEL = {
 }
 const PROVENANCE_LABEL = { customer_confirmed: ['ok', '客户已确认'], sa_synthetic: ['', 'SA 合成'], ai_draft: ['warn', 'Kiro 草稿'], pending: ['warn', '待定'] }
 const ORIGIN_LABEL = { customer_material: '客户资料', sa_authored: 'SA 编写', teaching_design: '教学设计' }
-const ITEM_KIND_LABEL = { fact: '业务规则', tool: '工具', document: '文档', golden: '题目', narrative: '手册叙述' }
+const ITEM_KIND_LABEL = { fact: '业务规则', tool: '工具', document: '文档', golden: '题目', narrative: '手册叙述', guide: '手册叙述' }
 const CATEGORY_LABEL = { normal: '正常', boundary: '边界', prohibited: '禁止' }
 const CATEGORIES = ['normal', 'boundary', 'prohibited']
-const SET_LABEL = { practice: '练习', holdout: '保留' }
+const SET_LABEL = { practice: '练习', holdout: '留出' }
 const GEN_STATUS = {
-  queued: ['info', '排队中'], running: ['info', '生成中'], ready: ['warn', '待审阅'], 'needs-input': ['warn', '需要补充信息'],
+  queued: ['info', '排队中'], running: ['info', '生成中'], ready: ['warn', '待应用'], 'needs-input': ['warn', '需要补充信息'],
   failed: ['bad', '失败'], applied: ['ok', '已应用'], superseded: ['', '已被新草稿取代'], reverted: ['', '已撤销'],
 }
-const GEN_MODE = { draft: '起草', repair: '修复', regenerate: '重新生成' }
+const GEN_MODE = { draft: '起草', repair: '修复', regenerate: '改写' }
+// A staged draft (routes STAGE_DEPS): one Kiro reply per part of the pack, in three phases.
+const STAGE_INFO = {
+  structure: ['结构', '角色、业务规则、知识文档规划、工具'], evaluation: ['题目与教学设计', '题目、教学现象、弱基线'],
+  skills: ['Skill', '每个 Skill 的 SKILL.md'], prompts: ['Prompt', '弱基线和优化候选两份 Prompt'], guides: ['学员与导师手册', '学员和导师手册的补充内容'],
+}
+const STAGE_PHASES = [
+  ['1', '先定结构', ['structure']],
+  ['2', '写题目和教学设计（Skill 同时写）', ['evaluation', 'skills']],
+  ['3', '按前两段并行写文件', ['knowledge', 'prompts', 'guides']],
+]
+const STAGE_STATUS = { pending: ['', '等待'], running: ['info', '进行中'], done: ['ok', '完成'], failed: ['bad', '失败'], skipped: ['', '没用到'] }
+const stageBase = (name) => String(name || '').split('-')[0]
+function stageInfo(s) {
+  if (stageBase(s.name) !== 'knowledge') return STAGE_INFO[s.name] || [s.name, '']
+  const files = listOf(s.write).map((f) => String(f).split('/').pop())
+  return [`知识文档 · 第 ${s.name.slice(10)} 批`, files.length ? `${files.length} 篇：${files.join('、')}` : '一批知识文档']
+}
+// Why a stage's reply was not kept, or what it still lacks: the backend's messages (English, for Kiro) in one line each.
+const STAGE_REASONS = [
+  [/cut off|output limit/i, '回复被截断（输出上限或连接中断）'], [/response stream|dispatch failure|KiroExit|exited \d/i, 'Kiro 连接中断'],
+  [/timed out|Timeout/i, 'Kiro 超时'], [/declined/i, 'KiroCrew 没能启动这一步'], [/never started/i, '这一步没能启动'],
+  [/no JSON|invalid JSON|could not be checked|has no scenario|has no files/i, '回复格式不对'],
+  [/^P1/, 'Prompt 没逐字写进教学设计要求的句子'], [/^P2/, 'Prompt 没写检索工具名'], [/^K1/, '有文档太短'],
+  [/^K3.*lacks/, '文档缺少练习题要用的答案词'], [/^K3.*absentTerms/, '文档写进了本该缺失的内容'],
+  [/^S1/, '题目数量或留出题比例不够'], [/^S[23]/, '题目引用了不存在的规则、角色或工具'], [/^T\d/, '教学设计和题目对不上'],
+  [/gated_tool_role_argument/, '工具带了“角色”参数（Agent 会先调工具再拒绝）'], [/first_term_in_tool_spec/, '记忆探针的值写进了工具说明'],
+  [/tool_arg_not_in_query/, '练习题没写出工具必需的参数'], [/role_not_in_query/, '拒绝题没写出提问者的角色'],
+  [/too_many_practice/, '练习题太多（上课要逐题跑）'], [/defect_marker_absent/, '弱基线缺少让它答偏的那句话'],
+  [/plan\.absentTerms/, '“本该缺失”的关键词不合格（每个至少 2 个字，单字会误伤别的词）'],
+  [/^schema:/, '有字段不符合 scenario 格式（如词太短、缺必填项）'],
+  [/retrieval_case_not_probe/, '练习题要调检索工具，但不是检索探针（THELMA 不评，只做 L1）'], [/defect_fix_missing/, '优化候选 Prompt 没逐字写进 candidateFix'],
+  [/defect_marker_missing/, '弱基线 Prompt 没逐字写进 baselineMarker'], [/defect_marker_kept/, '优化候选 Prompt 还留着弱基线那句话'],
+  [/defect_already_fixed/, '弱基线 Prompt 已经写了 candidateFix（基线不会答偏）'], [/bait_missing/, '干扰文档没写进诱饵词'],
+  [/fixable_answer_not_in_kb/, '练习题的答案词不在任何知识文档里'], [/absent_term_in_kb/, '知识文档写进了本该缺失的词'],
+  [/gap_question_in_kb/, '知识文档写到了缺口问题本身'], [/missing_kind/, '缺一类教学现象'], [/refusal_case/, '拒绝题的类别或判据不对'],
+  [/tool_use_case/, '工具题没有要求调用 mock 工具'], [/escalation_case/, '升级题没设 shouldEscalate'], [/noise_doc_flag/, '干扰现象列的文档没标 noise'],
+  [/material_unknown/, '引用的资料已不在项目里（删了或没上传）：到「02 → 审核」重新确认这一项，来源改成现有资料或别的类型'],
+  [/references unknown|cites unknown/, '引用了不存在的规则、文档、工具、题目或角色'], [/^teaching\./, '教学设计检查没通过'], [/facts has|documents plans|noise:true|kind=retrieval|mock tool|ids repeat|skill /, '结构不完整（规则、文档规划或工具）'],
+]
+const stageReason = (text) => (STAGE_REASONS.find(([re]) => re.test(String(text || ''))) || [null, '另一项检查没通过（见原始信息）'])[1]
+const stageReasons = (texts) => [...new Set(listOf(texts).map(stageReason))]
+// One message per check: an attempt's own problem list (a message may itself hold "; "), else its error.
+const attemptProblems = (x) => (listOf(x.problems).length ? x.problems : [x.error])
+// What the page shows next to the project's own content: a Kiro draft waiting for review, and where the content came from.
+const precheckErrors = (g) => (g && g.precheck && g.precheck.ran ? g.precheck.errorCount || 0 : 0)
+// Ids the SA reads as names: a question by its label, a role by its name, a document by its title (the id stays beside it).
+const caseName = (sc, id) => { const c = goldenOf(sc).find((x) => x.id === id); return c && c.label ? `${c.label}（${id}）` : id }
+const roleName = (sc, id) => { const r = listOf(sc && sc.agent && sc.agent.roles).find((x) => x.id === id); return r && r.name ? r.name : id }
+const actorName = (sc, actorId) => {
+  const c = goldenOf(sc).find((x) => x.actorId === actorId && x.roleId)
+  const role = c ? roleName(sc, c.roleId) : null
+  return role && role !== c.roleId ? `${role}（${actorId}）` : actorId
+}
+const docName = (sc, id) => { const d = listOf(sc && sc.knowledge && sc.knowledge.documents).find((x) => x.id === id); return d && d.title ? `${d.title}（${id}）` : id }
+// What applying the waiting (or running) draft does: a scoped rewrite replaces only its scopes.
+const replaceText = (g) => (g && g.mode === 'regenerate' && listOf(g.scope).length ? `应用后只替换它改写的部分（${listOf(g.scope).map((x) => SCOPE_LABEL[x] || x).join('、')}）` : '应用后整体换掉')
+// The 01 card offers 在当前内容上改写 only on a project with content, no waiting draft, no template content and nothing running.
+const canRewrite = (ws) => goldenOf(ws.sc).length > 0 && !pendingDraft(ws) && !templateOrigin(ws) && !isLive(ws.generation)
+const pendingDraft = (ws) => { const g = ws.generation; return g && g.status === 'ready' && !g.stale && g.mode !== 'repair' && g.scenarioPreview ? g : null }
+const draftRunning = (ws) => { const g = ws.generation; return !!g && isLive(g) && g.mode !== 'repair' }
+// Any Kiro result that waits to be applied (a draft or a repair, unless it is void) or still runs: recording a
+// review or saving now changes the project, and that result could no longer be applied.
+const holdingResult = (ws) => { const g = ws.generation; return !!g && (isLive(g) || (g.status === 'ready' && !g.stale)) }
+const holdText = (ws, doing = '记录审核或保存修改', then = '再审核') => {
+  const g = ws.generation || {}
+  const what = g.mode === 'repair' ? 'Kiro 修复结果' : 'Kiro 草稿'
+  const where = `${isLive(g) ? '等它完成后，' : ''}${g.mode === 'repair' ? '先在「02 → 教学与评估」下方应用它' : '先到 01 应用它'}`
+  return `${what}${isLive(g) ? '正在生成' : '待应用'}：现在${doing}会改动项目，它就不能再应用。${where}，${then}。`
+}
+function templateOrigin(ws) {
+  const p = ws.project || {}
+  const tpl = p.createdFromTemplate || p.template
+  return tpl && tpl !== 'blank' && !((p.editLog || {}).kiroApplies > 0) ? TEMPLATE_LABEL[tpl] || tpl : null
+}
 const PHENOMENON_KIND = {
-  prompt_fixable: '提示词可修复', retrieval_gap: '检索缺口', noise_grounding: '干扰文档', tool_use: '工具调用', refusal: '拒绝',
+  prompt_fixable: 'Prompt 可修复', retrieval_gap: '检索缺口', noise_grounding: '干扰问答', tool_use: '工具调用', refusal: '拒绝',
   escalation: '升级转人',
 }
 const MECHANISM = { buried: '答案埋在文档里', absent: '文档里没有答案' }
@@ -77,7 +151,7 @@ const BLOCKER = {
   VERDICT_NOT_READY: '有教学现象没复现', VERDICT_INSUFFICIENT_EVIDENCE: '证据不足以判定', REPORT_INCOMPLETE: '运行报告不完整',
   GUIDES_MISSING: '学员或导师手册没构建', SCENARIO_NOT_BUILD_SNAPSHOT: '没按构建快照判定', RELEASE_NOT_VERIFIED: 'Release 未核实',
 }
-const GROUP_LABEL = { prompt_fixable: '提示词可修复', retrieval_gap: '检索缺口', l1: '工具 / 拒绝 / 升级' }
+const GROUP_LABEL = { prompt_fixable: 'Prompt 可修复', retrieval_gap: '检索缺口', l1: '工具 / 拒绝 / 升级' }
 // Readings of the advisory items (engine rehearsal.py NOISE_READINGS / MEMORY_READINGS) and the scenario the
 // rehearsal judged (SCENARIO_SOURCES): machine values, shown in Chinese.
 const ADVISORY_READING = {
@@ -105,7 +179,7 @@ const STAGE_NOTE = {
 }
 // Keys of the stage details (validate summary, build, preflight plan, apply / verify / confirm / guided).
 const DETAIL_KEY = {
-  documents: '文档', facts: '业务规则', tools: '工具', goldenCases: '题目', holdout: '保留题', pending: '待审核', version: '版本', files: '文件',
+  documents: '文档', facts: '业务规则', tools: '工具', goldenCases: '题目', holdout: '留出题', pending: '待审核', version: '版本', files: '文件',
   contentHash: '内容哈希', reused: '复用已有构建', accountId: '账号', region: '区域', instanceId: '实例', documentName: '同步文档',
   runDocumentName: '运行文档', checks: '检查项', status: '状态', commandId: '命令', ssmStatus: 'SSM 状态', active: '远端当前版本',
   currentLink: 'current 指向', hostStatus: '远端状态', releases: '远端版本', releaseVersion: 'Release', steps: '步骤', passed: '已通过',
@@ -139,7 +213,7 @@ const EXTRACTION = { ok: ['ok', '已提取'], partial: ['warn', '部分提取'],
 const CLASSIFICATION = { synthetic: '合成数据', internal: '内部资料', confidential: '机密（不能发给 Kiro）' }
 const FAMILY = {
   teaching: ['acc', '教学'], l1: ['acc', 'L1'], guide: ['info', '手册'], provenance: ['warn', '来源'], residue: ['warn', '残留'],
-  namespace: ['', '命名'], tools: ['', '工具'], materials: ['warn', '资料'], golden: ['', '黄金集'], gate: ['bad', '审核'],
+  namespace: ['', '命名'], tools: ['', '工具'], materials: ['warn', '资料'], golden: ['', '题目'], gate: ['warn', '审核'],
   schema: ['bad', '结构'], xref: ['bad', '引用'], render: ['bad', '渲染'], project: ['', '项目'], rehearsal: ['warn', '彩排整改'],
 }
 const DRY_SKIP = { 'not requested': '这次是构建前的校验，不单独试构建', 'policy errors': '有策略错误，先修', 'the scenario did not load': 'scenario 读不出来' }
@@ -174,6 +248,11 @@ const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('zh-CN', { hour12: 
 const fmtNum = (v, digits) => (typeof v === 'number' && Number.isFinite(v) ? String(Math.round(v * 10 ** (digits ?? 2)) / 10 ** (digits ?? 2)) : '—')
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n || 0} B`)
 const shortHash = (s) => (s ? String(s).slice(0, 12) : '—')
+function fmtTokens(n) {
+  const v = Number(n) || 0
+  return v >= 10000 ? `${(v / 10000).toFixed(1)} 万` : String(v)
+}
+
 function fmtSeconds(seconds) {
   const v = Math.max(0, Math.round(Number(seconds) || 0))
   return v >= 60 ? `${Math.floor(v / 60)} 分 ${String(v % 60).padStart(2, '0')} 秒` : `${v} 秒`
@@ -228,7 +307,7 @@ function expectationChips(expected) {
   for (const t of listOf(e.requiredTools)) out.push(['acc', `必须调用 ${t}`])
   for (const t of listOf(e.forbiddenTools)) out.push(['warn', `不得调用 ${t}`])
   for (const t of listOf(e.mustMention)) out.push(['acc', `要提到 “${t}”`])
-  for (const g of listOf(e.mustMentionAnyOf)) out.push(['acc', `至少提到其一：${listOf(g).join(' / ')}`])
+  for (const g of listOf(e.mustMentionAnyOf)) out.push(['acc', listOf(g).length > 3 ? `至少提到其一：${listOf(g).slice(0, 3).join(' / ')} …共 ${listOf(g).length} 种说法` : `至少提到其一：${listOf(g).join(' / ')}`])
   for (const t of listOf(e.mustNotMention)) out.push(['warn', `不得出现 “${t}”`])
   if (e.shouldRefuse) out.push(['warn', '应拒绝'])
   if (e.shouldEscalate) out.push(['info', '应升级转人'])
@@ -490,7 +569,7 @@ function useWorkspace(pid, go) {
     } catch (err) {
       const e = apiError(err)
       setErrors((prev) => ({ ...prev, [name]: e }))
-      notify.error(e.message)
+      notify.error(backendText(e.message) || e.message)
       return undefined
     } finally {
       setBusy('')
@@ -510,7 +589,7 @@ function useWorkspace(pid, go) {
       if (e.data && e.data.generation) put('generation', { data: e.data.generation, error: null })
       throw e
     }
-  }, ['project'], (r) => `Kiro 开始${GEN_MODE[r.mode] || '生成'}（${r.id}）`)
+  }, ['project'], (r) => `Kiro 开始${GEN_MODE[r.mode] || '生成'}：${r.staged ? '分步起草大约 10–20 分钟' : '要几分钟'}，可以离开页面`)
   const ensureFreshValidation = async () => {
     const current = await api.validation(pid)
     if (!current || !current.fresh) await api.validate(pid, true)
@@ -530,19 +609,23 @@ function useWorkspace(pid, go) {
       if (e.data && e.data.generation) put('generation', { data: e.data.generation, error: null })
       throw e
     }
-  }, ['validation', 'project'], (r) => `Kiro 开始修复（${r.id}）`)
+  }, ['validation', 'project'], () => 'Kiro 开始修复：要几分钟，可以离开页面')
 
   const actions = {
     refresh,
     switchPackKind: (packKind, reason) => act('packKind', () => api.switchPackKind(pid, { packKind, reason, acknowledged: true }), 'all', '项目类型已切换'),
     uploadMaterial: (body) => act('upload', () => api.uploadMaterial(pid, { ...body, acknowledged: true }), ['materials'], (m) => `已上传 ${m.name}`),
     updateMaterial: (mid, body) => act(`material:${mid}`, () => api.updateMaterial(pid, mid, body), ['materials']),
-    deleteMaterial: (mid) => act(`material:${mid}`, () => api.deleteMaterial(pid, mid), ['materials', 'validation'],
+    deleteMaterial: (mid) => act(`material:${mid}`, async () => {
+      const deleted = await api.deleteMaterial(pid, mid)
+      await api.validate(pid, true).catch(() => null) // a reviewed item may cite it: the verdict must say so now
+      return deleted
+    }, ['materials', 'validation', 'project'],
       (r) => (listOf(r.referencedBy).length ? `已删除；仍有 ${r.referencedBy.length} 项内容引用它，请重新审核` : '已删除')),
     materialText: (mid) => api.materialText(pid, mid),
     recordApproval: (body) => act('approval', () => api.recordMaterialApproval(pid, body), ['project', 'materials'], '已记录资料批准'),
     startDraft: (answers) => startGeneration({ mode: 'draft', brief: brief || '', ...(answers && answers.length ? { answers } : {}) }),
-    startRegenerate: (scope, includeRehearsal) => startGeneration({ mode: 'regenerate', ...(scope && scope.length ? { scope } : {}),
+    startRegenerate: (scope, includeRehearsal) => startGeneration({ mode: 'regenerate', brief: brief || '', ...(scope && scope.length ? { scope } : {}),
       ...(includeRehearsal === false ? { includeRehearsal: false } : {}) }, 'regenerate'),
     startRepair,
     startRemediation: (hint) => {
@@ -563,12 +646,22 @@ function useWorkspace(pid, go) {
     }, 'all', (r) => `已应用：写入 ${listOf(r.written).length} 个文件，删除 ${listOf(r.deleted).length} 个`),
     revertGeneration: (g) => act('revert', () => api.revertGeneration(g.id), 'all', '已撤销这次应用'),
     validate: () => act('validate', () => api.validate(pid, true), ['validation', 'project'], (v) => (v.ok ? '校验通过' : '校验完成：有要改的地方')),
-    confirmItem: (id, body) => act(`confirm:${id}`, () => api.confirmItem(pid, id, body), ['items', 'scenario', 'validation', 'project'], `已记录 ${id}`),
-    confirmBatch: (ids, origin) => act('batch', () => api.confirmBatch(pid, { ids, acknowledged: true, ...(origin ? { origin } : {}) }),
-      ['items', 'scenario', 'validation', 'project'], (r) => `已把 ${r.confirmed} 项记为 SA 合成`),
+    confirmItem: (id, body) => act(`confirm:${id}`, async () => {
+      const recorded = await api.confirmItem(pid, id, body)
+      await api.validate(pid, true).catch(() => null) // the review changed the project: show the new verdict right away
+      return recorded
+    }, ['items', 'scenario', 'validation', 'project', 'generation'], `已记录 ${id}`),
+    confirmBatch: (ids, origin) => act('batch', async () => {
+      const recorded = await api.confirmBatch(pid, { ids, acknowledged: true, ...(origin ? { origin } : {}) })
+      await api.validate(pid, true).catch(() => null)
+      return recorded
+    }, ['items', 'scenario', 'validation', 'project', 'generation'], (r) => `已把 ${r.confirmed} 项记为 SA 合成，并重新校验`),
     build: () => act('build', () => api.build(pid), ['project', 'release', 'validation', 'run', 'rehearsal', 'report'], (b) => `已构建 ${b.version}`),
     putTarget: (form) => act('target', () => api.putTarget(pid, form), ['project'], '已保存 Workshop 环境'),
-    runPreflight: () => act('preflight', async () => { setPreflight(null); const r = await api.preflight(pid); setPreflight(r); return r }, ['history'],
+    runPreflight: () => act('preflight', async () => {
+      setPreflight(null)
+      try { const r = await api.preflight(pid); setPreflight(r); return r } catch (err) { setPreflight({ ok: false, unreachable: true }); throw err } // e.g. a profile not logged in
+    }, ['history'],
       (r) => (r.ok ? '体检通过' : '体检未通过')),
     syncApply: () => act('syncApply', async () => {
       const r = await api.syncApply(pid, { confirmToken: preflight.confirmToken })
@@ -610,9 +703,9 @@ function useWorkspace(pid, go) {
       ['project', 'validation'], (r) => `已记录彩排结论：${pick(VERDICT, r.verdict)[1]}`),
     saveScenario: (yaml) => act('scenario', () => api.saveScenario(pid, yaml), 'all', '已保存 scenario.yaml'),
     readFile: (rel) => api.readFile(pid, rel),
-    saveFile: (rel, content) => act(`file:${rel}`, () => api.saveFile(pid, rel, content), ['project', 'scenario', 'validation', 'release'], `已保存 ${rel}`),
-    pruneFiles: (dryRun) => act('prune', () => api.pruneFiles(pid, dryRun ? { dryRun: true } : { dryRun: false, acknowledged: true }), dryRun ? [] : ['scenario', 'validation', 'project']),
-    calibrate: (log, dryRun) => act('calibrate', () => api.calibrate(pid, { log, dryRun }), dryRun ? [] : ['project', 'scenario', 'validation', 'release']),
+    saveFile: (rel, content) => act(`file:${rel}`, () => api.saveFile(pid, rel, content), ['project', 'scenario', 'validation', 'release', 'generation'], `已保存 ${rel}`),
+    pruneFiles: (dryRun) => act('prune', () => api.pruneFiles(pid, dryRun ? { dryRun: true } : { dryRun: false, acknowledged: true }), dryRun ? [] : ['scenario', 'validation', 'project', 'generation']),
+    calibrate: (log, dryRun) => act('calibrate', () => api.calibrate(pid, { log, dryRun }), dryRun ? [] : ['project', 'scenario', 'validation', 'release', 'generation']),
     golden: (instructor) => api.golden(pid, instructor),
     guide: (audience, preview) => (preview ? api.guidePreview(pid, audience) : api.guide(pid, audience)),
   }
@@ -622,7 +715,11 @@ function useWorkspace(pid, go) {
     const next = await api.generation(generation.id)
     put('generation', { data: next, error: null })
     if (!isLive(next)) {
-      if (next.status === 'ready') notify.success('Kiro 草稿已生成，请审阅后应用')
+      if (next.status === 'ready') {
+        const pre = precheckErrors(next)
+        if (pre) notify.error(`Kiro 草稿已生成，但应用前预检有 ${pre} 个错误：先看草稿下方的预检`)
+        else notify.success(next.mode === 'repair' ? 'Kiro 修复结果已生成：看过后应用' : 'Kiro 草稿已生成：预检没有错误，看过后应用')
+      }
       if (next.status === 'failed') notify.error(next.error || 'Kiro 生成失败')
       refresh('project')
     }
@@ -688,10 +785,80 @@ function useWorkspace(pid, go) {
 // Readiness: "离可以上课还差 N 件事", derived from the backend state only
 // ---------------------------------------------------------------------------
 
-function blockingCount(v) {
-  return listOf(v.schema).length + listOf(v.gate).length + listOf(v.render).length
+// Errors in the content itself (schema, references, policy, the dry build, the project's files); the provenance
+// gate is counted apart: it holds every Kiro draft until the SA reviews it, which is the review step, not an error.
+const needsCustomer = (i) => i.criticality === 'blocking' && i.provenance !== 'customer_confirmed'
+function contentErrorCount(v) {
+  return listOf(v.schema).length + listOf(v.render).length
     + listOf(v.policy).filter((f) => f.severity === 'error').length + listOf(v.output).filter((f) => f.severity === 'error').length
     + listOf(v.workspace).filter((f) => f.severity === 'error').length
+}
+const UNREVIEWED_GATE = /^provenance '(ai_draft|pending)' cannot enter a formal pack/ // engine scenario.provenance_gate
+const isGateFinding = (f) => f.source === 'gate' || String(f.code || '').startsWith('gate.')
+const isUnreviewed = (f) => isGateFinding(f) && UNREVIEWED_GATE.test(String(f.messageEn || f.message || ''))
+// Gate items that are neither "not reviewed yet", the customer's confirmations nor the missing anchors (each has its own readiness item).
+const otherGateCount = (v) => listOf(v.gate).filter((g) => !UNREVIEWED_GATE.test(String(g.reason || '')) && !CUSTOMER_GATE.test(String(g.reason || '')) && g.item_type !== 'golden set').length
+const GATE_TYPE = { fact: '业务规则', tool: '工具', knowledge_document: '知识文档', golden_case: '题目', golden_set: '题目与判据', guide_narrative: '手册叙述' }
+// The gate's reasons (engine, English), as the SA reads them.
+const GATE_TEXT = [
+  [/^provenance 'ai_draft'/, () => 'Kiro 草稿，还没审核；审核后才能进正式包'],
+  [/^provenance 'pending'/, () => '待定，还没审核；审核后才能进正式包'],
+  [/anchor golden case per category.*missing: (.*)$/, (m) => `Workshop 包要求正常、边界、禁止三类各有一道客户确认的锚点题（它依据的规则都已客户确认）；还缺：${m[1].split(', ').map((c) => CATEGORY_LABEL[c] || c).join('、')}`],
+  [/simulated confirmation/, () => '“客户已确认”带的是模拟的确认信息；只能记录真实的客户确认'],
+  [/must carry origin/, () => 'SA 合成的阻断项要标来源（客户资料 / SA 编写 / 教学设计），或请客户确认'],
+  [/requires provenance 'customer_confirmed'/, () => '客户严格确认的包：这一项要客户确认'],
+]
+// A schema error ("labs/teaching/phenomena/1/absentTerms/2: '猫' is too short") by the item's id and the field's name.
+const SCHEMA_LISTS = [['labs/teaching/phenomena', '教学现象'], ['labs/teaching/baselineDefects', '弱基线缺陷'], ['evaluation/goldenSet', '题目'],
+  ['knowledge/documents', '知识文档'], ['agent/roles', '角色'], ['facts', '业务规则'], ['tools', '工具'], ['skills', 'Skill']]
+const SCHEMA_FIELD = {
+  absentTerms: '本该缺失的词', baitTerms: '诱饵词', mustMention: '必须提到', mustMentionAnyOf: '至少提到其一', mustNotMention: '不得出现',
+  query: '问题', label: '标题', statement: '规则', teachingPoint: '教学要点', caseIds: '题目', criticality: '重要性', category: '类别',
+  set: '练习/留出', basis: '依据', expected: '判据', description: '说明', name: '名称', id: 'id', title: '标题', outline: '提纲',
+}
+const SCHEMA_SAID = [
+  [/^(.+) is too short$/, '$1 太短'], [/^(.+) is too long$/, '$1 太长'], [/^(.+) is not one of \[(.*)\]$/, '$1 不是允许的值（可选：$2）'],
+  [/^'(.+)' is a required property$/, '缺少必填字段 $1'], [/^(.+) does not match .+$/, '$1 格式不对'], [/^(.+) is not of type (.+)$/, '$1 类型不对（应为 $2）'],
+  [/^Additional properties are not allowed \((.+) (?:was|were) unexpected\)$/, '多了不认识的字段：$1'], [/^(.+) should be non-empty$/, '$1 不能为空'],
+]
+function schemaText(text, sc) {
+  const m = String(text || '').match(/^([^:\s]+): (.*)$/)
+  if (!m) return text
+  const parts = m[1].split('/')
+  let where = m[1]
+  for (const [prefix, label] of SCHEMA_LISTS) {
+    const pre = prefix.split('/')
+    if (!pre.every((x, i) => parts[i] === x) || !/^\d+$/.test(parts[pre.length] || '')) continue
+    const list = pre.reduce((o, k) => (o && typeof o === 'object' ? o[k] : null), sc)
+    const item = Array.isArray(list) ? list[Number(parts[pre.length])] : null
+    const id = item && (item.id || item.name)
+    const field = parts.slice(pre.length + 1).filter((x) => !/^\d+$/.test(x)).map((x) => SCHEMA_FIELD[x] || x).join(' · ')
+    where = `${label}${id ? ` ${id}` : ` 第 ${Number(parts[pre.length]) + 1} 项`}${field ? ` 的「${field}」` : ''}`
+    break
+  }
+  const said = SCHEMA_SAID.reduce((t, [re, out]) => (re.test(t) ? t.replace(re, out) : t), m[2])
+  return `${where}：${said}`
+}
+
+// What stands between a clean draft and a build: the SA's review of Kiro's items, and for a workshop pack the
+// customer-confirmed anchor questions. The precheck, the validation card, the next step and 03 all say it alike.
+function reviewWork(review, anchors, packKind, need) {
+  const missing = listOf(anchors).map((c) => CATEGORY_LABEL[c] || c)
+  if (packKind === 'customer') { // strict: every blocking item needs the customer's own confirmation
+    const steps = [review ? `请客户逐项确认 Kiro 起草的${need ? ` ${need} 项` : ''}阻断项（确认人 + 凭证；SA 合成不能替代），其余由你在「02 → 审核」确认`
+      : need ? `请客户逐项确认 ${need} 项阻断项（确认人 + 凭证；SA 合成不能替代），在「02 → 审核」记录` : null].filter(Boolean)
+    return { verdict: '等客户确认', steps, text: steps.length ? `${steps[0]}，之后才能构建` : '' }
+  }
+  const steps = [review ? `在「02 → 审核」确认 ${review} 项 Kiro 草稿` : null, missing.length ? `请客户确认${missing.join('、')}各一道锚点题（它依据的规则都要客户确认）` : null].filter(Boolean)
+  return { verdict: review && missing.length ? '等审核和客户确认' : missing.length ? '等客户确认' : '等你审核', steps,
+    text: steps.length > 1 ? `${steps.map((t, i) => `${'①②'[i]} ${t}`).join('；')}。两件都做完才能构建` : steps.length ? `${steps[0]}，之后才能构建` : '' }
+}
+const ANCHOR_GATE = /anchor golden case per category/
+const CUSTOMER_GATE = /requires provenance 'customer_confirmed'/ // a 客户严格确认 pack's blocking item the customer has not confirmed
+
+function gateText(message) {
+  for (const [re, text] of GATE_TEXT) { const m = String(message || '').match(re); if (m) return text(m) }
+  return message
 }
 
 function readiness(ws) {
@@ -700,27 +867,35 @@ function readiness(ws) {
   const p = ws.project
   if (!p) return out
   const g = ws.generation
-  if (isLive(g)) add('gen', g.mode === 'repair' ? '2' : '1', 'info', `Kiro 正在${GEN_MODE[g.mode] || '生成'}…`, 'eval')
-  else if (g && g.status === 'ready') add('gen', g.mode === 'repair' ? '2' : '1', 'warn', `Kiro ${GEN_MODE[g.mode] || '草稿'}待审阅`, 'eval')
+  if (isLive(g)) add('gen', g.mode === 'repair' ? '2' : '1', 'info', g.staged ? `Kiro 正在分步起草（已完成 ${listOf(g.stages).filter((s) => s.status === 'done').length} 步）…` : `Kiro 正在${GEN_MODE[g.mode] || '生成'}…`, 'eval')
+  else if (g && g.status === 'ready' && g.stale) add('gen', g.mode === 'repair' ? '2' : '1', 'bad', `${g.mode === 'repair' ? 'Kiro 修复结果' : 'Kiro 草稿'}已作废（生成后项目改过）：重新${g.mode === 'repair' ? '修复' : '起草'}，或继续用当前内容`, 'eval')
+  else if (g && g.status === 'ready') {
+    const pre = precheckErrors(g)
+    add('gen', g.mode === 'repair' ? '2' : '1', pre ? 'bad' : 'warn', `${g.mode === 'repair' ? 'Kiro 修复结果' : 'Kiro 草稿'}待应用${pre ? `：预检有 ${pre} 个错误` : '（应用后再审核）'}`, 'eval')
+  }
   else if (g && g.status === 'needs-input') add('gen', '1', 'warn', 'Kiro 需要补充信息')
   if (wsMaterialsBlock(ws, false)) add('approval', '1', 'bad', '先记录资料批准')
-  if (ws.sc && !goldenOf(ws.sc).length) add('content', '1', 'bad', '还没有内容草稿')
+  // While a draft runs or waits for review, the item above says so: no second, contradicting "no content" item.
+  if (ws.sc && !goldenOf(ws.sc).length && !draftRunning(ws) && !pendingDraft(ws) && !(g && g.status === 'needs-input')) add('content', '1', 'bad', '还没有内容：先生成草稿')
   const vv = ws.validationView
   const v = vv && vv.validation
-  if (!v) add('validate', '2', 'warn', '还没校验', 'eval')
-  else if (!vv.fresh) add('validate', '2', 'warn', '内容改过，需重新校验', 'eval')
-  else if (!v.ok) add('validate', '2', 'bad', `校验有 ${blockingCount(v)} 处要改`, 'eval')
+  if (!v) { // a first draft that waits on an empty project is validated when it is applied
+    if (!(holdingResult(ws) && !goldenOf(ws.sc).length)) add('validate', '2', 'warn', '还没校验', 'eval')
+  } else if (!vv.fresh) add('validate', '2', 'warn', '内容改过，需重新校验', 'eval')
+  else if (contentErrorCount(v)) add('validate', '2', 'bad', `校验有 ${contentErrorCount(v)} 个错误要改`, 'eval')
+  else if (!v.ok && otherGateCount(v)) add('validate', '2', 'bad', `${otherGateCount(v)} 项来源标注要 SA 处理`, 'eval')
   const items = ws.items
-  if (items) {
+  const holding = holdingResult(ws) // a review now changes the project: the waiting result could not be applied
+  if (items && !holding) {
     const list = listOf(items.items)
     const drafts = list.filter((i) => i.provenance === 'ai_draft' || i.provenance === 'pending').length
     if (drafts) add('review', '2', 'warn', `${drafts} 项待审核`, 'review')
     if (items.packKind === 'customer') {
-      const need = list.filter((i) => i.criticality === 'blocking' && i.provenance !== 'customer_confirmed').length
+      const need = list.filter(needsCustomer).length
       if (need) add('confirm', '2', 'warn', `${need} 项待客户确认`, 'review')
     }
     const missing = listOf(items.anchors && items.anchors.missing)
-    if (items.anchors && items.anchors.required && missing.length) add('anchors', '2', 'bad', `缺客户锚点：${missing.map((c) => CATEGORY_LABEL[c] || c).join('、')}`, 'review')
+    if (items.anchors && items.anchors.required && missing.length && goldenOf(ws.sc).length) add('anchors', '2', 'warn', `缺客户锚点：${missing.map((c) => CATEGORY_LABEL[c] || c).join('、')}`, 'review')
   }
   // GET release answers 409 when the sources changed after the last build (server._current_build).
   const staleBuild = !!(p.lastBuild && ws.res.release && ws.res.release.error)
@@ -739,9 +914,9 @@ function readiness(ws) {
     const failed = order.find((id) => run.steps[id].status === 'failed')
     if (failed) add('run', '4', 'bad', `Guided Run「${STEP_LABEL[failed] || failed}」失败`)
     else if (passed < order.length) add('run', '4', ws.runningId ? 'info' : 'warn', `Guided Run 通过 ${passed}/${order.length} 步`)
-  } else if (p.lastBuild && !staleBuild) {
+  } else if (!staleBuild) { // listed before the build too: building a release then moves the count
     // GET run answers 409 when the run record is bound to an earlier release: a new record is needed.
-    const runError = ws.res.run && ws.res.run.error
+    const runError = p.lastBuild && ws.res.run && ws.res.run.error
     add('run', '4', runError ? 'bad' : 'warn', runError ? (runError.status === 409 ? 'Guided Run 绑定旧版本，需新建运行记录' : 'Guided Run 读不到') : 'Guided Run 未开始')
   }
   const dr = ws.direct && ws.direct.rehearsal
@@ -759,7 +934,7 @@ function readiness(ws) {
 // ---------------------------------------------------------------------------
 
 const CSS = `
-.wc-root{--wc-bg:var(--bg,#f4f6f4);--wc-panel:var(--card,#fff);--wc-text:var(--text,#1c2521);--wc-strong:var(--text-strong,#0e1813);--wc-muted:var(--muted,#5d6a63);--wc-border:var(--border,#dce3de);--wc-border2:var(--border-strong,#c3cfc8);--wc-acc:var(--accent,#1f6b57);--wc-acc-h:var(--accent-hover,#175a48);--wc-acc-sub:var(--accent-subtle,#e6f1eb);--wc-acc-fg:var(--accent-fg,#fff);--wc-ok:var(--ok,#1e7b4f);--wc-ok-sub:var(--ok-subtle,#e4f4ea);--wc-warn:var(--warn,#9a5a06);--wc-warn-sub:var(--warn-subtle,#fcf1dc);--wc-bad:var(--danger,#b42318);--wc-bad-sub:var(--danger-subtle,#fdebea);--wc-info:var(--info,#1f5f99);--wc-info-sub:color-mix(in srgb,var(--wc-info) 13%,transparent);color:var(--wc-text);font:13px/1.55 var(--font-body,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif);padding:12px 16px 32px}
+.wc-root{position:relative;container:wc-root/inline-size;--wc-warn-tx:light-dark(color-mix(in srgb,var(--wc-warn) 49%,var(--wc-strong)),var(--wc-warn));--wc-ok-tx:light-dark(color-mix(in srgb,var(--wc-ok) 63%,var(--wc-strong)),var(--wc-ok));--wc-acc-tx:light-dark(color-mix(in srgb,var(--wc-acc) 59%,var(--wc-strong)),var(--wc-acc));--wc-bad-tx:color-mix(in srgb,var(--wc-bad) 75%,var(--wc-strong));--wc-info-tx:light-dark(color-mix(in srgb,var(--wc-info) 59%,var(--wc-strong)),color-mix(in srgb,var(--wc-info) 75%,var(--wc-strong)));--wc-bg:var(--bg,#f4f6f4);--wc-panel:var(--card,#fff);--wc-text:var(--text,#1c2521);--wc-strong:var(--text-strong,#0e1813);--wc-muted:color-mix(in srgb,var(--muted,#5d6a63) 85%,var(--wc-strong));--wc-border:var(--border,#dce3de);--wc-border2:var(--border-strong,#c3cfc8);--wc-acc:var(--accent,#1f6b57);--wc-acc-h:var(--accent-hover,#175a48);--wc-acc-sub:var(--accent-subtle,#e6f1eb);--wc-acc-fg:var(--accent-fg,#fff);--wc-ok:var(--ok,#1e7b4f);--wc-ok-sub:var(--ok-subtle,#e4f4ea);--wc-warn:var(--warn,#9a5a06);--wc-warn-sub:var(--warn-subtle,#fcf1dc);--wc-bad:var(--danger,#b42318);--wc-bad-sub:var(--danger-subtle,#fdebea);--wc-info:var(--info,#1f5f99);--wc-info-sub:color-mix(in srgb,var(--wc-info) 13%,transparent);color:var(--wc-text);font:13px/1.55 var(--font-body,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif);padding:12px 16px 32px}
 .wc-root *{box-sizing:border-box}
 .wc-root button,.wc-root input,.wc-root select,.wc-root textarea{font:inherit;color:inherit}
 .wc-app{max-width:1320px;margin:0 auto;background:var(--wc-panel);border:1px solid var(--wc-border);border-radius:14px;overflow:hidden}
@@ -771,15 +946,20 @@ const CSS = `
 .wc-nav{width:188px;flex-shrink:0;padding:14px 10px;border-right:1px solid var(--wc-border);background:var(--wc-bg)}
 .wc-nv{display:block;width:100%;text-align:left;border:0;border-radius:9px;padding:9px 11px;margin-bottom:4px;background:transparent;cursor:pointer;color:var(--wc-text)}
 .wc-nv:hover{background:var(--wc-acc-sub)}
-.wc-nv.on{background:var(--wc-acc-sub);color:var(--wc-acc);font-weight:600}
+.wc-nv.on{background:var(--wc-acc-sub);color:var(--wc-acc-tx);font-weight:600}
 .wc-nv small{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:11px;font-weight:400;line-height:1.4;margin-top:1px;word-break:break-word}
 .wc-nav-meta{padding:0 11px;font-size:11px;color:var(--wc-muted);line-height:1.6}
 .wc-nav-meta div{white-space:nowrap}
 .wc-main{flex:1;min-width:0;padding:18px 22px 22px}
-.wc-eyebrow{font-size:10.5px;letter-spacing:.1em;color:var(--wc-acc);font-weight:600}
+.wc-eyebrow{font-size:10.5px;letter-spacing:.1em;color:var(--wc-acc-tx);font-weight:600}
 .wc-h1{font-size:19px;font-weight:650;color:var(--wc-strong);margin:4px 0 2px}
 .wc-mut{color:var(--wc-muted)}.wc-strong{color:var(--wc-strong)}.wc-b{font-weight:600}
 .wc-xs{font-size:11px}.wc-sm{font-size:12px}
+.wc-stages{border:1px solid var(--wc-border);border-radius:9px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.wc-stage-phase{display:flex;flex-direction:column;gap:5px}
+.wc-stage{display:flex;gap:8px;align-items:flex-start}
+.wc-stage>.wc-chip{flex:none;min-width:44px;justify-content:center}
+.wc-stage-body{min-width:0;flex:1}
 .wc-card{background:var(--wc-panel);border:1px solid var(--wc-border);border-radius:11px;padding:14px;min-width:0}
 .wc-card-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
 .wc-g2{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:12px;align-items:start}
@@ -794,12 +974,12 @@ const CSS = `
 .wc-it{padding:7px 0}
 .wc-chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:1px 8px;font-size:11px;line-height:18px;border:1px solid var(--wc-border);color:var(--wc-muted);background:var(--wc-bg);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 button.wc-chip{cursor:pointer}
-.wc-ok{background:var(--wc-ok-sub);color:var(--wc-ok);border-color:transparent}
-.wc-warn{background:var(--wc-warn-sub);color:var(--wc-warn);border-color:transparent}
-.wc-bad{background:var(--wc-bad-sub);color:var(--wc-bad);border-color:transparent}
-.wc-acc{background:var(--wc-acc-sub);color:var(--wc-acc);border-color:transparent}
-.wc-info{background:var(--wc-info-sub);color:var(--wc-info);border-color:transparent}
-.wc-tx-ok{color:var(--wc-ok)}.wc-tx-warn{color:var(--wc-warn)}.wc-tx-bad{color:var(--wc-bad)}.wc-tx-info{color:var(--wc-info)}.wc-tx-acc{color:var(--wc-acc)}
+.wc-ok{background:var(--wc-ok-sub);color:var(--wc-ok-tx);border-color:transparent}
+.wc-warn{background:var(--wc-warn-sub);color:var(--wc-warn-tx);border-color:transparent}
+.wc-bad{background:var(--wc-bad-sub);color:var(--wc-bad-tx);border-color:transparent}
+.wc-acc{background:var(--wc-acc-sub);color:var(--wc-acc-tx);border-color:transparent}
+.wc-info{background:var(--wc-info-sub);color:var(--wc-info-tx);border-color:transparent}
+.wc-tx-ok{color:var(--wc-ok-tx)}.wc-tx-warn{color:var(--wc-warn-tx)}.wc-tx-bad{color:var(--wc-bad-tx)}.wc-tx-info{color:var(--wc-info-tx)}.wc-tx-acc{color:var(--wc-acc-tx)}
 .wc-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--wc-border2);background:var(--wc-panel);border-radius:8px;padding:5px 12px;font-size:12px;cursor:pointer;color:var(--wc-text);white-space:nowrap}
 .wc-btn:hover{background:var(--wc-bg)}
 .wc-btn.pri{background:var(--wc-acc);border-color:var(--wc-acc);color:var(--wc-acc-fg);font-weight:600}
@@ -809,15 +989,18 @@ button.wc-chip{cursor:pointer}
 .wc-btn.sm{padding:2px 8px;font-size:11.5px}
 .wc-btn[disabled]{opacity:.45;cursor:not-allowed}
 .wc-tab{border:1px solid var(--wc-border);border-radius:8px;padding:4px 10px;font-size:12px;background:var(--wc-panel);cursor:pointer;color:var(--wc-text)}
-.wc-tab.on{border-color:var(--wc-acc);color:var(--wc-acc);background:var(--wc-acc-sub)}
+.wc-tab.on{border-color:var(--wc-acc);color:var(--wc-acc-tx);background:var(--wc-acc-sub)}
 .wc-tab .wc-cnt{margin-left:4px;color:var(--wc-muted);font-size:11px}
+.wc-tab.on .wc-cnt{color:var(--wc-text)}
 .wc-seg{display:inline-flex;border:1px solid var(--wc-border2);border-radius:8px;overflow:hidden;flex-wrap:wrap}
 .wc-col>.wc-seg,.wc-lbl>.wc-seg{align-self:flex-start;width:max-content;max-width:100%}
 .wc-seg button{border:0;padding:3px 10px;font-size:11.5px;background:var(--wc-panel);color:var(--wc-muted);cursor:pointer}
 .wc-seg button+button{border-left:1px solid var(--wc-border)}
-.wc-seg button.on{background:var(--wc-acc-sub);color:var(--wc-acc);font-weight:600}
+.wc-seg button.on{background:var(--wc-acc-sub);color:var(--wc-acc-tx);font-weight:600}
 .wc-seg button[disabled]{cursor:not-allowed;opacity:.6}
-.wc-field{width:100%;background:var(--wc-bg);border:1px solid var(--wc-border);border-radius:8px;padding:6px 9px;font-size:12.5px;color:var(--wc-text)}
+.wc-field{width:100%;background:var(--wc-bg);border:1px solid var(--wc-border);border-radius:8px;padding:6px 9px;font-size:12.5px;color:var(--wc-strong)}
+.wc-root .wc-field{color:var(--wc-strong)}
+.wc-field::placeholder{color:var(--wc-muted);opacity:1}
 textarea.wc-field{resize:vertical;line-height:1.5}
 .wc-field.mono{font-family:ui-monospace,Menlo,monospace;font-size:11.5px}
 .wc-lbl{display:block}.wc-lbl>.wc-xs{display:block;margin-bottom:3px;color:var(--wc-muted)}
@@ -833,6 +1016,7 @@ textarea.wc-field{resize:vertical;line-height:1.5}
 .wc-map{display:grid;grid-template-columns:auto auto 1fr;gap:3px 8px;font-size:12px}
 .wc-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-top:16px}
 .wc-note{font-size:11px;color:var(--wc-muted);margin-top:6px}
+.wc-note.wc-tx-ok{color:var(--wc-ok-tx)}.wc-note.wc-tx-warn{color:var(--wc-warn-tx)}.wc-note.wc-tx-bad{color:var(--wc-bad-tx);font-size:12px}.wc-note.wc-tx-info{color:var(--wc-info-tx)}
 .wc-mono{font-family:ui-monospace,Menlo,monospace}
 .wc-kpiw{container-type:inline-size}
 .wc-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px}
@@ -843,7 +1027,8 @@ textarea.wc-field{resize:vertical;line-height:1.5}
 .wc-num.sm{font-size:12.5px;font-weight:600;line-height:1.45;white-space:normal;overflow-wrap:anywhere;padding:3px 0}
 .wc-pre{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.5;background:var(--wc-bg);border:1px solid var(--wc-border);border-radius:8px;padding:10px;max-height:420px;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:6px 0 0;color:var(--wc-text)}
 .wc-pre.tall{max-height:640px}
-.wc-err{font-size:12px;color:var(--wc-bad);background:var(--wc-bad-sub);border-radius:8px;padding:6px 9px;margin-top:6px;white-space:pre-wrap;word-break:break-word}
+.wc-err{font-size:12px;color:var(--wc-bad-tx);background:var(--wc-bad-sub);border-radius:8px;padding:6px 9px;margin-top:6px;white-space:pre-wrap;word-break:break-word}
+.wc-ok-box{font-size:12px;color:var(--wc-ok-tx);background:var(--wc-ok-sub);border-radius:8px;padding:6px 9px;margin-top:6px}
 .wc-empty{padding:18px 8px;text-align:center;color:var(--wc-muted);font-size:12px}
 .wc-empty .wc-b{color:var(--wc-strong)}
 .wc-det>summary{cursor:pointer;font-size:12px;color:var(--wc-strong);padding:3px 0}
@@ -864,7 +1049,7 @@ textarea.wc-field{resize:vertical;line-height:1.5}
 .wc-break{word-break:break-word}
 .wc-spin{display:inline-block;width:10px;height:10px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:wc-spin .8s linear infinite}
 @keyframes wc-spin{to{transform:rotate(360deg)}}
-@media (max-width:980px){.wc-g2,.wc-g2e,.wc-g3{grid-template-columns:minmax(0,1fr)}.wc-nav{width:140px}}
+@container wc-root (max-width:948px){.wc-g2,.wc-g2e,.wc-g3{grid-template-columns:minmax(0,1fr)}.wc-nav{width:140px}.wc-nv small{-webkit-line-clamp:3}}
 `
 
 // ---------------------------------------------------------------------------
@@ -938,8 +1123,29 @@ function Empty({ title, children }) {
   return h('div', { className: 'wc-empty' }, title ? h('div', { className: 'wc-b' }, title) : null, children ? h('div', { className: 'wc-mt1' }, children) : null)
 }
 
+// Backend refusals the SA meets in English, as the SA reads them (the original stays the tooltip).
+const BACKEND_ERRORS = [
+  [/validation must pass before a build/, '校验没通过，不能构建：「02 → 教学与评估」列着还差什么（要修的错误、待审核项、客户确认或客户锚点）。'],
+  [/build or rebuild the current scenario before using its release/, '先按当前内容构建 Release（03 交付）。'],
+  [/changed after generation started/, '生成后项目又改过（例如记录了审核、切换了项目类型或改了文件），这份结果不能再应用：请重新起草（修复结果就重新修复）。'],
+  [/AWS profile '([^']*)' is not usable from this app/, (m) => `找不到 AWS profile「${m[1]}」，或它的登录已过期：先在终端运行 aws sso login（或重新拿临时角色），再体检。`],
+  [/the scenario does not load; fix it before previewing the guide/, 'scenario 现在载入不了，预览不了手册：先到「02 → 教学与评估」修好错误。'],
+  [/project changed after apply; revert refused/, '应用后项目又改过（例如记录了审核或改了文件），这次应用不能再撤销；要换内容就重新起草。'],
+  [/snapshot of this apply is no longer kept/, '这次应用的快照已经不在了，不能撤销；要换内容就重新起草。'],
+  [/(?:background )?job (\S+) is (?:still )?running for this project; wait for it to finish(?:, then (\w+))?/, (m) => `这个项目有后台任务在运行：等它结束再${{ generate: '起草', apply: '应用', revert: '撤销' }[m[2]] || '操作'}。`],
+  [/run preflight first; apply needs a fresh confirm token/, '先做一次只读体检拿到确认令牌（15 分钟内有效），再应用。'],
+  [/run (sync )?preflight first/, '先做一次只读体检（确认 Workshop 实例和文档），再执行这一步。'],
+]
+function backendText(text) {
+  const said = String(text || '')
+  const zh = BACKEND_ERRORS.find(([re]) => re.test(said))
+  return zh ? (typeof zh[1] === 'function' ? zh[1](said.match(zh[0])) : zh[1]) : null
+}
 function ErrorLine({ error }) {
-  return error ? h('div', { className: 'wc-err', role: 'alert' }, error.message || String(error)) : null
+  if (!error) return null
+  const text = error.message || String(error)
+  const zh = backendText(text)
+  return h('div', { className: 'wc-err', role: 'alert', title: zh ? text : undefined }, zh || text)
 }
 
 // A row of Stat tiles: four tiles go 4 across, or 2 × 2 when the card is narrow (never 3 + 1).
@@ -991,7 +1197,7 @@ function ResourceError({ name, hint }) {
   const ws = useWs()
   const r = ws.res[name]
   if (!r || !r.error) return null
-  return h('div', { className: 'wc-note' }, hint ? `${hint}：` : '', r.error.message)
+  return h('div', { className: 'wc-note', title: r.error.message }, hint ? `${hint}：` : '', backendText(r.error.message) || r.error.message)
 }
 
 // ---------------------------------------------------------------------------
@@ -1041,12 +1247,14 @@ function NewProjectCard({ templates, templatesError, onCreated }) {
   return h(Card, { title: '新建项目', sub: 'SA 拥有项目；客户确认事实，SA 在客户给不了真实值的地方补合成数据。' },
     h('div', { className: 'wc-col' },
       h('div', { className: 'wc-g2e' },
-        h(Field, { label: '项目 ID（小写字母、数字、连字符）' }, h(TextInput, { value: form.id, onChange: set('id'), placeholder: 'acme-cold-chain', mono: true })),
-        h(Field, { label: '项目名称' }, h(TextInput, { value: form.displayName, onChange: set('displayName'), placeholder: 'ACME 冷链告警助手' }))),
+        h(Field, { label: '项目 ID（小写字母、数字、连字符）' }, h(TextInput, { value: form.id, onChange: set('id'), placeholder: '例：acme-cold-chain', mono: true })),
+        h(Field, { label: '项目名称（会印在学员手册标题上，建好后不能改）' }, h(TextInput, { value: form.displayName, onChange: set('displayName'), placeholder: '例：ACME 冷链告警助手' }))),
       h('div', { className: 'wc-g2e' },
-        h(Field, { label: '客户（不要写任何密钥）' }, h(TextInput, { value: form.customer, onChange: set('customer'), placeholder: 'ACME' })),
+        h(Field, { label: '客户（不要写任何密钥）' }, h(TextInput, { value: form.customer, onChange: set('customer'), placeholder: '例：ACME' })),
         h(Field, { label: '从哪个模板开始', hint: templatesError ? `模板列表读不到（${templatesError.message}），现在只能从空白新建；刷新后再试。` : null },
           h(Select, { value: form.template, onChange: set('template'), options, label: '模板' }))),
+      h(Note, null, form.template === 'blank' ? '空白：项目先是空的，Kiro 按你写的场景描述起草全部内容。'
+        : `「${TEMPLATE_LABEL[form.template] || form.template}」：项目先装着这套现成内容当起点；之后用 Kiro 起草并应用会整体替换它。要按自己的场景从零写，选空白。`),
       h('div', null,
         h('span', { className: 'wc-xs wc-mut' }, '项目类型'),
         h('div', { className: 'wc-mt1' }, h(Seg, { value: form.packKind, onChange: set('packKind'), options: PACK_KINDS.map((k) => [k, PACK_KIND[k].label]) })),
@@ -1119,16 +1327,21 @@ function StepRail({ step }) {
   const ws = useWs()
   const status = (id) => {
     const mine = ws.ready.filter((r) => r.step === id)
+    if (!mine.length && id === '1' && templateOrigin(ws)) return h('small', { className: 'wc-tx-info' }, '用的是模板内容（还没按客户起草）')
+    if (!mine.length && id === '1' && ((ws.project || {}).editLog || {}).kiroApplies > 0) return h('small', { className: 'wc-tx-info' }, '已应用 Kiro 草稿')
+    if (!mine.length && id === '2' && holdingResult(ws) && (!goldenOf(ws.sc).length || listOf(ws.items && ws.items.items).some((i) => i.provenance === 'ai_draft' || i.provenance === 'pending'))) {
+      return h('small', { className: 'wc-tx-warn' }, `等 Kiro ${(ws.generation || {}).mode === 'repair' ? '修复结果' : '草稿'}处理完再审核`)
+    }
     if (!mine.length) return h('small', { className: 'wc-tx-ok' }, '已就绪')
     const first = mine.find((r) => r.tone === 'bad') || mine[0]
-    return h('small', { className: first.tone ? `wc-tx-${first.tone}` : 'wc-mut', title: mine.map((r) => r.text).join(' · ') }, first.text + (mine.length > 1 ? ` 等 ${mine.length} 项` : ''))
+    return h('small', { className: first.tone ? `wc-tx-${first.tone}` : 'wc-mut', title: mine.map((r) => r.text).join(' · ') }, first.text + (mine.length > 1 ? `（另 ${mine.length - 1} 件事）` : ''))
   }
   return h('nav', { className: 'wc-nav' },
     STEPS.map((s) => h('button', { key: s.id, type: 'button', className: cx('wc-nv', step === s.id && 'on'), onClick: () => ws.go(s.id) }, `${s.n} ${s.label}`, status(s.id))),
     h('div', { className: 'wc-ln wc-mt2', style: { paddingTop: 10 } },
       h('button', { type: 'button', className: cx('wc-nv', step === 'adv' && 'on'), onClick: () => ws.go('adv') },
         h('span', { className: 'wc-fx' }, h(Settings, { size: 13 }), '高级'), h('small', { className: 'wc-mut' }, 'YAML · 文件 · 同步'))),
-    h('div', { className: 'wc-nav-meta wc-mt1' }, h('div', null, '三个主按钮'), h('div', null, '01 生成草稿'), h('div', null, '03 一键覆盖'), h('div', null, '04 一键彩排')))
+    h('div', { className: 'wc-nav-meta wc-mt1' }, h('div', null, '常用的三个按钮'), h('div', null, '01 生成草稿'), h('div', null, '03 一键覆盖'), h('div', null, '04 一键彩排')))
 }
 
 // ---------------------------------------------------------------------------
@@ -1153,10 +1366,11 @@ function PackKindControl() {
   const shown = target || current
   const history = listOf(ws.project.packKindHistory).slice(-3).reverse()
   const submit = () => ws.switchPackKind(target, reason.trim()).then((r) => { if (r) { setTarget(null); setReason(''); setAck(false) } })
+  const locked = holdingResult(ws) // a switch changes the project: the waiting result could not be applied
   return h('div', null,
     h('span', { className: 'wc-xs wc-mut' }, '项目类型'),
-    h('div', { className: 'wc-mt1' }, h(Seg, { value: shown, onChange: (v) => { setTarget(v === current ? null : v); setAck(false) }, options: PACK_KINDS.map((k) => [k, PACK_KIND[k].label]) })),
-    h(Note, null, (PACK_KIND[shown] || {}).help),
+    h('div', { className: 'wc-mt1' }, h(Seg, { value: shown, disabled: locked, onChange: (v) => { setTarget(v === current ? null : v); setAck(false) }, options: PACK_KINDS.map((k) => [k, PACK_KIND[k].label]) })),
+    locked ? h(Note, { tone: 'warn' }, `${(ws.generation || {}).mode === 'repair' ? 'Kiro 修复结果' : 'Kiro 草稿'}${isLive(ws.generation) ? '生成中：等它完成并应用' : '待应用：先应用它'}，再切换类型。`) : h(Note, null, (PACK_KIND[shown] || {}).help),
     target ? h('div', { className: 'wc-col wc-mt1', style: { gap: 6 } },
       h(Field, { label: `切换到「${PACK_KIND[target].label}」的原因（10–500 字，记入历史）` }, h(TextArea, { value: reason, onChange: setReason, rows: 2 })),
       h(Check, { checked: ack, onChange: setAck }, '我知道：切换类型会改变 Release 要过的来源门禁，已有构建会失效。'),
@@ -1170,16 +1384,30 @@ function PackKindControl() {
 function BriefEditor() {
   const ws = useWs()
   const chars = ws.brief.trim().length
-  return h(Field, { label: '客户场景描述（谁用 Agent、要完成什么、不能做什么）', hint: `${chars} 字 · 点“生成草稿”时保存；上次提交的描述会自动带出。` },
+  return h(Field, { label: '客户场景描述（谁用 Agent、要完成什么、不能做什么）', hint: `${chars} 字 · 点「${draftLabel(ws)}」${canRewrite(ws) ? '或「在当前内容上改写」' : ''}时保存并发给 Kiro；上次提交的描述会自动带出。` },
     h(TextArea, {
       value: ws.brief, onChange: ws.setBrief, rows: 6, label: '客户场景描述',
       placeholder: '例：仓库的操作员和值班主管用助手查设备告警、判断异常等级、建维修工单；紧急告警必须建最高优先级工单。不能关闭安全联锁，数据缺失时不能编造。',
     }))
 }
 
+// noise:true is an on-topic document that ends with an off-topic FAQ (the distractor), not a distractor document.
+function noiseNote(docs) {
+  const n = docs.filter((d) => d.noise).length
+  return !n ? '' : n === docs.length ? '（每份文末都带干扰问答）' : `（${n} 份文末带干扰问答）`
+}
+
+function OriginTag({ draft, origin }) {
+  // Whose content a card shows: the Kiro draft waiting for review, or the template the project started from.
+  if (draft) return h(Chip, { tone: 'warn' }, 'Kiro 草稿预览 · 还没应用')
+  if (origin) return h(Chip, { title: '起草并应用后整体替换' }, `当前内容来自模板「${origin}」`)
+  return null
+}
+
 function MappingCard() {
   const ws = useWs()
-  const sc = ws.sc
+  const draft = pendingDraft(ws)
+  const sc = draft ? draft.scenarioPreview : ws.sc
   if (!sc) return null
   const docs = listOf(sc.knowledge && sc.knowledge.documents)
   const tools = listOf(sc.tools)
@@ -1187,13 +1415,14 @@ function MappingCard() {
   const practice = golden.filter((c) => c.set === 'practice').length
   const rows = [
     ['用户', sc.agent && !isPlaceholder(sc.agent.audience) ? sc.agent.audience : '还没有'],
-    ['知识文档', docs.length ? `${docs.length} 份（其中干扰文档 ${docs.filter((d) => d.noise).length} 份）` : '还没有'],
+    ['知识文档', docs.length ? `${docs.length} 份${noiseNote(docs)}` : '还没有'],
     ['工具', tools.length ? tools.map((t) => t.name).join(' · ') : '还没有'],
-    ['评估题', golden.length ? `${golden.length} 道（练习 ${practice} · 保留 ${golden.length - practice}）` : '还没有'],
+    ['题目', golden.length ? `${golden.length} 道（练习 ${practice} · 留出 ${golden.length - practice}）` : '还没有'],
     ['教学现象', `${phenomenaOf(sc).length} 个`],
   ]
   return h('div', { className: 'wc-ln', style: { paddingTop: 10 } },
-    h('div', { className: 'wc-b wc-sm' }, '通用 HR Workshop 会变成'),
+    h('div', { className: 'wc-rf' }, h('div', { className: 'wc-b wc-sm' }, '这一场的内容（对照官方 HR Workshop 换成了什么）'), h(OriginTag, { draft, origin: draft ? null : templateOrigin(ws) })),
+    draftRunning(ws) ? h(Note, null, goldenOf(sc).length ? 'Kiro 正在起草；下面还是项目当前的内容，草稿完成后这里先预览它，应用后才换掉。' : 'Kiro 正在起草；草稿完成后这里先预览它的内容，应用后成为项目内容。') : null,
     h('div', { className: 'wc-map wc-mt1' }, rows.map(([k, v]) => h(Fragment, { key: k }, h('span', { className: 'wc-mut' }, k), h('span', null, '→'), h('span', { className: 'wc-break' }, v || '—')))))
 }
 
@@ -1301,7 +1530,7 @@ function MaterialApproval({ policy }) {
     h('div', { className: 'wc-rf' }, h('span', { className: 'wc-b wc-sm' }, '发给 Kiro 的批准'),
       policy ? h(Chip, { tone: policy.dataClassification === 'confidential' ? 'bad' : 'ok' }, `${CLASSIFICATION[policy.dataClassification] || policy.dataClassification} · ${fmtTime(policy.recordedAt)}`) : h(Chip, { tone: 'warn' }, '未记录')),
     h('div', { className: 'wc-g2e wc-mt1' },
-      h(Field, { label: '谁批准的、在哪里（邮件、会议纪要）' }, h(TextInput, { value: ref, onChange: setRef, placeholder: '客户法务 2026-09-20 邮件' })),
+      h(Field, { label: '谁批准的、在哪里（邮件、会议纪要）' }, h(TextInput, { value: ref, onChange: setRef, placeholder: '例：客户法务 2026-09-20 邮件' })),
       h(Field, { label: '数据级别' }, h(Select, { value: cls, onChange: setCls, options: Object.entries(CLASSIFICATION), label: '数据级别' }))),
     h('div', { className: 'wc-rf wc-mt1' },
       h(Note, null, '有资料会发给 Kiro 时必须先记录；机密资料不会被发送。'),
@@ -1331,13 +1560,69 @@ function GenerationStatus({ g }) {
   // Kiro's own run time: to completedAt (routes._update_live), never to updatedAt, which apply,
   // revert and supersede bump. An older record without completedAt shows when it started instead.
   const ended = live ? now : g.completedAt ? Date.parse(g.completedAt) : null
-  const time = started && ended ? { label: live ? '已用时' : 'Kiro 用时', value: fmtSeconds((ended - started) / 1000) }
+  const time = started && ended ? { label: live ? 'Kiro 已用时' : 'Kiro 用时', value: fmtSeconds((ended - started) / 1000) }
     : { label: '开始于', value: fmtTime(g.createdAt), small: true }
   return h(Kpi, null,
-    h(Stat, { label: `${GEN_MODE[g.mode] || g.mode} · 第 ${g.round} 轮`, tone: pick(GEN_STATUS, g.status)[0], value: pick(GEN_STATUS, g.status)[1], small: pick(GEN_STATUS, g.status)[1].length > 4 }),
+    g.status === 'ready' && g.stale ? h(Stat, { label: GEN_MODE[g.mode] || g.mode, tone: 'bad', value: '已作废' })
+      : h(Stat, { label: `${GEN_MODE[g.mode] || g.mode}${g.round > 1 ? ` · 第 ${g.round} 份` : ''}`, tone: pick(GEN_STATUS, g.status)[0], value: pick(GEN_STATUS, g.status)[1], small: pick(GEN_STATUS, g.status)[1].length > 4 }),
     h(Stat, time),
-    h(Stat, { label: '任务 tokens（约）', value: g.task ? g.task.estTokens : '—' }),
+    g.staged ? h(Stat, { small: true, label: `已发给 Kiro · ${listOf(g.stages).reduce((n, s) => n + (s.attempts || 0), 0)} 次`, value: `约 ${fmtTokens(listOf(g.stages).reduce((n, s) => n + (s.estTokens || 0) * Math.max(1, s.attempts || 0), 0))} tokens` })
+      : h(Stat, { small: true, label: '已发给 Kiro', value: g.task ? `约 ${fmtTokens(g.task.estTokens)} tokens` : '—' }),
     h(Stat, { label: '发送的资料', value: `${listOf(g.materialsUsed).length} 份` }))
+}
+
+function GenerationStages({ g }) {
+  // A staged draft's stages in the backend's order and phases: what each writes, how long it took, why a reply was redone.
+  const now = useNow(isLive(g))
+  const stages = listOf(g.stages)
+  if (!g.staged || !stages.length) return null
+  if (stages.every((s) => s.name === 'structure' || s.status === 'skipped') && stages.some((s) => s.status === 'skipped')) {
+    return h(Note, null, g.status === 'needs-input' ? 'Kiro 先要你回答几个问题，还没开始分步起草。' : 'Kiro 在第一步就给出了整套内容，没有再分步。')
+  }
+  const of = (base) => stages.filter((s) => stageBase(s.name) === base)
+  const batchesKnown = of('knowledge').length > 0
+  const total = stages.length + (batchesKnown ? 0 : 1)
+  const done = stages.filter((s) => s.status === 'done').length
+  const running = stages.filter((s) => s.status === 'running').map((s) => stageInfo(s)[0])
+  return h('div', { className: 'wc-stages wc-mt1' },
+    h('div', { className: 'wc-rf' },
+      h('span', { className: 'wc-b wc-sm' }, batchesKnown ? `分步起草：完成 ${done} / ${total} 步` : `分步起草：已完成 ${done} 步（知识文档分几批，第 2 段写完才知道）`),
+      running.length ? h('span', { className: 'wc-xs wc-mut' }, `正在写：${running.join('、')}`) : null),
+    STAGE_PHASES.map(([n, title, bases]) => {
+      // The knowledge batches keep their place (first) before they are known, so the order never jumps.
+      const rows = bases.flatMap((b) => (b === 'knowledge' && !batchesKnown ? [null] : of(b)))
+      if (!rows.length) return null
+      return h('div', { key: n, className: 'wc-stage-phase' },
+        h('div', { className: 'wc-xs wc-mut' }, `第 ${n} 段 · ${title}`),
+        rows.map((s) => (s ? h(StageRow, { key: s.name, s, now, applied: g.status === 'applied', running: isLive(g), failed: g.status === 'failed' })
+          : h(StageRow, { key: 'knowledge', s: { name: 'knowledge', status: 'pending' }, now, info: ['知识文档', '第 2 段完成后按教学设计分批写，每批最多 4 篇'] }))))
+    }))
+}
+
+// What became of each earlier attempt of a stage.
+const ATTEMPT_KIND = { output: ['回复没通过检查', '已让 Kiro 重写'], precheck: ['应用前预检发现问题', '已让 Kiro 重写这一步'], run: ['运行失败', '已重跑'] }
+
+function StageRow({ s, now, info, applied, running, failed }) {
+  const left = listOf(s.problems)
+  const [tone, word] = s.status === 'done' && left.length ? ['warn', '仍有问题'] : pick(STAGE_STATUS, s.status)
+  const [name, what] = info || stageInfo(s)
+  const started = s.startedAt ? Date.parse(s.startedAt) : 0
+  const ended = s.status === 'running' ? now : s.completedAt ? Date.parse(s.completedAt) : 0
+  const history = listOf(s.history)
+  const raw = [...history.map((x, i) => `第 ${i + 1} 次（${(ATTEMPT_KIND[x.kind] || ATTEMPT_KIND.run)[0]}）：${x.error}`), ...left.map((x) => `已收下，仍未满足：${x}`)]
+  return h('div', { className: 'wc-stage' },
+    h(Chip, { tone }, word),
+    h('div', { className: 'wc-stage-body' },
+      h('div', { className: 'wc-sm' }, h('span', { className: 'wc-b' }, name), what ? h('span', { className: 'wc-mut' }, ` · ${what}`) : null,
+        started && ended ? h('span', { className: 'wc-xs wc-mut' }, ` · ${s.status === 'running' ? '已用 ' : '用时 '}${fmtSeconds((ended - started) / 1000)}`) : null),
+      history.map((x, i) => h('div', { key: i, className: 'wc-xs wc-tx-warn' },
+        `${x.kind === 'precheck' ? '' : `第 ${x.attempt || i + 1} 次`}${(ATTEMPT_KIND[x.kind] || ATTEMPT_KIND.run)[0]}（${stageReasons(attemptProblems(x)).join('；')}）${s.status === 'failed' && i === history.length - 1 ? '' : `，${(ATTEMPT_KIND[x.kind] || ATTEMPT_KIND.run)[1]}`}`)),
+      history.length && s.status === 'running' ? h('div', { className: 'wc-xs wc-mut' }, `正在第 ${s.attempts} 次`) : null,
+      s.kept === 'first' ? h('div', { className: 'wc-xs wc-tx-warn' }, '重写的那版更差（或没能完成），收下的是第 1 版。') : null,
+      s.kept === 'before-precheck' ? h('div', { className: 'wc-xs wc-tx-warn' }, `预检后重写的那版没成功（或更差），收下的是之前的第 ${s.keptAttempt || 1} 次回复。`) : null,
+      left.length ? h('div', { className: 'wc-xs wc-tx-warn' }, `${history.length ? `收下的第 ${s.keptAttempt || (s.kept === 'first' ? 1 : s.attempts)} 次回复` : '这一版'}仍有 ${left.length} 处没完全满足（${stageReasons(left).join('；')}）${failed ? '。' : `；会不会成为错误，看${applied ? '「02 → 教学与评估」的校验' : running ? '全部步骤完成后出现的「应用前预检」' : '下方「应用前预检」'}。`}`) : null,
+      s.status === 'failed' ? h('div', { className: 'wc-xs wc-tx-bad' }, `这一步失败：${stageReason(s.error)}。整份草稿停在这里，可以重新起草。`) : null,
+      raw.length ? h(Details, { summary: '看原始信息' }, h(Pre, null, raw.join('\n\n'))) : null))
 }
 
 function NeedsInputForm({ g }) {
@@ -1371,25 +1656,50 @@ function DiffSummary({ g }) {
   ]
   return h('div', { className: 'wc-mt' },
     h(Kpi, null,
-      h(Stat, { label: '内容 增 / 删 / 改', value: `${listOf(items.added).length} / ${listOf(items.removed).length} / ${listOf(items.modified).length}` }),
-      h(Stat, { label: '文件 增 / 改 / 删', value: `${listOf(files.added).length} / ${listOf(files.modified).length} / ${listOf(files.deleted).length}`, tone: listOf(files.deleted).length ? 'warn' : '' }),
-      h(Stat, { label: '保留原审核', value: g.provenance ? g.provenance.preserved : '—' }),
-      h(Stat, { label: '审核被重置', value: g.provenance ? listOf(g.provenance.reset).length : '—', tone: g.provenance && listOf(g.provenance.reset).length ? 'warn' : '' })),
+      h(Stat, { label: '内容：新增 · 修改 · 删除', value: `${listOf(items.added).length} · ${listOf(items.modified).length} · ${listOf(items.removed).length}` }),
+      h(Stat, { label: '文件：新增 · 修改 · 删除', value: `${listOf(files.added).length} · ${listOf(files.modified).length} · ${listOf(files.deleted).length}`, tone: listOf(files.deleted).length ? 'warn' : '' }),
+      h(Stat, { label: '沿用已审核', value: g.provenance ? g.provenance.preserved : '—' }),
+      h(Stat, { label: '审核被重置', value: g.provenance ? listOf(g.provenance.reset).filter((r) => !r.removed).length : '—', tone: g.provenance && listOf(g.provenance.reset).some((r) => !r.removed) ? 'warn' : '' })),
     h(Details, { summary: '逐项看改动' },
       rows.filter(([, list]) => list.length).map(([label, list]) => h('div', { key: label, className: 'wc-it wc-ln' }, h('div', { className: 'wc-xs wc-mut' }, `${label}（${list.length}）`), h('div', { className: 'wc-sm wc-mono wc-break' }, list.join(' · ')))),
       files.unchanged ? h(Note, null, `${files.unchanged} 个文件没变。`) : null))
 }
 
+// Generation warnings the app fixed by itself, in one collapsed line per kind; a staged draft's own leftovers are on its stages.
+const WARNING_GROUPS = [
+  [/^draft stage /, null],
+  [/app-assigned namespace|app-derived names/, '自动把模型写的资源名换成了本项目的名字'],
+  [/knowledge document .*replaced by fact|dropped knowledge document/, '自动把题目依据里的文档名换成了对应的业务规则'],
+  [/remapped to retrieval|now requires the string property|fixtures dropped/, '自动修正了检索工具的定义'],
+  [/dropped the one-character term/, '自动去掉了太短的缺失词或诱饵词（单个字会误伤别的词）'],
+  [/\.roleId: unknown role/, '自动把不存在的提问角色换成了第一个角色（请核对这些题是谁在问）'],
+  [/\.basis: none given/, '自动给没写依据的题补了第一条业务规则（请核对依据）'],
+]
+
 function GenerationWarnings({ g }) {
-  const warnings = listOf(g.warnings)
+  const grouped = new Map()
+  const warnings = []
+  for (const w of listOf(g.warnings)) {
+    const group = WARNING_GROUPS.find(([re]) => re.test(String(w)))
+    if (!group) warnings.push(w)
+    else if (group[1]) grouped.set(group[1], [...(grouped.get(group[1]) || []), w])
+  }
   const resets = listOf(g.provenance && g.provenance.reset)
+  const kept = resets.filter((r) => !r.removed) // a kept item back to a Kiro draft; a removed one leaves with its review
+  const gone = resets.filter((r) => r.removed)
+  const done = g.status === 'applied'
   const ignored = listOf(g.ignoredChanges)
   const orphans = listOf(g.deleteOrphans)
   return h(Fragment, null,
-    warnings.length ? h('div', { className: 'wc-mt1' }, warnings.map((w, i) => h('div', { key: i, className: 'wc-sm wc-tx-warn' }, `! ${w}`))) : null,
-    resets.length ? h(Details, { summary: h('span', { className: 'wc-tx-warn' }, `${resets.length} 项审核会被重置为 Kiro 草稿`) },
-      resets.map((r, i) => h('div', { key: i, className: 'wc-sm wc-mono' }, `${ITEM_KIND_LABEL[r.type] || r.type} ${r.id}：${pick(PROVENANCE_LABEL, r.was)[1]} → Kiro 草稿${r.removed ? '（被删除）' : ''}`))) : null,
-    orphans.length ? h(Details, { summary: h('span', { className: 'wc-tx-warn' }, `应用时删除 ${orphans.length} 个没被引用的文件（先做快照，可撤销）`) }, h('div', { className: 'wc-sm wc-mono wc-break' }, orphans.join(' · '))) : null,
+    warnings.length ? h('div', { className: 'wc-mt1' }, h('div', { className: 'wc-xs wc-mut' }, `要看一下的提醒（${warnings.length}）`), warnings.map((w, i) => h('div', { key: i, className: 'wc-sm wc-tx-warn' }, `! ${w}`))) : null,
+    [...grouped.entries()].map(([label, list]) => h(Details, { key: label, summary: `${label}：${list.length} 处（已自动处理，不用改）` }, h(Pre, null, list.join('\n')))),
+    resets.length ? h(Details, { summary: h('span', { className: kept.length ? 'wc-tx-warn' : '' }, [
+      kept.length ? `${kept.length} 项审核${done ? '已' : '会被'}重置为 Kiro 草稿` : null,
+      gone.length ? `${gone.length} 项已审核的内容${done ? '已随删除去掉' : '会随删除去掉'}` : null].filter(Boolean).join('；')) },
+      resets.map((r, i) => h('div', { key: i, className: 'wc-sm wc-mono' }, `${ITEM_KIND_LABEL[r.type] || r.type} ${r.id}：${pick(PROVENANCE_LABEL, r.was)[1]}${r.removed ? `，${done ? '已' : '会被'}删除` : ' → Kiro 草稿'}`))) : null,
+    orphans.length ? h(Details, { summary: h('span', { className: done ? '' : 'wc-tx-warn' }, done
+      ? `应用时删除了 ${orphans.length} 个没被引用的文件${g.revertable === false ? '' : '（撤销可恢复）'}`
+      : `应用时删除 ${orphans.length} 个没被引用的文件（先做快照，可撤销）`) }, h('div', { className: 'wc-sm wc-mono wc-break' }, orphans.join(' · '))) : null,
     ignored.length ? h(Details, { summary: `${ignored.length} 处改动超出范围，已忽略` }, ignored.map((r, i) => h('div', { key: i, className: 'wc-sm' }, h('span', { className: 'wc-mono' }, r.target), ` — ${r.reason}`))) : null,
     listOf(g.untracked).length ? h(Note, null, `项目里还有 ${g.untracked.length} 个未跟踪文件，不会被动：${g.untracked.join(' · ')}`) : null)
 }
@@ -1421,35 +1731,118 @@ function GenerationPreview({ g }) {
     files.map((f) => h(Details, { key: f.path, summary: h('span', { className: 'wc-mono' }, f.path + (f.truncated ? '（只显示开头）' : '')) }, h(Pre, null, f.preview))))
 }
 
+const fileCounts = (g) => {
+  const f = (g.diff && g.diff.files) || {}
+  const n = (k) => listOf(f[k]).length
+  return g.diff ? `：文件新增 ${n('added')}、修改 ${n('modified')}、删除 ${n('deleted')}` : ''
+}
+
 function ApplyBar({ g }) {
   const ws = useWs()
   const [ack, setAck] = useState(false)
   const [ackResets, setAckResets] = useState(false)
-  useEffect(() => { setAck(false); setAckResets(false) }, [g.id])
+  const [ackErrors, setAckErrors] = useState(false)
+  useEffect(() => { setAck(false); setAckResets(false); setAckErrors(false) }, [g.id])
   const confirmedResets = listOf(g.provenance && g.provenance.reset).filter((r) => r.was === 'customer_confirmed')
+  const errors = precheckErrors(g)
+  const after = reviewWork(g.precheck && g.precheck.review, g.precheck && g.precheck.anchorsMissing, (g.scenarioPreview || {}).packKind)
+  const applyError = ws.errors.apply && /changed after generation started/.test(ws.errors.apply.message || '')
+    ? new Error('起草开始后项目又改过（例如记录了审核、切换了项目类型或改了文件），这份草稿不能再应用：请重新起草。') : ws.errors.apply
   return h('div', { className: 'wc-ln wc-mt', style: { paddingTop: 10 } },
-    h(Check, { checked: ack, onChange: setAck }, '我看过这份草稿、文件改动和删除。应用会替换项目内容（先做快照，可撤销），之前的校验和构建失效。'),
+    g.stale ? null : h(Check, { checked: ack, onChange: setAck }, g.mode === 'repair'
+      ? `我看过这份修复结果。应用 = 只写入它改的部分${fileCounts(g)}（先做快照，可撤销），之前的校验和构建失效；Kiro 改过的项要重新审核。`
+      : g.mode === 'regenerate' && listOf(g.scope).length
+        ? `我看过这份改写结果。应用 = 只替换它改写的部分（${listOf(g.scope).map((x) => SCOPE_LABEL[x] || x).join('、')}）${fileCounts(g)}（先做快照，可撤销），之前的校验和构建失效${after.text ? `；应用后还要：${after.text}` : ''}。`
+        : `我看过这份${g.mode === 'regenerate' ? '改写结果' : '草稿'}。应用 = 用它替换项目内容${fileCounts(g)}（先做快照，可撤销），之前的校验和构建失效${after.text ? `；应用后还要：${after.text}` : ''}。`),
+    errors ? h(Check, { checked: ackErrors, onChange: setAckErrors }, h('span', { className: 'wc-tx-bad' }, `我知道应用后校验会报 ${errors} 个错误，之后再修。`)) : null,
     confirmedResets.length ? h(Check, { checked: ackResets, onChange: setAckResets }, h('span', { className: 'wc-tx-bad' }, `接受重置 ${confirmedResets.length} 项客户确认（${confirmedResets.map((r) => r.id).slice(0, 6).join('、')}${confirmedResets.length > 6 ? '…' : ''}），之后要重新请客户确认。`)) : null,
-    h('div', { className: 'wc-fx wc-mt1' }, h(Button, { kind: 'primary', disabled: !ack || (confirmedResets.length && !ackResets), busy: ws.busy === 'apply', onClick: () => ws.applyGeneration(g, confirmedResets.length > 0) }, '应用并校验')),
-    h(ErrorLine, { error: ws.errors.apply }))
+    h('div', { className: 'wc-fx wc-mt1' }, h(Button, { kind: 'primary', disabled: g.stale || !ack || (confirmedResets.length && !ackResets) || (errors && !ackErrors), busy: ws.busy === 'apply', onClick: () => ws.applyGeneration(g, confirmedResets.length > 0) }, '应用并校验')),
+    h(ErrorLine, { error: applyError }))
 }
 
 function RevertBar({ g }) {
   const ws = useWs()
   const [ack, setAck] = useState(false)
+  if (g.revertable === false) { // the backend's own check: revert would refuse, so no button that only fails
+    return h('div', { className: 'wc-ln wc-mt', style: { paddingTop: 10 } },
+      h('div', { className: 'wc-sm' }, `已在 ${fmtTime(g.appliedAt)} 应用。应用后项目又改过（例如记录了审核或改了文件），这次应用不能再撤销；要换内容就重新起草。`))
+  }
   return h('div', { className: 'wc-ln wc-mt', style: { paddingTop: 10 } },
     h('div', { className: 'wc-sm' }, `已在 ${fmtTime(g.appliedAt)} 应用。`),
-    h(Check, { checked: ack, onChange: setAck }, '撤销：项目回到这次应用之前的状态（文件逐字节恢复）；应用后又改过就不能撤销。'),
+    h(Check, { checked: ack, onChange: setAck }, `撤销：项目回到这次应用之前的状态（文件逐字节恢复）；这份${g.mode === 'repair' ? '修复结果' : '草稿'}不会回到「待应用」，要用只能重新${g.mode === 'repair' ? '修复' : '起草'}。应用后又改过就不能撤销。`),
     h('div', { className: 'wc-mt1' }, h(Button, { disabled: !ack, busy: ws.busy === 'revert', onClick: () => ws.revertGeneration(g) }, '撤销这次应用')),
     h(ErrorLine, { error: ws.errors.revert }))
 }
 
+// What validation will say once this result is applied (routes._precheck: schema, cross-references, the engine policy).
+function Precheck({ g }) {
+  const ws = useWs()
+  const p = g.precheck
+  if (!p) return null
+  if (!p.ran) return h(Note, { tone: 'warn' }, `应用前的预检没跑成（${p.error === 'engine not found' ? '找不到校验引擎' : p.error || '原因不明'}）；应用后的校验会给出结果。`)
+  if (g.stale) return h('div', { className: 'wc-err wc-mt1' }, h('div', { className: 'wc-b' }, `这份${g.mode === 'repair' ? '修复结果' : '草稿'}已作废：生成后项目又改过（例如记录了审核、切换了项目类型或改了文件）`),
+    h('div', { className: 'wc-sm' }, g.mode === 'repair' ? '它不能再应用。要修就重新点“Kiro 按校验结果修复”。' : `它不能再应用。要换一份就点上面的“${draftLabel(ws)}”；不需要就不用管它，继续用项目当前内容。`))
+  const work = reviewWork(p.review, p.anchorsMissing, (g.scenarioPreview || {}).packKind)
+  const hints = listOf(p.warnings)
+  const hintList = hints.length ? h(Details, { summary: `${hints.length} 条提示（不挡构建）` }, h('ul', { className: 'wc-sm', style: { margin: '4px 0', paddingLeft: 18 } },
+    hints.slice(0, 12).map((f, i) => h('li', { key: i, title: f.message }, (STAGE_REASONS.find(([re]) => re.test(`${f.code}: ${f.message}`)) || [null, f.message])[1])))) : null
+  if (!p.errorCount) {
+    return h('div', { className: 'wc-ok-box wc-mt1' },
+      h('div', { className: 'wc-b wc-sm' }, `应用前预检：没有需要修的错误${p.warningCount ? `（${p.warningCount} 条提示，不挡构建）` : ''}`),
+      work.text ? h('div', { className: 'wc-sm' }, `应用后校验的结论会是「${work.verdict}」：${work.text}。`) : null, hintList)
+  }
+  const sc = g.scenarioPreview
+  const findings = listOf(p.findings).length ? listOf(p.findings) : listOf(p.errors).map((e) => ({ code: String(e).split(':')[0], message: String(e).replace(/^[^:]+: /, ''), source: String(e).startsWith('schema') ? 'schema' : '' }))
+  return h('div', { className: 'wc-err wc-mt1' },
+    h('div', { className: 'wc-b' }, `应用前预检：${p.partial ? '至少 ' : ''}${p.errorCount} 个错误${p.partial ? '（结构错误修好前，其余检查跑不了）' : ''}`),
+    h('ul', { className: 'wc-sm', style: { margin: '4px 0', paddingLeft: 18 } }, findings.slice(0, 8).map((f, i) => h('li', { key: i, title: f.message },
+      f.source === 'schema' ? schemaText(f.message, sc) : isGateFinding(f) ? gateText(f.message) : (STAGE_REASONS.find(([re]) => re.test(`${f.code}: ${f.message}`)) || [null, `${f.code}：${f.message}`])[1]))),
+    h('div', { className: 'wc-sm' }, '可以点上面的“重新起草”；也可以先应用，再到「02 内容与评估」点“Kiro 按校验结果修复”。'))
+}
+
+// What Kiro drafted, counted by the app (Kiro's own summary describes only the stage that wrote it).
+function DraftSummary({ g }) {
+  const sc = g.scenarioPreview
+  if (!sc || g.mode === 'repair') return g.summary ? h('div', { className: 'wc-sm' }, g.summary) : null
+  const docs = listOf(sc.knowledge && sc.knowledge.documents)
+  const golden = goldenOf(sc)
+  const practice = golden.filter((c) => c.set === 'practice').length
+  const parts = [`${listOf(sc.agent && sc.agent.roles).length} 个角色`, `${listOf(sc.facts).length} 条业务规则`, `${docs.length} 份知识文档${noiseNote(docs)}`,
+    `${listOf(sc.tools).length} 个工具`, `${golden.length} 道题（练习 ${practice} · 留出 ${golden.length - practice}）`, `${phenomenaOf(sc).length} 个教学现象`]
+  return h('div', { className: 'wc-mt1' },
+    h('div', { className: 'wc-sm' }, h('span', { className: 'wc-b' }, g.mode !== 'regenerate' ? 'Kiro 起草了：'
+      : listOf(g.scope).length ? `Kiro 改写了：${listOf(g.scope).map((x) => SCOPE_LABEL[x] || x).join('、')}。应用后整份内容：` : 'Kiro 改写了全部内容：'), parts.join(' · ')),
+    g.summary ? h(Details, { summary: listOf(g.stages).length ? 'Kiro 的说明（第 1 段 · 结构）' : 'Kiro 的说明' }, h('div', { className: 'wc-sm' }, g.summary)) : null)
+}
+
+function OpenQuestions({ g }) {
+  const questions = [...new Set(listOf(g.openQuestions).map((q) => String(q).trim()).filter(Boolean))]
+  if (!questions.length) return null
+  const list = (qs, start) => h('ol', { className: 'wc-sm', start, style: { margin: '4px 0 0', paddingLeft: 18 } }, qs.map((q, i) => h('li', { key: i }, q)))
+  return h('div', { className: 'wc-mt1' },
+    h('div', { className: 'wc-xs wc-mut' }, `还要客户确认的问题（${questions.length} 个）`), list(questions.slice(0, 3), 1),
+    questions.length > 3 ? h(Details, { summary: `展开其余 ${questions.length - 3} 个` }, list(questions.slice(3), 4)) : null)
+}
+
+// After the apply: the one thing left before a build is the SA's review of Kiro's items.
+function AppliedNext({ g }) {
+  const ws = useWs()
+  const drafts = listOf(ws.items && ws.items.items).filter((i) => i.provenance === 'ai_draft' || i.provenance === 'pending').length
+  const anchors = ws.items && ws.items.anchors && ws.items.anchors.required ? listOf(ws.items.anchors.missing) : []
+  if ((!drafts && !anchors.length) || g.mode === 'repair') return null
+  const work = reviewWork(drafts, anchors, ws.items && ws.items.packKind)
+  return h('div', { className: 'wc-rf wc-mt' },
+    h('span', { className: 'wc-sm wc-b' }, `下一步：${work.text}。`),
+    h(Button, { kind: 'primary', small: true, onClick: () => ws.go('2', 'review') }, drafts ? `去审核 ${drafts} 项 →` : '去看锚点 →'))
+}
+
 function GenerationReview({ g }) {
   return h('div', { className: 'wc-mt' },
-    g.summary ? h('div', { className: 'wc-sm' }, g.summary) : null,
+    g.status === 'ready' ? h(Precheck, { g }) : null,
+    g.status === 'applied' ? h(AppliedNext, { g }) : null,
+    g.status === 'needs-input' ? (g.summary ? h('div', { className: 'wc-sm' }, g.summary) : null) : h(DraftSummary, { g }),
     h(GenerationWarnings, { g }),
-    g.status === 'needs-input' ? h(NeedsInputForm, { g })
-      : listOf(g.openQuestions).length ? h('div', { className: 'wc-mt1' }, h('div', { className: 'wc-xs wc-mut' }, '还要客户确认的问题'), h('ol', { className: 'wc-sm', style: { margin: '4px 0 0', paddingLeft: 18 } }, g.openQuestions.map((q, i) => h('li', { key: i }, q)))) : null,
+    g.status === 'needs-input' ? h(NeedsInputForm, { g }) : h(OpenQuestions, { g }),
     g.status !== 'needs-input' && g.diff ? h(DiffSummary, { g }) : null,
     h(ChangesTable, { g }),
     h(TruthLedger, { g }),
@@ -1460,6 +1853,13 @@ function GenerationReview({ g }) {
     g.status === 'reverted' ? h(Note, null, `已在 ${fmtTime(g.revertedAt)} 撤销。`) : null)
 }
 
+// Why a generation failed, as the SA reads it (the English original is the tooltip).
+function failText(error) {
+  const m = String(error || '').match(/^draft stage (\S+) failed: ([\s\S]*)$/)
+  if (m) return `分步起草停在「${stageInfo({ name: m[1] })[0]}」这一步：${stageReason(m[2])}。可以重新起草。`
+  return backendText(error) || String(error)
+}
+
 function GenerationDetail({ modes }) {
   const ws = useWs()
   const g = ws.generation
@@ -1467,18 +1867,28 @@ function GenerationDetail({ modes }) {
   if (!modes.includes(g.mode)) {
     if (!isLive(g) && g.status !== 'ready') return null
     const step = g.mode === 'repair' ? '2' : '1'
-    return h('div', { className: 'wc-rf wc-mt' }, h('span', { className: 'wc-sm' }, `最近一轮是「${GEN_MODE[g.mode]}」：${pick(GEN_STATUS, g.status)[1]}`), h(Button, { small: true, onClick: () => ws.go(step, 'eval') }, '去看 →'))
+    return h('div', { className: 'wc-rf wc-mt' }, h('span', { className: 'wc-sm' }, `最近一轮是「${GEN_MODE[g.mode]}」：${g.status === 'ready' && g.stale ? '已作废' : pick(GEN_STATUS, g.status)[1]}`), h(Button, { small: true, onClick: () => ws.go(step, 'eval') }, '去看 →'))
   }
   return h('div', { className: 'wc-mt' },
     h(GenerationStatus, { g }),
-    g.error ? h('div', { className: 'wc-err' }, g.error) : null,
+    h(GenerationStages, { g }),
+    g.error ? h('div', { className: 'wc-err', title: g.error }, failText(g.error)) : null,
     ws.lost.generation ? h(Note, { tone: 'warn' }, '和后端失联：生成还在后台进行，点顶部“刷新”继续跟进。') : null,
-    isLive(g) ? h(Note, null, `Kiro 正在${GEN_MODE[g.mode]}（上限 ${Math.round((g.timeoutSecs || 0) / 60)} 分钟），可以离开页面，回来会继续显示进度。`) : h(GenerationReview, { g }))
+    isLive(g) ? h(Note, null, g.staged ? `Kiro 正在分步起草，每一步最长 ${Math.round((g.timeoutSecs || 0) / 60)} 分钟；可以离开页面，回来会继续显示进度。` : `Kiro 正在${GEN_MODE[g.mode]}（最长 ${Math.round((g.timeoutSecs || 0) / 60)} 分钟），可以离开页面，回来会继续显示进度。`) : h(GenerationReview, { g }))
 }
 
 function ScopePicker({ value, onChange }) {
   const toggle = (s) => onChange(value.includes(s) ? value.filter((x) => x !== s) : [...value, s])
   return h('span', { className: 'wc-fx' }, SCOPES.map((s) => h(Chip, { key: s, tone: value.includes(s) ? 'acc' : '', onClick: () => toggle(s) }, SCOPE_LABEL[s])))
+}
+
+// The 01 card's draft button, as it reads now (other texts that send the SA to it name it the same way).
+function draftLabel(ws) {
+  const g = ws.generation
+  if (g && g.status === 'needs-input') return '不回答，直接重新起草'
+  if (pendingDraft(ws)) return '重新起草（丢弃这份未应用的草稿）'
+  if (templateOrigin(ws)) return '用 Kiro 起草（替换模板内容）'
+  return goldenOf(ws.sc).length > 0 ? '从场景描述重新起草（整份替换）' : '生成草稿'
 }
 
 function DraftCard() {
@@ -1492,36 +1902,51 @@ function DraftCard() {
   const canDraft = ws.brief.trim().length >= 20 || usable
   const blocked = wsMaterialsBlock(ws, false) // the backend refuses a draft or regenerate without it (409)
   const hasPack = goldenOf(ws.sc).length > 0
-  return h(Card, { title: 'Kiro 起草', extra: g ? h(ToneChip, { map: GEN_STATUS, value: g.status }) : null },
-    h('div', { className: 'wc-sm' }, '按场景描述和资料起草整套内容：知识文档、工具、Prompt、黄金集和教学设计。每项都先标成 Kiro 草稿，等你审核。'),
+  const waiting = pendingDraft(ws)
+  const origin = templateOrigin(ws)
+  const asking = !!g && g.status === 'needs-input' // the questions' form below holds the main action
+  const label = draftLabel(ws)
+  const pre = g && g.status === 'ready' ? precheckErrors(g) : 0
+  const chip = !g || g.mode === 'repair' ? null : g.status === 'ready' && g.stale ? h(Chip, { tone: 'bad' }, '已作废：生成后项目改过') : pre ? h(Chip, { tone: 'bad' }, `待应用 · 预检 ${pre} 个错误`) : h(ToneChip, { map: GEN_STATUS, value: g.status })
+  return h(Card, { title: 'Kiro 起草', extra: chip },
+    h('div', { className: 'wc-sm' }, '按场景描述和资料起草整套内容：知识文档、工具、Prompt、题目与判据和教学设计。每项都先标成 Kiro 草稿，等你审核。'),
     h(Note, null, '描述和资料会发给你的 Kiro CLI 所用的模型；不要粘贴凭证、个人信息或未获批准的客户机密。这一步不调用 AWS。'),
     h('div', { className: 'wc-fx wc-mt' },
-      h(Button, { kind: 'primary', icon: Wand2, disabled: live || !canDraft || !!blocked, busy: ws.busy === 'generate', onClick: () => ws.startDraft() }, hasPack ? '重新起草整套' : '生成草稿'),
+      h(Button, { kind: !asking && !waiting && (!hasPack || origin) ? 'primary' : undefined, icon: Wand2, disabled: live || !canDraft || !!blocked, busy: ws.busy === 'generate', onClick: () => ws.startDraft() }, label),
       !canDraft ? h('span', { className: 'wc-xs wc-mut' }, `描述再写 ${Math.max(0, 20 - ws.brief.trim().length)} 字，或上传一份作为事实来源的资料`) : null),
     blocked ? h(Note, { tone: 'bad' }, blocked) : null,
-    hasPack ? h('div', { className: 'wc-mt' },
-      h('div', { className: 'wc-xs wc-mut' }, '只重写一部分（不选 = 全部），其余保持原样：'),
+    g && g.mode === 'repair' && holdingResult(ws) ? h(Note, { tone: 'warn' }, `02 有一份${isLive(g) ? '正在生成' : '待应用'}的 Kiro 修复结果：在这里重新起草或改写会丢弃它。`) : null,
+    canRewrite(ws) ? h('div', { className: 'wc-mt' },
+      h('div', { className: 'wc-xs wc-mut' }, '在项目当前内容上只改写一部分（不选就改写全部），其余保持原样：'),
       h('div', { className: 'wc-mt1' }, h(ScopePicker, { value: scope, onChange: setScope })),
       rehearsal.length ? h('div', { className: 'wc-mt1' }, h(Check, { checked: includeRehearsal, onChange: setIncludeRehearsal },
         `连彩排整改一起发给 Kiro（${rehearsal.length} 条：${rehearsal.map((f) => f.id).join('、')}）`)) : null,
-      h('div', { className: 'wc-mt1' }, h(Button, { disabled: live || !!blocked, busy: ws.busy === 'regenerate', onClick: () => ws.startRegenerate(scope, includeRehearsal) }, scope.length ? `重新生成：${scope.map((s) => SCOPE_LABEL[s]).join('、')}` : '按当前内容重新生成全部'))) : null,
+      h('div', { className: 'wc-mt1' }, h(Button, { disabled: live || !!blocked, busy: ws.busy === 'regenerate', onClick: () => ws.startRegenerate(scope, includeRehearsal) }, scope.length ? `在当前内容上改写：${scope.map((s) => SCOPE_LABEL[s]).join('、')}` : '在当前内容上改写全部'))) : null,
     h(ErrorLine, { error: ws.errors.generate || ws.errors.regenerate }),
     h(GenerationDetail, { modes: ['draft', 'regenerate'] }))
 }
 
 function PhenomenaCard() {
   const ws = useWs()
-  const t = teachingOf(ws.sc)
-  if (!t) return h(Card, { title: '这场要让学员看到的现象' }, h(Empty, { title: '还没有教学设计（labs.teaching）' }, '生成草稿后由 Kiro 起草；它决定弱基线、干扰文档和练习题。'))
+  const draft = pendingDraft(ws)
+  const t = teachingOf(draft ? draft.scenarioPreview : ws.sc)
+  if (!t) {
+    return h(Card, { title: '这场要让学员看到的现象' }, draftRunning(ws)
+      ? h(Empty, { title: 'Kiro 正在写教学设计' }, '分步起草的第 2 段写现象、弱基线和练习题；草稿完成后在这里预览。')
+      : h(Empty, { title: '还没有教学设计（labs.teaching）' }, '生成草稿后由 Kiro 起草；它决定弱基线、干扰文档和练习题。'))
+  }
   const fc = t.firstConversation || {}
-  return h(Card, { title: '这场要让学员看到的现象', extra: h('span', { className: 'wc-xs wc-mut' }, `${listOf(t.phenomena).length} 个现象 · ${listOf(t.baselineDefects).length} 处弱基线`) },
+  const origin = draft ? null : templateOrigin(ws)
+  return h(Card, { title: '这场要让学员看到的现象', extra: h('span', { className: 'wc-fx' }, h(OriginTag, { draft, origin }), h('span', { className: 'wc-xs wc-mut' }, `${listOf(t.phenomena).length} 个现象 · ${listOf(t.baselineDefects).length} 处弱基线`)) },
+    draftRunning(ws) ? h(Note, { tone: 'warn' }, origin ? `Kiro 正在起草新内容；下面仍是模板「${origin}」的现象，草稿完成后换成草稿的。` : 'Kiro 正在起草新内容；下面是项目当前的现象，草稿完成后换成草稿的。') : null,
     listOf(t.phenomena).map((p, i) => h('div', { key: p.id, className: cx('wc-it', i && 'wc-ln') },
       h('div', { className: 'wc-rf wc-top-al' }, h('span', { className: 'wc-b wc-mono wc-sm' }, p.id),
         h('span', { className: 'wc-fx' }, h(Chip, { tone: 'acc' }, PHENOMENON_KIND[p.kind] || p.kind), p.mechanism ? h(Chip, null, MECHANISM[p.mechanism] || p.mechanism) : null, p.design === 'contrast' ? h(Chip, { tone: 'info' }, '基线要失败') : null)),
       h('div', { className: 'wc-sm wc-mt1' }, p.teachingPoint),
-      h('div', { className: 'wc-xs wc-mut' }, listOf(p.caseIds).length ? `练习题：${p.caseIds.join('、')}` : listOf(p.documentIds).length ? `文档：${p.documentIds.join('、')}` : ''))),
+      h('div', { className: 'wc-xs wc-mut' }, listOf(p.caseIds).length ? `练习题：${p.caseIds.map((id) => caseName(draft ? draft.scenarioPreview : ws.sc, id)).join('、')}`
+        : listOf(p.documentIds).length ? `文档：${p.documentIds.map((id) => docName(draft ? draft.scenarioPreview : ws.sc, id)).join('、')}` : ''))),
     h('div', { className: 'wc-ln wc-it' },
-      h('div', { className: 'wc-xs wc-mut' }, `第一次对话（06）· ${fc.actorId || ''}`),
+      h('div', { className: 'wc-xs wc-mut' }, `第一次对话（Guided Run「第一次对话」那一步）· 提问人 ${fc.actorId ? actorName(draft ? draft.scenarioPreview : ws.sc, fc.actorId) : '—'}`),
       h('div', { className: 'wc-sm' }, fc.query || '—'),
       fc.teachingPoint ? h('div', { className: 'wc-xs wc-mut' }, fc.teachingPoint) : null))
 }
@@ -1539,25 +1964,44 @@ function ScenarioStep() {
 // 02 内容与评估
 // ---------------------------------------------------------------------------
 
-function FindingRow({ f }) {
-  const [tone, family] = familyOf(f.source === 'gate' ? 'gate' : f.code)
+function FindingRow({ f, sc }) {
+  const ws = useWs()
+  const [tone, family] = ANCHOR_GATE.test(String(f.messageEn || f.message || '')) || CUSTOMER_GATE.test(String(f.messageEn || f.message || '')) ? ['warn', '客户确认'] : familyOf(f.source === 'gate' ? 'gate' : f.code)
+  // The gate's reason and a schema error in Chinese; the English original is the tooltip.
+  const gate = isGateFinding(f) ? gateText(f.message) : f.source === 'schema' || f.code === 'schema' ? schemaText(f.message, sc || ws.sc) : null
+  const zh = gate ? null : (STAGE_REASONS.find(([re]) => re.test(`${f.code}: ${f.message}`)) || [])[1]
   return h('div', { className: 'wc-list-row' },
-    h(Chip, { tone: f.severity === 'error' ? 'bad' : 'warn' }, f.severity === 'error' ? '✕' : '!'),
+    isGateFinding(f) ? h(Chip, { tone: 'warn', title: '不是内容错误：等审核或客户确认' }, '待') : h(Chip, { tone: f.severity === 'error' ? 'bad' : 'warn' }, f.severity === 'error' ? '✕' : '!'),
     h('div', { className: 'wc-grow' },
-      h('div', { className: 'wc-fx' }, h(Chip, { tone }, family), h('span', { className: 'wc-mono wc-xs wc-b' }, f.code), f.id ? h('span', { className: 'wc-xs wc-mut' }, f.id) : null,
+      h('div', { className: 'wc-fx' }, h(Chip, { tone }, family), h('span', { className: 'wc-mono wc-xs wc-b' }, f.code), f.id && !isGateFinding(f) ? h('span', { className: 'wc-xs wc-mut' }, f.id) : null,
         listOf(f.scopes).slice(1).map((s) => h(Chip, { key: s }, SCOPE_LABEL[s] || s))),
-      h('div', { className: 'wc-sm wc-break wc-mt1', title: englishTwin(f.message, f.messageEn) }, f.message),
+      h('div', { className: 'wc-sm wc-break wc-mt1', title: gate && gate !== f.message ? f.message : englishTwin(f.message, f.messageEn) }, gate || zh || f.message),
+      zh ? h('div', { className: 'wc-xs wc-mut wc-break' }, f.message) : null,
       f.path ? h('div', { className: 'wc-xs wc-mut wc-mono wc-break' }, f.path) : null))
 }
 
-function FindingGroup({ title, findings, tone, note, action }) {
+// The items the provenance gate holds until the SA reviews them, in one line per kind (the review tab lists each).
+function ReviewPending({ findings }) {
+  const ws = useWs()
+  if (!findings.length) return null
+  const kinds = {}
+  for (const f of findings) { const k = GATE_TYPE[String(f.code || '').replace(/^gate\./, '')] || f.code; kinds[k] = (kinds[k] || 0) + 1 }
+  return h('div', { className: 'wc-ln wc-it' },
+    h('div', { className: 'wc-rf' }, h('span', { className: 'wc-b wc-tx-warn' }, `待你审核的 Kiro 草稿：${findings.length} 项`),
+      h(Button, { small: true, onClick: () => ws.go('2', 'review') }, '去审核 →')),
+    h('div', { className: 'wc-sm' }, Object.entries(kinds).map(([k, n]) => `${k} ${n}`).join(' · ')),
+    h(Note, null, ws.items && ws.items.packKind === 'customer' ? '这不是内容错误：阻断项要客户逐项确认（确认人 + 凭证；SA 合成不能替代），其余由你审核，之后才能构建正式包。'
+      : '这不是内容错误：Kiro 起草的每一项都要你过目（逐项确认，或批量记为 SA 合成），审核完才能构建正式包。'))
+}
+
+function FindingGroup({ title, findings, tone, note, action, count }) {
   const [all, setAll] = useState(false)
   if (!findings.length) return null
   const shown = all ? findings : findings.slice(0, 5)
   const errors = findings.filter((f) => f.severity === 'error').length
   return h('div', { className: 'wc-ln wc-it' },
     h('div', { className: 'wc-rf' }, h('span', { className: cx('wc-b', tone && `wc-tx-${tone}`) }, title),
-      h('span', { className: 'wc-xs wc-mut' }, `${errors} 个错误 · ${findings.length - errors} 条提示`)),
+      h('span', { className: 'wc-xs wc-mut' }, count || (errors ? `${errors} 个错误${findings.length - errors ? ` · ${findings.length - errors} 条提示` : ''}` : `${findings.length} 条提示（不挡构建）`))),
     note || action ? h('div', { className: 'wc-rf' }, note ? h(Note, null, note) : h('span'), action || null) : null,
     shown.map((f, i) => h(FindingRow, { key: f.id || i, f })),
     findings.length > 5 ? h(Button, { small: true, kind: 'ghost', onClick: () => setAll(!all) }, all ? '收起' : `展开全部 ${findings.length} 条`) : null)
@@ -1572,6 +2016,11 @@ function RepairLauncher({ v, fresh }) {
   const [more, setMore] = useState(false)
   const repairable = listOf(v && v.repair && v.repair.repairable)
   const selected = repairable.filter((f) => repairSelected(f, includeWarnings))
+  const nErrors = selected.filter((f) => f.severity === 'error').length
+  const nHints = selected.filter((f) => f.severity !== 'error' && repairSelected(f, false)).length
+  const nOther = selected.length - nErrors - nHints
+  const otherWarnings = repairable.filter((f) => !repairSelected(f, false)).length
+  const unreviewedOnly = !repairable.length && listOf(v && v.repair && v.repair.saOnly).some(isUnreviewed)
   // What the route really sends: the selected validation findings plus the current rehearsal's R findings.
   const rehearsalAll = rehearsalFindingsFor(ws.validationView, scope)
   const rehearsal = includeRehearsal ? rehearsalAll : []
@@ -1579,17 +2028,20 @@ function RepairLauncher({ v, fresh }) {
   const scopes = repairScopes(scope, v, selected, rehearsal)
   const live = isLive(ws.generation)
   const blocked = wsMaterialsBlock(ws, true) // a repair sends the source materials
-  const can = !live && !blocked && (sent.length > 0 || (instructions.trim() && scope.length > 0))
+  const waiting = !live && holdingResult(ws) && (ws.generation || {}).mode !== 'repair' // a repair would void the draft that waits in 01
+  const can = !live && !waiting && !blocked && (sent.length > 0 || (instructions.trim() && scope.length > 0))
   return h('div', { className: 'wc-ln wc-mt', style: { paddingTop: 10 } },
     h('div', { className: 'wc-rf' },
       h('span', { className: 'wc-sm' }, sent.length
-        ? `Kiro 会修 ${sent.length} 条（${scopes.map((s) => SCOPE_LABEL[s] || s).join('、')}）${rehearsal.length ? `，其中 ${rehearsal.length} 条来自彩排整改` : ''}`
-        : '没有 Kiro 能修的校验结果'),
-      h(Button, { kind: 'primary', icon: Wand2, disabled: !can, busy: ws.busy === 'repair', onClick: () => ws.startRepair({ includeWarnings, instructions, scope, includeRehearsal }) }, 'Kiro 按校验结果修复')),
+        ? `Kiro 会修 ${sent.length} 条：${[nErrors ? `${nErrors} 个错误` : null, nHints ? `${nHints} 条教学提示（教学类提示总是一起修）` : null, nOther ? `${nOther} 条一般提示` : null, rehearsal.length ? `${rehearsal.length} 条来自彩排整改` : null].filter(Boolean).join('、')}（范围：${scopes.map((s) => SCOPE_LABEL[s] || s).join('、')}）`
+        : unreviewedOnly ? '没有 Kiro 能修的错误；剩下的审核和客户确认，修复不处理' : '没有 Kiro 能修的校验结果'),
+      h(Button, { kind: nErrors || rehearsal.length ? 'primary' : undefined, icon: Wand2, disabled: !can, busy: ws.busy === 'repair', onClick: () => ws.startRepair({ includeWarnings, instructions, scope, includeRehearsal }) }, nErrors || rehearsal.length || !sent.length ? 'Kiro 按校验结果修复' : '（可选）让 Kiro 处理这些提示')),
+    !nErrors && sent.length && !rehearsal.length ? h(Note, null, '提示不挡构建。要修就先修再审核：Kiro 改过的项会回到 Kiro 草稿，要重新审核。') : null,
     blocked ? h(Note, { tone: 'bad' }, blocked) : null,
+    waiting ? h(Note, { tone: 'warn' }, '01 有一份待应用的 Kiro 草稿：现在开始修复会让它作废。先应用它，再修复。') : null,
     rehearsal.length ? h('div', { className: 'wc-mt1' }, rehearsal.map((f) => h(FindingRow, { key: f.id, f }))) : null,
     h('div', { className: 'wc-fx wc-mt1' },
-      h(Check, { checked: includeWarnings, onChange: setIncludeWarnings }, '连一般提示一起修'),
+      otherWarnings ? h(Check, { checked: includeWarnings, onChange: setIncludeWarnings }, `其余 ${otherWarnings} 条一般提示也一起修`) : null,
       rehearsalAll.length ? h(Check, { checked: includeRehearsal, onChange: setIncludeRehearsal }, `连彩排整改一起修（${rehearsalAll.length} 条）`) : null,
       h(Button, { small: true, kind: 'ghost', onClick: () => setMore(!more) }, more ? '收起说明' : '补充说明 / 限定范围')),
     more ? h('div', { className: 'wc-col wc-mt1', style: { gap: 6 } },
@@ -1608,8 +2060,18 @@ function ValidationCard() {
   const repairable = listOf(repair.repairable)
   const byScope = {}
   for (const f of repairable) { const s = listOf(f.scopes)[0] || 'other'; (byScope[s] = byScope[s] || []).push(f) }
-  const errors = v ? blockingCount(v) : 0
+  const errors = v ? contentErrorCount(v) : 0
   const warnings = v ? [...listOf(v.policy), ...listOf(v.output), ...listOf(v.workspace)].filter((f) => f.severity === 'warning').length : 0
+  const unreviewed = listOf(repair.saOnly).filter(isUnreviewed)
+  const anchorGate = listOf(repair.saOnly).filter((f) => !isUnreviewed(f) && ANCHOR_GATE.test(String(f.messageEn || f.message || '')))
+  const customerGate = listOf(repair.saOnly).filter((f) => !isUnreviewed(f) && CUSTOMER_GATE.test(String(f.messageEn || f.message || '')))
+  const decide = listOf(repair.saOnly).filter((f) => !isUnreviewed(f) && !anchorGate.includes(f) && !customerGate.includes(f))
+  const need = listOf(ws.items && ws.items.items).filter(needsCustomer).length
+  const work = reviewWork(unreviewed.length, anchorGate.length ? listOf((v && v.anchors && v.anchors.anchorsMissing) || ['normal', 'boundary', 'prohibited']) : [], ws.items && ws.items.packKind, need)
+  const holding = holdingResult(ws)
+  const errorsByScope = {}
+  const hintsByScope = {}
+  for (const f of repairable) { const s = listOf(f.scopes)[0] || 'other'; const into = f.severity === 'error' ? errorsByScope : hintsByScope; (into[s] = into[s] || []).push(f) }
   return h(Card, {
     title: '评估体检',
     extra: [
@@ -1620,17 +2082,25 @@ function ValidationCard() {
   h(ErrorLine, { error: ws.errors.validate }),
   !v ? h(Empty, { title: '还没校验' }, '校验会检查结构、引用、来源门禁、教学设计、L1 判据、手册，并试构建一次（不写 Release）。') : h(Fragment, null,
     h(Kpi, null,
-      h(Stat, { label: '结论', value: v.ok ? '通过' : '阻断', tone: v.ok ? 'ok' : 'bad' }),
-      h(Stat, { label: '错误', value: errors, tone: errors ? 'bad' : 'ok' }),
+      h(Stat, { label: '结论', value: v.ok ? '通过' : errors ? '有错误' : decide.length ? '待 SA 处理' : work.verdict, tone: v.ok ? 'ok' : errors ? 'bad' : 'warn', small: true }),
+      h(Stat, { label: '要修的错误', value: errors, tone: errors ? 'bad' : 'ok' }),
       h(Stat, { label: '提示', value: warnings, tone: warnings ? 'warn' : '' }),
-      h(Stat, { label: '需 SA 决定', value: listOf(repair.saOnly).length, tone: listOf(repair.saOnly).length ? 'warn' : '' }),
+      h(Stat, { label: '待你审核', value: unreviewed.length, tone: unreviewed.length ? 'warn' : '' }),
       h(Stat, { label: '试构建', value: v.dryBuild && v.dryBuild.ran ? `${fmtNum(v.dryBuild.seconds, 1)} 秒` : '跳过' })),
     v.dryBuild && v.dryBuild.skipped ? h(Note, null, `试构建跳过：${DRY_SKIP[v.dryBuild.skipped] || v.dryBuild.skipped}`) : null,
-    SCOPES.filter((s) => byScope[s]).map((s) => h(FindingGroup, { key: s, title: SCOPE_LABEL[s], findings: byScope[s] })),
-    byScope.other ? h(FindingGroup, { title: '其他', findings: byScope.other }) : null,
-    h(FindingGroup, { title: '需要 SA 决定', tone: 'warn', findings: listOf(repair.saOnly), note: '审核、项目类型或资料问题：Kiro 不改。', action: h(Button, { small: true, onClick: () => ws.go('2', 'review') }, '去审核 →') }),
+    !fresh && !holding ? h('div', { className: 'wc-err' }, '内容在这次校验之后改过（例如记录了审核或改了文件）：下面是上次的结果，点右上角“校验（含试构建）”更新。') : null,
+    holding ? h(Note, { tone: 'warn' }, (ws.generation || {}).mode === 'repair' ? `下面是项目当前内容的校验；${isLive(ws.generation) ? '正在生成' : '待应用'}的 Kiro 修复结果只改它列出的部分（见本卡下方）。先处理它，再审核。`
+      : `下面是项目当前内容的校验，不是 01 里${isLive(ws.generation) ? '正在生成' : '待应用'}的 Kiro 草稿；${replaceText(ws.generation)}。先处理它，再审核。`)
+      : !errors && !v.ok && work.text && fresh ? h(Note, { tone: 'warn' }, `内容没有要修的错误。还要：${work.text}。`) : null,
+    [...SCOPES, 'other'].filter((s) => errorsByScope[s]).map((s) => h(FindingGroup, { key: `e-${s}`, title: s === 'other' ? '其他' : SCOPE_LABEL[s], tone: 'bad', findings: errorsByScope[s] })),
+    h(FindingGroup, { title: '需要客户确认', tone: 'warn', findings: [...customerGate, ...anchorGate], count: `${customerGate.length + anchorGate.length} 项（不是内容错误）`,
+      note: customerGate.length ? '客户严格确认的包：阻断项要客户确认（确认人 + 凭证）；Kiro 不改。' : 'Workshop 包要请客户确认锚点题；Kiro 不改。',
+      action: h(Button, { small: true, onClick: () => ws.go('2', 'review') }, customerGate.length ? '去审核 →' : '去看锚点 →') }),
+    h(ReviewPending, { findings: unreviewed }),
+    h(FindingGroup, { title: '需要 SA 决定', tone: 'warn', findings: decide, note: '项目类型或资料问题：Kiro 不改。', action: h(Button, { small: true, onClick: () => ws.go('2', 'review') }, '去审核 →') }),
+    [...SCOPES, 'other'].filter((s) => hintsByScope[s]).map((s) => h(FindingGroup, { key: `h-${s}`, title: `${s === 'other' ? '其他' : SCOPE_LABEL[s]} · 提示`, findings: hintsByScope[s] })),
     h(FindingGroup, { title: '模板或应用问题', tone: 'bad', findings: listOf(repair.engine), note: 'Kiro 修不了；多半要更新模板或应用。' }),
-    !repairable.length && !listOf(repair.saOnly).length && !listOf(repair.engine).length ? h(Note, { tone: 'ok' }, '没有发现问题。') : null),
+    !repairable.length && !decide.length && !anchorGate.length && !customerGate.length && !listOf(repair.engine).length && !unreviewed.length ? h(Note, { tone: 'ok' }, '没有发现问题。') : null),
   h(RepairLauncher, { v, fresh }),
   h(GenerationDetail, { modes: ['repair'] }))
 }
@@ -1641,7 +2111,11 @@ function PhenomenaMatrix() {
   const phenomena = phenomenaOf(sc)
   const cases = Object.fromEntries(goldenOf(sc).map((c) => [c.id, c]))
   const findings = listOf(ws.validationView && ws.validationView.validation && ws.validationView.validation.repair && ws.validationView.validation.repair.repairable)
-  const hits = (p) => findings.filter((f) => String(f.path || '').includes(p.id) || String(f.message || '').includes(`'${p.id}'`) || listOf(p.caseIds).some((c) => String(f.path || '').endsWith(`.${c}`)))
+  const v = ws.validationView && ws.validationView.validation
+  const index = Object.fromEntries(phenomena.map((p, i) => [p.id, i]))
+  const hits = (p) => findings.filter((f) => String(f.path || '').includes(p.id) || String(f.message || '').includes(`'${p.id}'`)
+    || String(f.path || f.message || '').includes(`labs/teaching/phenomena/${index[p.id]}/`) || listOf(p.caseIds).some((c) => String(f.path || '').endsWith(`.${c}`)))
+  const unchecked = v && listOf(v.schema).length > 0 // the scenario did not load: the teaching rules never ran
   const rows = phenomena.map((p) => {
     const found = hits(p)
     return {
@@ -1652,17 +2126,22 @@ function PhenomenaMatrix() {
         h('div', null, listOf(p.caseIds).map((cid) => {
           const c = cases[cid]
           return h('div', { key: cid, style: { marginBottom: 4 } },
-            h('span', { className: 'wc-mono wc-xs' }, cid), c ? h(Chip, { tone: c.set === 'holdout' ? 'warn' : '' }, SET_LABEL[c.set] || c.set) : h(Chip, { tone: 'bad' }, '不存在'),
+            h('span', { className: 'wc-xs' }, caseName(ws.sc, cid)), c ? h(Chip, { tone: c.set === 'holdout' ? 'warn' : '' }, SET_LABEL[c.set] || c.set) : h(Chip, { tone: 'bad' }, '不存在'),
             c ? h('div', null, h(ChipList, { chips: expectationChips(c.expected) })) : null)
-        }), listOf(p.documentIds).length ? h('div', { className: 'wc-xs wc-mut' }, `文档：${p.documentIds.join('、')}`) : null),
+        }), listOf(p.documentIds).length ? h('div', { className: 'wc-xs wc-mut' }, `文档：${p.documentIds.map((id) => docName(ws.sc, id)).join('、')}`) : null),
         h('span', { className: 'wc-xs' }, JUDGE_OF_KIND[p.kind] || '—'),
-        found.length ? h(Chip, { tone: found.some((f) => f.severity === 'error') ? 'bad' : 'warn', title: found.map((f) => f.message).join('\n') }, `${found.length} 条要看`) : h(Chip, { tone: ws.validationView && ws.validationView.validation ? 'ok' : '' }, ws.validationView && ws.validationView.validation ? '✓' : '未校验'),
+        found.length ? h(Chip, { tone: found.some((f) => f.severity === 'error') ? 'bad' : 'warn', title: found.map((f) => f.message).join('\n') }, `${found.length} 条要看`)
+          : unchecked ? h(Chip, { tone: 'warn', title: '结构错误修好后才会检查教学设计' }, '未检查（结构错误）')
+            : h(Chip, { tone: v ? 'ok' : '' }, v ? '✓' : '未校验'),
       ],
     }
   })
-  return h(Card, { title: '教学现象 × 题目 × 判据', sub: '每个现象要能被练习题暴露，并由对应的判据判定；保留题只在导师侧使用。' },
-    phenomena.length ? h(Table, { head: ['现象', '类型', '练习题与 L1 判据', '判据', '状态'], rows }) : h(Empty, { title: '还没有教学设计' }, '去 01 生成草稿。'),
-    h('div', { className: 'wc-note wc-ln', style: { paddingTop: 8 } }, 'L1 = 代码检查（调了哪些工具、有没有提到关键内容、有没有拒绝或升级）；Mind the Goal 看整段对话目标是否达成；THELMA 只评走检索的题。没有 trace、关联不到题、裁判报错，都记为证据不足，不算通过。'))
+  return h(Card, { title: '教学现象 × 题目 × 判据', sub: '每个现象要能被练习题暴露，并由对应的判据判定；留出题只在导师侧使用。' },
+    phenomena.length ? h(Table, { head: ['现象', '类型', '练习题与 L1 判据', '判据', '状态'], rows })
+      : pendingDraft(ws) ? h(Empty, { title: 'Kiro 草稿待应用' }, '去 01 看草稿并应用；应用后这里显示现象、练习题和判据。')
+        : draftRunning(ws) ? h(Empty, { title: 'Kiro 正在起草' }, '草稿完成并应用后，这里显示现象、练习题和判据。')
+          : h(Empty, { title: '还没有教学设计' }, '去 01 生成草稿。'),
+    h('div', { className: 'wc-note wc-ln', style: { paddingTop: 8 } }, 'L1 = 代码检查（调了哪些工具、有没有提到关键内容、有没有拒绝或升级）；Mind the Goal 看整段对话目标是否达成；THELMA 只评走检索的题（GR = 回答有没有依据、不编造 · SP1 = 检索到的文段准不准 · SP2 = 事实级检索精度 · SQC = 资料覆盖）。没有 trace、关联不到题、裁判报错，都记为证据不足，不算通过。'))
 }
 
 function TeachingEvalTab() {
@@ -1677,7 +2156,7 @@ function ClassSummaryCard() {
   for (const i of list) byProv[i.provenance] = (byProv[i.provenance] || 0) + 1
   const kind = PACK_KIND[it && it.packKind] || {}
   return h(Card, { title: '内容类别', extra: h(Chip, { tone: kind.tone }, kind.label || (it && it.packKind)) },
-    h(Kpi, null, Object.entries(CLASS_LABEL).map(([k, [tone, label]]) => h(Stat, { key: k, label, value: (it && it.classes && it.classes[k]) || 0, tone: (it && it.classes && it.classes[k]) ? tone : '' }))),
+    h(Kpi, null, Object.entries(CLASS_LABEL).map(([k, [tone, label]]) => h(Stat, { key: k, label: k === 'draft' ? `${label}（不含手册叙述）` : label, value: (it && it.classes && it.classes[k]) || 0, tone: (it && it.classes && it.classes[k]) ? tone : '' }))),
     h('div', { className: 'wc-fx wc-mt1 wc-xs' }, Object.entries(byProv).map(([k, n]) => h(Chip, { key: k, tone: pick(PROVENANCE_LABEL, k)[0] }, `${pick(PROVENANCE_LABEL, k)[1]} ${n}`))),
     h(Note, null, kind.help))
 }
@@ -1692,12 +2171,19 @@ function AnchorsCard() {
   return h(Card, { title: '客户锚点题', sub: '正常、边界、禁止三类各要至少一道客户确认的题，它依据的业务规则也要客户确认。' },
     h('div', { className: 'wc-g3' }, CATEGORIES.map((cat) => {
       const have = listOf(it.anchors[cat])
-      const suggested = listOf(candidates[cat]).filter((id) => !have.includes(id))
+      // A confirmed question is an anchor only once every rule it rests on is confirmed too: say what is left.
+      const waiting = goldenOf(ws.sc).filter((c) => c.category === cat && c.provenance === 'customer_confirmed' && !have.includes(c.id))
+      const suggested = listOf(candidates[cat]).filter((id) => !have.includes(id) && !waiting.some((c) => c.id === id))
       return h('div', { key: cat, className: 'wc-tile' },
-        h('div', { className: 'wc-rf' }, h('span', { className: 'wc-b' }, CATEGORY_LABEL[cat]), have.length ? h(Chip, { tone: 'ok' }, `${have.length} 道`) : h(Chip, { tone: 'bad' }, '缺')),
-        have.map((id) => h('div', { key: id, className: 'wc-xs wc-mono' }, `✓ ${id}`)),
+        h('div', { className: 'wc-rf' }, h('span', { className: 'wc-b' }, CATEGORY_LABEL[cat]), have.length ? h(Chip, { tone: 'ok' }, `${have.length} 道`) : h(Chip, { tone: 'bad' }, waiting.length ? '差规则' : '缺')),
+        have.map((id) => h('div', { key: id, className: 'wc-xs' }, `✓ ${caseName(ws.sc, id)}`)),
+        waiting.map((c) => {
+          const left = listOf(c.basis).filter((fid) => !(facts[fid] && facts[fid].provenance === 'customer_confirmed'))
+          return h('div', { key: c.id, className: 'wc-xs wc-mt1' }, h('span', null, caseName(ws.sc, c.id)),
+            listOf(c.basis).length ? ' 题已确认 · 还差规则 ' : ' 题已确认，但没写依据的规则，算不了锚点', left.map((fid) => h(Chip, { key: fid, tone: 'warn' }, fid)))
+        }),
         suggested.length ? h('div', { className: 'wc-xs wc-mut wc-mt1' }, 'Kiro 建议先确认：', suggested.map((id) => h('div', { key: id },
-          h('span', { className: 'wc-mono' }, id), ' ', listOf(cases[id] && cases[id].basis).map((fid) => h(Chip, { key: fid, tone: facts[fid] && facts[fid].provenance === 'customer_confirmed' ? 'ok' : 'warn' }, `规则 ${fid}`))))) : null)
+          h('span', null, caseName(ws.sc, id)), ' ', listOf(cases[id] && cases[id].basis).map((fid) => h(Chip, { key: fid, tone: facts[fid] && facts[fid].provenance === 'customer_confirmed' ? 'ok' : 'warn' }, `规则 ${fid}`))))) : null)
     })),
     h(Note, null, '在下面的列表里找到这道题和它依据的规则，逐项“记录客户确认”。'))
 }
@@ -1720,6 +2206,7 @@ function BatchReviewCard() {
   if (!pending.length) return h(Card, { title: '批量审核' }, stuckNote)
   const toggle = (id) => setSelected(chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id])
   const submit = () => ws.confirmBatch(chosen, kind === 'workshop' ? { kind: originKind } : null).then((r) => { if (r) { setSelected([]); setAck(false) } })
+  const holding = holdingResult(ws)
   return h(Card, { title: `批量审核：${pending.length} 项 Kiro 草稿`, sub: kind === 'workshop' ? '把选中的项记为 SA 合成教学设定，并标来源；客户事实请逐项记录客户确认。' : '参考包：SA 对照内容后，把选中的项记为 SA 合成数据（不是客户确认）。' },
     stuckNote,
     h('div', { className: 'wc-fx' },
@@ -1733,11 +2220,11 @@ function BatchReviewCard() {
           i.label ? h('span', { className: 'wc-xs wc-mut', style: { display: 'block' } }, i.label) : null)))),
     kind === 'workshop' ? h('div', { className: 'wc-mt1' }, h(Field, { label: '来源（没标来源的项用它）' }, h(Seg, { value: originKind, onChange: setOriginKind, options: [['sa_authored', ORIGIN_LABEL.sa_authored], ['teaching_design', ORIGIN_LABEL.teaching_design]] }))) : null,
     h('div', { className: 'wc-mt1' }, h(Check, { checked: ack, disabled: !chosen.length, onChange: setAck }, `我逐项看过这 ${chosen.length} 项，确认它们是我（SA）提供的安全合成数据。这不是客户确认。`)),
-    h('div', { className: 'wc-mt1' }, h(Button, { kind: 'primary', disabled: !ack || !chosen.length, busy: ws.busy === 'batch', onClick: submit }, `记为 SA 合成（${chosen.length}）`)),
+    h('div', { className: 'wc-mt1' }, h(Button, { kind: 'primary', disabled: !ack || !chosen.length || holding, busy: ws.busy === 'batch', onClick: submit }, `记为 SA 合成（${chosen.length}）`)),
     h(ErrorLine, { error: ws.errors.batch }))
 }
 
-function ConfirmItemForm({ item, onDone }) {
+function ConfirmItemForm({ item, onDone, locked }) {
   const ws = useWs()
   const kind = ws.items && ws.items.packKind
   const narrative = item.kind === 'narrative'
@@ -1773,7 +2260,7 @@ function ConfirmItemForm({ item, onDone }) {
       key: m.id, tone: originMaterials.includes(m.id) ? 'acc' : '', onClick: () => setOriginMaterials(originMaterials.includes(m.id) ? originMaterials.filter((x) => x !== m.id) : [...originMaterials, m.id]),
     }, m.name)) : h(Note, { tone: 'warn' }, '先在 01 上传客户资料')) : null,
     h('div', { className: 'wc-fx' },
-      h(Button, { kind: 'primary', small: true, disabled: !valid, busy, onClick: () => ws.confirmItem(item.id, body()).then((r) => { if (r) onDone() }) }, prov === 'customer_confirmed' ? '记录客户确认' : '记为 SA 合成'),
+      h(Button, { kind: 'primary', small: true, disabled: !valid || locked, busy, onClick: () => ws.confirmItem(item.id, body()).then((r) => { if (r) onDone() }) }, prov === 'customer_confirmed' ? '记录客户确认' : '记为 SA 合成'),
       h(Button, { small: true, onClick: onDone }, '取消')),
     h(ErrorLine, { error: ws.errors[`confirm:${item.id}`] }))
 }
@@ -1783,6 +2270,8 @@ function ItemsTable() {
   const list = listOf(ws.items && ws.items.items)
   const [kindFilter, setKindFilter] = useState('all')
   const reviewed = (i) => i.provenance === 'customer_confirmed' || i.provenance === 'sa_synthetic'
+  const cases = Object.fromEntries(goldenOf(ws.sc).map((c) => [c.id, c]))
+  const facts = Object.fromEntries(listOf(ws.sc && ws.sc.facts).map((f) => [f.id, f]))
   const [chosenState, setState] = useState(null)
   const state = chosenState || (list.some((i) => !reviewed(i)) ? 'pending' : 'all')
   const [open, setOpen] = useState(null)
@@ -1797,19 +2286,21 @@ function ItemsTable() {
         h('div', { className: 'wc-grow' },
           h('div', { className: 'wc-fx' }, h(Chip, null, ITEM_KIND_LABEL[i.kind] || i.kind), h('span', { className: 'wc-mono wc-xs wc-b' }, i.id),
             i.category ? h(Chip, null, CATEGORY_LABEL[i.category] || i.category) : null, i.set ? h(Chip, { tone: i.set === 'holdout' ? 'warn' : '' }, SET_LABEL[i.set] || i.set) : null,
-            i.noise ? h(Chip, { tone: 'acc' }, '干扰文档') : null, i.criticality === 'blocking' ? h(Chip, null, '阻断项') : null),
+            i.noise ? h(Chip, { tone: 'acc' }, '文末有干扰问答') : null, i.criticality === 'blocking' ? h(Chip, null, '阻断项') : null,
+            i.kind === 'golden' ? listOf(cases[i.id] && cases[i.id].basis).map((fid) => h(Chip, { key: fid, tone: facts[fid] && facts[fid].provenance === 'customer_confirmed' ? 'ok' : '', title: facts[fid] ? pick(PROVENANCE_LABEL, facts[fid].provenance)[1] : '规则不存在' }, `依据：规则 ${fid}`)) : null),
           i.label ? h('div', { className: 'wc-sm wc-mt1 wc-break' }, i.label) : null),
         h('div', { className: 'wc-fx', style: { flexShrink: 0 } },
           h(Chip, { tone: pick(CLASS_LABEL, i.class)[0], title: `来源状态：${pick(PROVENANCE_LABEL, i.provenance)[1]}` }, pick(CLASS_LABEL, i.class)[1]),
           i.class === 'draft' && i.provenance === 'customer_confirmed' ? h(Chip, { tone: 'bad' }, '确认像是模拟的') : null,
-          i.origin ? h(Chip, null, `来源：${ORIGIN_LABEL[i.origin.kind] || i.origin.kind}`) : null,
+          i.origin ? h(Chip, null, `${i.provenance === 'ai_draft' || i.provenance === 'pending' ? 'Kiro 标的来源' : '来源'}：${ORIGIN_LABEL[i.origin.kind] || i.origin.kind}`) : null,
           i.confirmable && i.provenance !== 'customer_confirmed' ? h(Button, { small: true, onClick: () => setOpen(open === i.id ? null : i.id) }, open === i.id ? '收起' : '确认…') : null)),
-      open === i.id ? h(ConfirmItemForm, { item: i, onDone: () => setOpen(null) }) : null))) : h(Empty, null, state === 'pending' ? '没有待审核的内容。' : '没有内容。'))
+      open === i.id ? h(ConfirmItemForm, { item: i, onDone: () => setOpen(null), locked: holdingResult(ws) }) : null))) : h(Empty, null, state === 'pending' ? '没有待审核的内容。' : '没有内容。'))
 }
 
 function ReviewTab() {
   const ws = useWs()
-  return h('div', { className: 'wc-col' }, h(ResourceError, { name: 'items', hint: '内容列表读不到' }), h(ClassSummaryCard), h(AnchorsCard), h(BatchReviewCard), h(ItemsTable), ws.items && ws.items.packKind === 'customer' ? h(Note, null, '客户严格确认：阻断项只能逐项记录客户确认；SA 合成不能替代客户确认。') : null)
+  return h('div', { className: 'wc-col' }, h(ResourceError, { name: 'items', hint: '内容列表读不到' }),
+    holdingResult(ws) ? h('div', { className: 'wc-err' }, holdText(ws)) : null, h(ClassSummaryCard), h(AnchorsCard), h(BatchReviewCard), h(ItemsTable), ws.items && ws.items.packKind === 'customer' ? h(Note, null, '客户严格确认：阻断项只能逐项记录客户确认；SA 合成不能替代客户确认。') : null)
 }
 
 function FactsTab() {
@@ -1825,7 +2316,7 @@ function FactsTab() {
         cells: [h('div', null, h('div', { className: 'wc-break' }, f.statement), h('div', { className: 'wc-xs wc-mut wc-mono' }, f.id), f.source ? h('div', { className: 'wc-xs wc-mut' }, `出处：${f.source}`) : null),
           h(Chip, { tone: (f.criticality || 'blocking') === 'blocking' ? 'warn' : '' }, (f.criticality || 'blocking') === 'blocking' ? '阻断' : '参考'),
           h(ToneChip, { map: CLASS_LABEL, value: classes[`fact:${f.id}`] }),
-          h('span', { className: 'wc-xs wc-mono wc-break' }, golden.filter((c) => listOf(c.basis).includes(f.id)).map((c) => c.id).join(' · ') || '—')],
+          h('span', { className: 'wc-xs wc-break', title: golden.filter((c) => listOf(c.basis).includes(f.id)).map((c) => c.id).join(' · ') }, golden.filter((c) => listOf(c.basis).includes(f.id)).map((c) => c.label || c.id).join(' · ') || '—')],
       })),
       empty: '还没有业务规则。',
     }))
@@ -1848,12 +2339,12 @@ function KnowledgeTab() {
   const kb = (ws.sc && ws.sc.knowledge) || {}
   const docs = listOf(kb.documents)
   const classes = Object.fromEntries(listOf(ws.items && ws.items.items).map((i) => [`${i.kind}:${i.id}`, i.class]))
-  return h(Card, { title: '知识材料', extra: h('span', { className: 'wc-xs wc-mut' }, `${docs.length} 份 · 检索工具 ${(ws.sc && ws.sc.evaluation && ws.sc.evaluation.retrievalToolName) || '—'}`) },
+  return h(Card, { title: '知识文档', extra: h('span', { className: 'wc-xs wc-mut' }, `${docs.length} 份 · 检索工具 ${(ws.sc && ws.sc.evaluation && ws.sc.evaluation.retrievalToolName) || '—'}`) },
     docs.length ? docs.map((d, i) => h('div', { key: d.id, className: cx('wc-it', i && 'wc-ln') },
       h('div', { className: 'wc-rf wc-top-al' },
         h('div', { className: 'wc-grow' }, h('div', { className: 'wc-b' }, d.title || d.id), h('div', { className: 'wc-xs wc-mut wc-mono' }, d.file)),
-        h('span', { className: 'wc-fx' }, d.noise ? h(Chip, { tone: 'acc' }, '干扰文档') : null, h(ToneChip, { map: CLASS_LABEL, value: classes[`document:${d.id}`] }),
-          d.origin ? h(Chip, null, `来源：${ORIGIN_LABEL[d.origin.kind] || d.origin.kind}`) : null)),
+        h('span', { className: 'wc-fx' }, d.noise ? h(Chip, { tone: 'acc' }, '文末有干扰问答') : null, h(ToneChip, { map: CLASS_LABEL, value: classes[`document:${d.id}`] }),
+          d.origin ? h(Chip, null, `${d.provenance === 'ai_draft' || d.provenance === 'pending' ? 'Kiro 标的来源' : '来源'}：${ORIGIN_LABEL[d.origin.kind] || d.origin.kind}`) : null)),
       h(FileView, { rel: d.file }))) : h(Empty, null, '还没有知识文档。'),
     kb.noisePlan ? h(Note, null, `干扰设计：${kb.noisePlan.enabled ? '开启' : '关闭'}。${kb.noisePlan.rationale || ''}`) : null)
 }
@@ -1875,7 +2366,7 @@ function ToolsTab() {
           h('div', { className: 'wc-sm wc-mut wc-mt1' }, t.description),
           h('div', { className: 'wc-xs wc-mt1' }, '输入：', props.length ? props.map((p) => h(Chip, { key: p, tone: required.includes(p) ? 'acc' : '' }, p + (required.includes(p) ? ' *' : ''))) : '—',
             // The fixtures' provenance is the tool's own class (the chip above), not assumed synthetic.
-            listOf(fixtures.cases).length || listOf(fixtures.errors).length ? h('span', { className: 'wc-mut' }, ` · 模拟返回 ${listOf(fixtures.cases).length} 种，错误 ${listOf(fixtures.errors).length} 种`) : null))
+            listOf(fixtures.cases).length || listOf(fixtures.errors).length ? h('span', { className: 'wc-mut' }, ` · 模拟返回 ${listOf(fixtures.cases).length} 种${fixtures.default ? ' + 默认返回' : ''}${listOf(fixtures.errors).length ? ` · 报错 ${listOf(fixtures.errors).length} 种` : ''}`) : null))
       }) : h(Empty, null, '还没有工具。')),
     h(Card, { title: 'Skills', extra: h('span', { className: 'wc-xs wc-mut' }, `${skills.length} 个`) },
       skills.length ? skills.map((s, i) => h('div', { key: s.name, className: cx('wc-it', i && 'wc-ln') },
@@ -1918,14 +2409,14 @@ function PromptTab() {
   const extra = (did) => listOf(checks && checks[did]).map((code) => DEFECT_EXTRA[code]).filter(Boolean)
   const defects = listOf(t && t.baselineDefects)
   return h('div', { className: 'wc-col' },
-    h(Card, { title: '弱基线与优化候选', sub: `基线里故意写弱的每一处，都要能被某道练习题暴露；第 10 步换成候选并复评。✓ / ✕ 取自${checks === null ? '校验（内容改过，重新校验后显示）' : '最新校验，和构建门禁用同一套匹配规则'}。` },
+    h(Card, { title: '弱基线与优化候选', sub: `基线里故意写弱的每一处，都要能被某道练习题暴露；Guided Run「${STEP_LABEL.optimize}」那一步换成候选再评。✓ / ✕ 取自${checks === null ? '校验（内容改过，重新校验后显示）' : '最新校验，和构建门禁用同一套匹配规则'}。` },
       h(Table, {
         head: ['基线的弱点（教学设计）', '基线里这句', '候选改成', '候选含修正', '现象'],
         rows: defects.map((d) => ({
           key: d.id,
           cells: [h('div', null, h('div', null, d.description), h('div', { className: 'wc-xs wc-mut wc-mono' }, d.id),
             extra(d.id).map((text) => h('div', { key: text, className: 'wc-xs wc-tx-bad' }, text))),
-            d.baselineMarker ? h('div', null, h('div', { className: 'wc-xs wc-mut' }, `“${d.baselineMarker}”`), mark(d.id, 'teaching.defect_marker_missing')) : h('span', { className: 'wc-mut' }, '未标'),
+            d.baselineMarker ? h('div', null, h('div', { className: 'wc-xs wc-mut' }, `“${d.baselineMarker}”`), mark(d.id, 'teaching.defect_marker_missing')) : h('span', { className: 'wc-mut' }, '没有对应句子（基线缺这条规则）'),
             d.candidateFix || h('span', { className: 'wc-mut' }, '未写'), d.candidateFix ? mark(d.id, 'teaching.defect_fix_missing') : h('span', { className: 'wc-mut' }, '—'),
             h('span', { className: 'wc-xs wc-mono' }, phenomenaOf(ws.sc).filter((p) => listOf(p.defectIds).includes(d.id)).map((p) => p.id).join(' · ') || '—')],
         })),
@@ -1949,21 +2440,21 @@ function GoldenTab() {
   const cases = data ? [...listOf(data.practice), ...(instructor ? listOf(data.holdout) : [])] : []
   const classes = Object.fromEntries(listOf(ws.items && ws.items.items).map((i) => [`${i.kind}:${i.id}`, i.class]))
   return h(Card, {
-    title: '黄金集与判据',
+    title: '题目与判据',
     extra: data ? [
-      h(Chip, { key: 'p' }, `练习 ${listOf(data.practice).length} · 保留 ${data.holdoutCount}`),
+      h(Chip, { key: 'p' }, `练习 ${listOf(data.practice).length} · 留出 ${data.holdoutCount}`),
       ...Object.entries(data.categories || {}).map(([k, n]) => h(Chip, { key: k }, `${CATEGORY_LABEL[k] || k} ${n}`)),
-      h(Button, { key: 'b', small: true, onClick: () => setInstructor(!instructor) }, instructor ? '隐藏保留题' : '显示保留题（导师）'),
+      h(Button, { key: 'b', small: true, onClick: () => setInstructor(!instructor) }, instructor ? '隐藏留出题' : '显示留出题（导师）'),
     ] : null,
   },
   h(ErrorLine, { error }),
-  instructor && data && data.warning ? h(Note, { tone: 'bad' }, '保留题只给导师：不要贴到学员材料、幻灯片或聊天里。') : null,
+  instructor && data && data.warning ? h(Note, { tone: 'bad' }, '留出题只给导师：不要贴到学员材料、幻灯片或聊天里。') : null,
   h(Table, {
     head: ['问题', '角色', '集合', '期望与判据', '现象', '类别'],
     rows: cases.map((c) => ({
       key: c.id,
       cells: [h('div', null, h('div', { className: 'wc-break' }, c.query), h('div', { className: 'wc-xs wc-mut' }, `${c.label} · `, h('span', { className: 'wc-mono' }, c.id))),
-        h('span', { className: 'wc-xs wc-mut' }, c.roleId || c.actorId),
+        h('span', { className: 'wc-xs wc-mut', title: c.roleId || c.actorId }, roleName(ws.sc, c.roleId) || c.actorId),
         h('div', null, h(Chip, { tone: c.set === 'holdout' ? 'warn' : '' }, SET_LABEL[c.set] || c.set), h('div', { className: 'wc-xs wc-mut wc-mt1' }, CATEGORY_LABEL[c.category] || c.category)),
         h(ChipList, { chips: expectationChips(c.expected) }),
         h('span', { className: 'wc-xs wc-mono' }, phenomenaOfCase(ws.sc, c.id).join(' · ') || '—'),
@@ -1971,7 +2462,7 @@ function GoldenTab() {
     })),
     empty: data ? '还没有题目。' : '加载中…',
   }),
-  h(Note, null, '保留题的期望只在导师侧使用，不下发到学员环境，也从不拿来调 Prompt。'))
+  h(Note, null, '留出题的期望只在导师侧使用，不下发到学员环境，也从不拿来调 Prompt。'))
 }
 
 function ContentStep({ tab, onTab }) {
@@ -1983,17 +2474,20 @@ function ContentStep({ tab, onTab }) {
     { value: 'eval', label: '教学与评估' },
     { value: 'review', label: '审核', count: pending ? `${pending} 待审` : null },
     { value: 'facts', label: '业务规则', count: listOf(sc && sc.facts).length },
-    { value: 'kb', label: '知识材料', count: listOf(sc && sc.knowledge && sc.knowledge.documents).length },
+    { value: 'kb', label: '知识文档', count: listOf(sc && sc.knowledge && sc.knowledge.documents).length },
     { value: 'tools', label: '工具与 Skills', count: listOf(sc && sc.tools).length },
     { value: 'prompt', label: 'Prompt' },
-    { value: 'golden', label: '黄金集与判据', count: goldenOf(sc).length },
-    { value: 'guides', label: '学员与导师材料' },
+    { value: 'golden', label: '题目与判据', count: goldenOf(sc).length },
+    { value: 'guides', label: '学员与导师手册' },
   ]
   const current = options.some((o) => o.value === tab) ? tab : 'eval'
   const body = { eval: TeachingEvalTab, review: ReviewTab, facts: FactsTab, kb: KnowledgeTab, tools: ToolsTab, prompt: PromptTab, golden: GoldenTab, guides: GuidesCard }[current]
   return h(Fragment, null,
     h(StepHeader, { n: '02', title: '内容与评估', h1: '先看评估设计对不对，再按类别审核内容', sub: '每项内容都标：来源、确认状态和类别（客户事实 / 合成教学设定 / 教学设计 / 草稿）。' }),
     ws.scenarioView && ws.scenarioView.error ? h('div', { className: 'wc-err wc-mt' }, ws.scenarioView.error) : null,
+    // While a draft waits or runs in 01, these tabs still show the project as it is (教学与评估 says so in its own card).
+    (pendingDraft(ws) || draftRunning(ws)) && current !== 'eval'
+      ? h(Note, { tone: 'warn' }, `下面是项目当前的内容，不是 01 里${draftRunning(ws) ? '正在生成' : '待应用'}的 Kiro 草稿；${replaceText(ws.generation)}。`) : null,
     h('div', { className: 'wc-mt' }, h(Tabs, { value: current, onChange: onTab, options })),
     h('div', { className: 'wc-mt' }, h(body)),
     h(StepFoot, { back: ['1', '← 回到场景与课程'], next: ['3', '去交付 →'] }))
@@ -2034,7 +2528,7 @@ function TargetForm() {
 }
 
 function PreflightResult({ pf }) {
-  if (!pf) return null
+  if (!pf || pf.unreachable) return null // the error line above says why it could not run
   const plan = pf.plan || {}
   return h('div', { className: 'wc-mt1' },
     listOf(pf.checks).map((c, i) => h('div', { key: c.name || i, className: cx('wc-fx wc-it', i && 'wc-ln'), style: { flexWrap: 'nowrap', alignItems: 'flex-start' } },
@@ -2050,7 +2544,7 @@ function TargetCard() {
     h(TargetForm),
     h('div', { className: 'wc-fx wc-mt' },
       h(Button, { disabled: !ws.project.target || !ws.project.lastBuild, busy: ws.busy === 'preflight', onClick: ws.runPreflight, title: ws.project.lastBuild ? '' : '先构建 Release' }, '只读体检'),
-      !ws.project.lastBuild ? h('span', { className: 'wc-xs wc-mut' }, '体检对照当前 Release，先构建') : null),
+      !ws.project.lastBuild ? h(Button, { small: true, kind: 'ghost', onClick: scrollToBuildCard }, '体检对照当前 Release：先构建 ↓') : null),
     h(ErrorLine, { error: ws.errors.preflight }),
     h(PreflightResult, { pf }),
     h(Note, null, '体检只读：身份与账号、凭证有效期、两个 stack、模板版本、实例在线、场景资源还没创建。什么都不上传。'))
@@ -2065,9 +2559,18 @@ function OneClickCard() {
   useEffect(() => { if (!active) setAck(false) }, [active])
   const lv = p.lastValidation
   const drafts = listOf(ws.items && ws.items.items).filter((i) => i.provenance === 'ai_draft' || i.provenance === 'pending').length
+  const strict = ws.items && ws.items.packKind === 'customer' ? listOf(ws.items.items).filter(needsCustomer).length : 0
+  const vNow = ws.validationView && ws.validationView.validation
+  const held = lv && vNow && vNow.at === lv.at ? `还差${gateLeft(vNow, ws.items)}`
+    : lv ? pendingText(Math.max(0, (lv.gate || 0) - (listOf(lv.anchorsMissing).length ? 1 : 0)), listOf(lv.anchorsMissing).length) : ''
   const gates = [
-    ['校验', !lv ? ['warn', '还没校验 · 任务里会校验'] : lv.ok ? ['ok', '通过'] : ['bad', `有 ${(lv.schema || 0) + (lv.gate || 0) + (lv.policyErrors || 0) + (lv.outputErrors || 0) + (lv.renderErrors || 0) + (lv.workspaceErrors || 0)} 处阻断 · 构建会拦`]],
-    ['审核', drafts ? ['warn', `${drafts} 项待审核 · 构建会拦`] : ['ok', '没有待审核']],
+    ['校验', !lv ? ['warn', '还没校验 · 任务里会校验'] : lv.ok ? ['ok', '通过']
+      : (lv.schema || 0) + (lv.policyErrors || 0) + (lv.outputErrors || 0) + (lv.renderErrors || 0) + (lv.workspaceErrors || 0)
+        ? ['bad', `有 ${(lv.schema || 0) + (lv.policyErrors || 0) + (lv.outputErrors || 0) + (lv.renderErrors || 0) + (lv.workspaceErrors || 0)} 个内容错误 · 构建会拦`]
+        : ['warn', `内容没有错误；${held} · 构建会拦`]],
+    ['审核', holdingResult(ws) ? ['warn', `Kiro ${(ws.generation || {}).mode === 'repair' ? '修复结果' : '草稿'}${isLive(ws.generation) ? '正在生成' : '待应用'}：先处理它，再审核`]
+      : drafts ? ['warn', `${drafts} 项待审核${strict ? '，阻断项要客户确认' : ''} · 构建会拦`]
+        : strict ? ['warn', `${strict} 项阻断项待客户确认 · 构建会拦`] : goldenOf(ws.sc).length ? ['ok', '没有待审核'] : ['', '还没有内容']],
     ['构建', p.lastBuild ? ['ok', p.lastBuild.version] : ['', '任务里构建']],
     ['目标环境', !p.target ? ['bad', '未配置'] : ws.preflight ? (ws.preflight.ok ? ['ok', '体检通过'] : ['bad', '体检未通过']) : ['', `${p.target.expected_account_id} · ${p.target.region}`]],
   ]
@@ -2079,8 +2582,8 @@ function OneClickCard() {
     h(ErrorLine, { error: ws.errors.oneclick }),
     h('div', { className: 'wc-steps wc-mt1' }, stages.map((s, i) => h(Chip, { key: s.id, tone: pick(JOB_STATUS, s.status)[0], title: s.error || detailText(s.detail) || s.note || '' }, `${i + 1} ${ONECLICK_STAGE[s.id] || s.id}${s.status !== 'pending' ? ` · ${pick(JOB_STATUS, s.status)[1]}` : ''}`))),
     job ? h('div', { className: 'wc-mt1' }, stages.filter((s) => s.error || s.detail || s.note).map((s) => h('div', { key: s.id, className: 'wc-xs wc-break' },
-      h('span', { className: 'wc-b' }, `${ONECLICK_STAGE[s.id] || s.id}：`), h('span', { className: s.error ? 'wc-tx-bad' : 'wc-mut' }, s.error ? asText(s.error) : s.note ? stageNote(s.note) : detailText(s.detail))))) : null,
-    job && job.error && !stages.some((s) => asText(s.error) === asText(job.error)) ? h('div', { className: 'wc-err' }, asText(job.error)) : null,
+      h('span', { className: 'wc-b' }, `${ONECLICK_STAGE[s.id] || s.id}：`), h('span', { className: s.error ? 'wc-tx-bad' : 'wc-mut', title: s.error ? asText(s.error) : undefined }, s.error ? backendText(asText(s.error)) || asText(s.error) : s.note ? stageNote(s.note) : detailText(s.detail))))) : null,
+    job && job.error && !stages.some((s) => asText(s.error) === asText(job.error)) ? h('div', { className: 'wc-err', title: asText(job.error) }, backendText(asText(job.error)) || asText(job.error)) : null,
     job && job.status === 'succeeded' && job.result ? h(Note, { tone: 'ok' }, `Release ${asText(job.result.version)} 已应用${job.result.live ? '并确认保留' : ''}；去 04 从「${STEP_LABEL[job.result.nextStep] || job.result.nextStep || '—'}」开始彩排。`) : null,
     job && job.status === 'failed' ? h(Note, { tone: 'warn' }, '停在第一个失败的阶段，后面的阶段都没运行。修好原因后再点一键覆盖：内容没变时会复用已有构建，远端已是这个版本时应用会跳过。') : null,
     job && job.status === 'interrupted' ? h(Note, { tone: 'warn' }, '后端在任务运行中重启过，远端做到哪一步不知道。先到“高级 → 分步同步与回滚”做只读体检、再点“查看状态”，确认远端版本后再重新开始。') : null,
@@ -2088,14 +2591,25 @@ function OneClickCard() {
     h(Note, null, '一个后台任务：校验 → 构建 → 预检 → 上传并应用 → 核对 → 确认保留 → 绑定 Guided Run。失败会停在那一步；预检不过就什么都不上传。“确认保留”是结束远端恢复等待期，不是 Git 提交。需要分步执行或回滚，去“高级”。'))
 }
 
+const BUILD_CARD_ID = 'wc-build-card'
+const scrollToBuildCard = () => {
+  const el = document.getElementById(BUILD_CARD_ID)
+  if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 function BuildCard() {
   const ws = useWs()
   const b = ws.project.lastBuild
   const rel = ws.release
   const relError = ws.res.release && ws.res.release.error
-  const buildError = ws.errors.build
-  const validation = buildError && buildError.data && buildError.data.validation
-  return h(Card, { title: '构建 Release', extra: b ? h(Chip, { tone: rel ? 'ok' : 'warn' }, rel ? '与当前内容一致' : '需要重新构建') : h(Chip, null, '未构建') },
+  const refused = ws.errors.build && ws.errors.build.data && ws.errors.build.data.validation
+  const lv = ws.project.lastValidation // a newer validation (the review finished since) or none (reset) retires the refusal
+  const outdated = !!(refused && (!lv || (lv.at && refused.at && lv.at > refused.at)))
+  const buildError = outdated ? null : ws.errors.build
+  const validation = outdated ? null : refused
+  const vv = ws.validationView // the current validation already says whether a build would pass
+  const held = vv && vv.fresh && vv.validation && !vv.validation.ok
+    ? (contentErrorCount(vv.validation) ? `校验有 ${contentErrorCount(vv.validation)} 个内容错误` : `还差${gateLeft(vv.validation, ws.items)}`) : ''
+  return h(Card, { id: BUILD_CARD_ID, title: '构建 Release', extra: b ? h(Chip, { tone: rel ? 'ok' : 'warn' }, rel ? '与当前内容一致' : '需要重新构建') : h(Chip, null, '未构建') },
     b ? h(Kpi, null,
       h(Stat, { label: '版本', small: true, value: h('span', { className: 'wc-mono' }, b.version) }),
       h(Stat, { label: '文件', value: b.files }),
@@ -2103,22 +2617,35 @@ function BuildCard() {
       h(Stat, { label: '构建时间', small: true, value: fmtTime(b.at) })) : h(Empty, null, '校验通过后构建：编译 Scenario Pack，渲染 15 步 Release，并生成学员和导师手册。'),
     rel && rel.build ? h(Note, null, `模板 ${shortHash(rel.build.templateCommit)} · ${rel.fileCount} 个文件 · 补丁 ${rel.build.patches ?? '—'} 处`) : null,
     b && relError ? h(Note, { tone: 'warn' }, relError.message) : null,
-    h('div', { className: 'wc-fx wc-mt' }, h(Button, { kind: b ? 'default' : 'primary', busy: ws.busy === 'build', onClick: ws.build }, b ? '重新构建' : '构建 Release')),
+    h('div', { className: 'wc-fx wc-mt' }, h(Button, { kind: b || held ? 'default' : 'primary', busy: ws.busy === 'build', onClick: ws.build }, b ? '重新构建' : '构建 Release'),
+      held && !validation ? h('span', { className: 'wc-xs wc-tx-warn' }, `现在构建会被拦：${held}`) : null),
     h(ErrorLine, { error: buildError }),
-    validation ? h('div', { className: 'wc-rf wc-mt1' }, h('span', { className: 'wc-sm' }, `校验有 ${blockingCount(validation)} 处阻断。`), h(Button, { small: true, onClick: () => ws.go('2', 'eval') }, '去看校验结果 →')) : null)
+    validation ? h('div', { className: 'wc-rf wc-mt1' }, h('span', { className: 'wc-sm' }, contentErrorCount(validation) ? `校验有 ${contentErrorCount(validation)} 个内容错误。` : `内容没有错误；还差${gateLeft(validation, ws.items)}。`), h(Button, { small: true, onClick: () => ws.go('2', 'eval') }, '去看校验结果 →')) : null)
+}
+
+// The 03 校验 row: the items left to review and the missing anchors, leaving out whichever is none.
+const pendingText = (review, anchors) => review ? `${review} 项待审核${anchors ? '，另缺客户锚点' : ''}` : anchors ? '缺客户锚点' : '还有待处理项（见「02」校验结果）'
+// What the gate still holds, by who acts: the SA's review, the customer's own confirmation (every blocking item
+// of a 客户严格确认 pack), the customer anchors of a workshop pack.
+function gateLeft(v, items) {
+  const gate = listOf(v.gate)
+  const need = new Set(items && items.packKind === 'customer' ? listOf(items.items).filter(needsCustomer).map((i) => i.id) : [])
+  const customer = (g) => CUSTOMER_GATE.test(String(g.reason || '')) || need.has(g.item_id)
+  return [gate.some((g) => g.item_type !== 'golden set' && !customer(g)) ? '审核' : null, gate.some(customer) ? '客户确认' : null,
+    gate.some((g) => g.item_type === 'golden set') ? '客户锚点' : null].filter(Boolean).join('和') || '审核'
 }
 
 function ExportCard() {
   const ws = useWs()
   const built = !!ws.release
   const rows = [
-    [['运行包', 'Release zip'], '可运行的 15 步文件树、运行清单、学员手册 README.md', '保留题、导师材料、私有来源', h(LinkButton, { href: LINKS.release(ws.pid), disabled: !built }, '导出')],
-    [['学员手册', 'README.md'], 'Release 根目录那份 README.md', '导师答案、保留题', h(LinkButton, { href: LINKS.guideDownload(ws.pid, 'student'), disabled: !built }, '下载')],
-    [['导师包', '只给导师'], '导师手册、保留题与期望、来源报告、彩排证据（有就带）', '任何 Release 文件', h(LinkButton, { href: LINKS.instructorBundle(ws.pid), disabled: !built }, '导出')],
+    [['运行包', 'Release zip'], '可运行的 15 步文件树、运行清单、学员手册 README.md', '留出题、导师材料、私有来源', h(LinkButton, { href: LINKS.release(ws.pid), disabled: !built }, '导出')],
+    [['学员手册', 'README.md'], 'Release 根目录那份 README.md', '导师答案、留出题', h(LinkButton, { href: LINKS.guideDownload(ws.pid, 'student'), disabled: !built }, '下载')],
+    [['导师包', '只给导师'], '导师手册、留出题与期望、来源报告、彩排证据（有就带）', '任何 Release 文件', h(LinkButton, { href: LINKS.instructorBundle(ws.pid), disabled: !built }, '导出')],
   ]
   return h(Card, { title: '导出', sub: '每次导出都按当前构建重新核对文件哈希；源文件改过就要先重新构建。' },
     h(Table, { head: ['给谁', '包含', '不包含', ''], rows: rows.map(([[a, sub], b, c, d]) => [h('div', { style: { whiteSpace: 'nowrap' } }, h('div', { className: 'wc-b' }, a), h('div', { className: 'wc-xs wc-mut' }, sub)), b, h('span', { className: 'wc-mut' }, c), d]) }),
-    h(Note, { tone: 'bad' }, '导师包含保留题和期望答案，不要发给学员。'))
+    h(Note, { tone: 'bad' }, '导师包含留出题和期望答案，不要发给学员。'))
 }
 
 function GuidesCard() {
@@ -2144,20 +2671,20 @@ function GuidesCard() {
     ],
   },
   loading ? h(Note, null, '加载中…') : null,
-  h(ErrorLine, { error }),
+  error && !goldenOf(ws.sc).length ? h(Empty, null, '还没有内容：先在「01」生成并应用草稿，再看手册。') : h(ErrorLine, { error }),
   data ? h(Fragment, null,
     h('div', { className: 'wc-fx' },
-      data.draft ? h(Chip, { tone: 'warn' }, '草稿预览：按当前 scenario 渲染，未经构建') : h(Chip, { tone: 'ok' }, `已构建 · ${data.version} · ${data.fileName}`),
+      data.draft ? h(Chip, { tone: 'warn' }, pendingDraft(ws) || draftRunning(ws) ? '草稿预览：按项目当前内容渲染（不是 01 的 Kiro 草稿），未经构建' : '草稿预览：按当前 scenario 渲染，未经构建') : h(Chip, { tone: 'ok' }, `已构建 · ${data.version} · ${data.fileName}`),
       data.rehearsalEvidence ? h(Chip, { tone: 'info' }, '含彩排证据') : null,
       !data.draft ? h(LinkButton, { href: LINKS.guideDownload(ws.pid, audience) }, '下载') : null),
-    data.warning ? h(Note, { tone: 'bad' }, '导师手册含保留题和期望答案，不要发给学员。') : null,
+    data.warning ? h(Note, { tone: 'bad' }, '导师手册含留出题和期望答案，不要发给学员。') : null,
     listOf(data.findings).length ? h('div', { className: 'wc-mt1' }, data.findings.map((f, i) => h(FindingRow, { key: i, f }))) : null,
     h(Pre, { tall: true }, stripGuideMarkers(data.markdown))) : null)
 }
 
 function DeliveryStep() {
   return h(Fragment, null,
-    h(StepHeader, { n: '03', title: '交付', h1: '先体检环境，再一键覆盖', sub: '一键覆盖包含校验和构建；也可以先单独构建，看手册和导出包。' }),
+    h(StepHeader, { n: '03', title: '交付', h1: '配置环境 → 构建 → 体检 → 一键覆盖', sub: '体检对照当前 Release，所以先构建；一键覆盖本身也会校验和构建。构建后可以先看手册和导出包。' }),
     h('div', { className: 'wc-g2e wc-mt' }, h(TargetCard), h(OneClickCard)),
     h('div', { className: 'wc-g2e wc-mt' }, h(BuildCard), h(ExportCard)),
     h('div', { className: 'wc-mt' }, h(GuidesCard)),
@@ -2294,11 +2821,13 @@ function RemediationList({ hints }) {
   const [all, setAll] = useState(false)
   const live = isLive(ws.generation)
   const blocked = wsMaterialsBlock(ws, true) // remediation starts a repair round
+  const waiting = !live && holdingResult(ws) && (ws.generation || {}).mode !== 'repair' // a repair would void the draft that waits in 01 (as in 02)
   if (!hints.length) return null
   const blocking = hints.filter((x) => x.severity === 'blocking').length
   const newRelease = hints.some((x) => x.severity === 'blocking' && listOf(x.asset && x.asset.scopes).length) // a project file changes
   return h('div', { className: 'wc-mt' },
     h('div', { className: 'wc-rf' }, h('span', { className: 'wc-b wc-sm' }, `要调整的 ${hints.length} 项`), h('span', { className: 'wc-xs wc-mut' }, `阻断 ${blocking} · 建议 ${hints.length - blocking}`)),
+    waiting && hints.some((x) => listOf(x.asset && x.asset.scopes).length) ? h(Note, { tone: 'warn' }, '01 有一份待应用的 Kiro 草稿：让 Kiro 修会让它作废。先应用它，再修。') : null,
     (all ? hints : hints.slice(0, 4)).map((hint) => {
       const asset = hint.asset || {}
       const scopes = listOf(asset.scopes)
@@ -2310,7 +2839,7 @@ function RemediationList({ hints }) {
           h('div', { className: 'wc-xs wc-mut wc-break', title: englishTwin(hint.because, hint.becauseEn) }, hint.because),
           h('div', { className: 'wc-fx wc-mt1' }, h('span', { className: 'wc-xs wc-mono wc-mut wc-break' }, [asset.file, asset.scenarioPath].filter(Boolean).join(' · ') || asset.kind),
             scopes.map((s) => h(Chip, { key: s }, SCOPE_LABEL[s] || s)), h('span', { className: 'wc-xs wc-mut wc-mono' }, hint.code))),
-        scopes.length ? h(Button, { small: true, icon: Wand2, disabled: live || !!blocked, title: blocked || '只把这一条整改发给 Kiro（连同当前校验里 Kiro 能修的结果），彩排的其他整改不发', busy: ws.busy === `remedy:${hint.id}`, onClick: () => ws.startRemediation(hint) }, '让 Kiro 修')
+        scopes.length ? h(Button, { small: true, icon: Wand2, disabled: live || waiting || !!blocked, title: waiting ? '01 有一份待应用的 Kiro 草稿：先应用它，再让 Kiro 修' : blocked || '只把这一条整改发给 Kiro（连同当前校验里 Kiro 能修的结果），彩排的其他整改不发', busy: ws.busy === `remedy:${hint.id}`, onClick: () => ws.startRemediation(hint) }, '让 Kiro 修')
           : hint.code === 'RUN_INCOMPLETE' ? h(RunHintButton) : null)
     }),
     hints.length > 4 ? h(Button, { small: true, kind: 'ghost', onClick: () => setAll(!all) }, all ? '收起' : `展开全部 ${hints.length} 项`) : null,
@@ -2330,7 +2859,7 @@ function RehearsalCard() {
       h(Button, { key: 'b', disabled: !r, busy: ws.busy === 'rehearsal', onClick: ws.recordRehearsal }, '记录彩排结论'),
     ],
   },
-  !r ? h(Empty, { title: '还没有彩排结论' }, error ? error.message : '加载中…') : h(Fragment, null,
+  !r ? h(Empty, { title: '还没有彩排结论' }, error ? backendText(error.message) || error.message : '加载中…') : h(Fragment, null,
     h('div', { className: 'wc-rf' },
       h('span', { className: 'wc-fx' }, h(ToneChip, { map: VERDICT, value: r.verdict }), r.readyForClass ? h(Chip, { tone: 'ok' }, '可以替换 HR 通用版上课') : h(Chip, { tone: 'bad' }, '还不能上课')),
       h('span', { className: 'wc-xs wc-mut' }, `Release ${r.releaseVersion} · 完整运行 ${r.inputs ? r.inputs.completeRuns : 0} 次 · 判定依据 ${r.inputs ? SCENARIO_SOURCE[r.inputs.scenario] || r.inputs.scenario : ''}`)),
@@ -2341,10 +2870,12 @@ function RehearsalCard() {
     })) : null,
     h('div', { className: 'wc-fx wc-mt1' }, Object.entries(r.groups || {}).map(([g, s]) => h(Chip, { key: g, tone: pick(CONTRAST, s)[0] }, `${GROUP_LABEL[g] || g}：${pick(CONTRAST, s)[1]}`))),
     h(Kpi, { className: 'wc-mt' },
-      h(Stat, { label: '教学现象', value: r.summary ? r.summary.phenomena : listOf(r.phenomena).length }),
+      h(Stat, { label: '要判定的现象', value: r.summary ? r.summary.phenomena : listOf(r.phenomena).length }),
       h(Stat, { label: '已复现', value: r.summary ? r.summary.reproduced : '—', tone: 'ok' }),
       h(Stat, { label: '没复现', value: r.summary ? r.summary.notReproduced : '—', tone: r.summary && r.summary.notReproduced ? 'bad' : '' }),
       h(Stat, { label: '证据不足', value: r.summary ? r.summary.insufficientEvidence : '—', tone: r.summary && r.summary.insufficientEvidence ? 'warn' : '' })),
+    phenomenaOf(ws.sc).length > (r.summary ? r.summary.phenomena : listOf(r.phenomena).length)
+      ? h('div', { className: 'wc-xs wc-mut wc-mt1' }, `共 ${phenomenaOf(ws.sc).length} 个教学现象：${r.summary ? r.summary.phenomena : listOf(r.phenomena).length} 个按彩排判定，其余只作参考（不影响能否上课，见下面「参考」）。`) : null,
     listOf(r.advisory).length ? h('div', { className: 'wc-mt1' }, r.advisory.map((a, i) => h('div', { key: a.id || i, className: 'wc-xs wc-mut', title: englishTwin(a.note, a.noteEn) },
       `参考 · ${a.id || a.kind}：${ADVISORY_READING[a.reading] || a.reading || a.status}${a.note ? `（${a.note}）` : ''}`))) : null,
     h(RemediationList, { hints: listOf(r.remediation) }),
@@ -2400,13 +2931,29 @@ function CaseTableCard() {
     }))
 }
 
+// The report's missing evidence (guided_report, English, one line per script) by the step that delivers it.
+const EVIDENCE_STEP = { '09': 'baseline', '10': 'optimize', '11': 'cost-latency', '12': 'models', '13': 'judge-stability', baseline: 'baseline', optimized: 'optimize' }
+function evidenceText(m) {
+  const said = String(m || '')
+  const step = EVIDENCE_STEP[(said.match(/\b(\d\d)-[\w-]+\.sh/) || said.match(/\((baseline|optimized)[;)]/) || [])[1]]
+  if (!step) return said
+  const what = /^L1/.test(said) ? ' L1 断言' : /^Mind the Goal/.test(said) ? ' Mind the Goal 判定' : /latency/.test(said) ? '指标'
+    : /stability|noise band/.test(said) ? '数值和裁判噪声带' : /model identity/.test(said) ? '模型名和对比分数' : '评估分数'
+  const cases = (said.match(/missing: ([^)]*)\)/) || [])[1]
+  return `「${STEP_LABEL[step] || step}」的${what}${cases ? `（缺：${cases}）` : ''}`
+}
+
 function ReportCard() {
   const ws = useWs()
   const r = ws.report
   const reh = ws.rehearsal
   if (!r) {
     const missing = listOf(reh && reh.inputs && reh.inputs.missingEvidence)
-    return h(Card, { title: '本轮报告' }, h(Empty, { title: '15 步全部通过后生成报告' }, missing.length ? `还缺：${missing.join('；')}` : (ws.res.report && ws.res.report.error ? '' : '加载中…')))
+    const run = ws.run
+    const untouched = !run || listOf(run.stepOrder).every((id) => !run.steps[id] || run.steps[id].status === 'not_started')
+    return h(Card, { title: '本轮报告' }, h(Empty, { title: '15 步全部通过后生成报告' },
+      untouched && (missing.length || run) ? '还一步都没跑：先在「03 交付」一键覆盖并确认保留，再在上面的 Guided Run 里逐步运行。'
+        : missing.length ? h('span', { title: missing.join('\n') }, `还缺：${missing.map(evidenceText).join('；')}`) : (ws.res.report && ws.res.report.error ? '' : '加载中…')))
   }
   const delta = (r.quality && r.quality.delta) || {}
   const contrast = r.teachingContrast || {}
@@ -2463,7 +3010,7 @@ function ClassModeCard() {
       h(LinkButton, { href: LINKS.guideDownload(ws.pid, 'student'), disabled: !built }, '学员手册 README.md'),
       h(LinkButton, { href: LINKS.guideDownload(ws.pid, 'instructor'), disabled: !built }, '导师手册'),
       h(LinkButton, { href: LINKS.instructorBundle(ws.pid), disabled: !built }, '导师包')),
-    h(Note, { tone: 'bad' }, '导师手册和导师包含保留题与期望答案，不要投屏或发给学员。'))
+    h(Note, { tone: 'bad' }, '导师手册和导师包含留出题与期望答案，不要投屏或发给学员。'))
 }
 
 function ResultsCard() {
@@ -2480,7 +3027,7 @@ function ResultsCard() {
     h('div', { className: 'wc-fx wc-mt' },
       h(LinkButton, { href: LINKS.instructorBundle(ws.pid), disabled: !ws.release }, lr ? '导师包（含彩排证据）' : '导师包'),
       h(Button, { small: true, onClick: () => ws.go('4', 'rehearse') }, '看逐题对照')),
-    h(Note, { tone: 'bad' }, '导师包含保留题与期望答案，只给导师；给客户的复盘请从中摘取。'))
+    h(Note, { tone: 'bad' }, '导师包含留出题与期望答案，只给导师；给客户的复盘请从中摘取。'))
 }
 
 function DirectRunCard() {
@@ -2499,11 +3046,12 @@ function DirectRunCard() {
     sub: '不占 Workshop 实例：约 8 分钟把当前构建部署到这个包自己的直连资源（名字都带 direct），用 Workshop 的同一套裁判和彩排规则判定。用来快速迭代；能不能上课仍以 Guided Run 为准。',
   },
   h(Field, { label: '同时对比的模型（可选，最多 3 个）', hint: '每个模型用候选 Prompt 再问一遍全部题目，对比质量、成本和延迟' },
-    h(TextInput, { value: models, onChange: setModels, placeholder: 'us.amazon.nova-pro-v1:0', mono: true, disabled: active })),
+    h(TextInput, { value: models, onChange: setModels, placeholder: '例：us.amazon.nova-pro-v1:0', mono: true, disabled: active })),
   h('div', { className: 'wc-rf wc-mt1' }, h(Seg, { value: repeat, onChange: setRepeat, options: DIRECT_REPEAT, disabled: active }),
     h(Check, { checked: panel, disabled: active, onChange: setPanel }, '同时用 AgentCore 内置评估器打分（约多 2 分钟）')),
   h('div', { className: 'wc-mt1' }, h(Button, { kind: 'primary', icon: Rocket, disabled: !p.lastBuild || !p.target || active, busy: ws.busy === 'direct' || jobActive(job), onClick: () => ws.startDirect(compare, { repeat, panel }) },
     jobActive(job) ? '快速彩排进行中…' : repeat > 1 ? `快速彩排当前构建 ${repeat} 轮` : '快速彩排当前构建')),
+  !p.lastBuild ? h(Note, { tone: 'warn' }, '先在 03 构建 Release：快速彩排跑的是当前构建。') : null,
   !p.target ? h(Note, { tone: 'warn' }, '先在 03 配置 Workshop 环境：快速彩排用同一个 AWS 账号和区域。') : null,
   h(ErrorLine, { error: ws.errors.direct }),
   h('div', { className: 'wc-steps wc-mt1' }, stages.map((s, i) => h(Chip, { key: s.id, tone: pick(JOB_STATUS, s.status)[0], title: asText(s.error) },
@@ -2511,7 +3059,7 @@ function DirectRunCard() {
   job && job.error ? h('div', { className: 'wc-err' }, asText(job.error)) : null,
   job && job.status === 'interrupted' ? h(Note, { tone: 'warn' }, '后端在快速彩排中重启过；直连资源可以直接重跑，会原地更新。') : null,
   ws.lost.direct ? h(Note, { tone: 'warn' }, '和后端失联：任务还在服务端运行，点顶部“刷新”继续跟进。') : null,
-  direct.rehearsal ? h(DirectVerdict, { r: direct.rehearsal }) : h('div', { className: 'wc-mt' }, h(Empty, null, '当前构建还没快速彩排过。')),
+  direct.rehearsal ? h(DirectVerdict, { r: direct.rehearsal }) : p.lastBuild ? h('div', { className: 'wc-mt' }, h(Empty, null, '当前构建还没快速彩排过。')) : null,
   h(DirectCleanup))
 }
 
@@ -2530,7 +3078,7 @@ function DirectVerdict({ r }) {
     h(RemediationList, { hints: listOf(r.remediation) }),
     d.robust === false ? h(Note, { tone: 'warn' }, `${listOf(d.rounds).length} 轮里 ${d.readyRounds ?? '?'} 轮通过：${listOf(d.flaky).join('、') || '有现象'}时有时无。`
       + (r.verdict === 'ready' ? '整改里标着「第 N 轮」的是那几轮没复现的原因，修好再跑 3 轮。' : '')) : null,
-    listOf(d.skippedSkills).length ? h(Note, null, `没加载的技能（SKILL.md 没有 frontmatter，Workshop 上课时也没加载）：${d.skippedSkills.join('、')}。`) : null,
+    listOf(d.skippedSkills).length ? h(Note, null, `没加载的 Skill（SKILL.md 没有 frontmatter，Workshop 上课时也没加载）：${d.skippedSkills.join('、')}。`) : null,
     r.verdict === 'ready' && d.robust !== false ? h(Note, { tone: 'ok' }, '快速彩排通过：去 03 一键覆盖，再跑一次 Guided Run 拿上课结论。') : null)
 }
 
@@ -2682,7 +3230,7 @@ function FileEditorCard() {
   const [ackPrune, setAckPrune] = useState(false)
   const open = async (path) => {
     setRel(path); setError(null)
-    try { const r = await ws.readFile(path); setContent(r.content); setLoaded(r.content) } catch (err) { setError(apiError(err)); setLoaded(null); setContent('') }
+    try { const r = await ws.readFile(path); setContent(r.content); setLoaded(r.content) } catch (err) { const e = apiError(err); setError(e.status === 404 ? null : e); setLoaded(null); setContent('') } // 404: a new file (the button says 新建文件)
   }
   const listOrphans = async () => { const r = await ws.pruneFiles(true); if (r) setOrphans(r) }
   const prune = async () => { const r = await ws.pruneFiles(false); if (r) { setOrphans(r); setAckPrune(false) } }
@@ -2717,7 +3265,7 @@ function CalibrationCard() {
   const run = async (dryRun) => { const r = await ws.calibrate(log, dryRun); if (r) setResult(r) }
   return h(Card, { title: '裁判噪声带标定（evaluation.noiseBand）', extra: lc ? h(Chip, { tone: verdictLabel(CAL_VERDICT, lc.verdict)[0] }, `上次 ${fmtNum(lc.noiseBand, 3)} · ${verdictLabel(CAL_VERDICT, lc.verdict)[1]}`) : h(Chip, null, '未标定') },
     h(Note, null, '在 Workshop 账号跑 13-judge-stability.sh，把输出（或每行一个分数）贴进来。裁判噪声带 = max(2σ, 极差, 0.02)；应用后当前构建失效。'),
-    h('div', { className: 'wc-mt1' }, h(TextArea, { value: log, onChange: setLog, rows: 5, mono: true, placeholder: '    value = 0.83\n    value = 0.80\n    value = 0.86', label: '13-judge-stability.sh 输出' })),
+    h('div', { className: 'wc-mt1' }, h(TextArea, { value: log, onChange: setLog, rows: 5, mono: true, placeholder: '例：\n    value = 0.83\n    value = 0.80\n    value = 0.86', label: '13-judge-stability.sh 输出' })),
     h('div', { className: 'wc-fx wc-mt1' },
       h(Button, { disabled: !log.trim(), busy: ws.busy === 'calibrate', onClick: () => run(true) }, '试算'),
       h(Button, { kind: 'primary', disabled: !result || result.applied || !log.trim(), onClick: () => run(false) }, '写入 scenario')),
@@ -2733,18 +3281,31 @@ function ManualSyncCard() {
   const job = ws.syncJob
   const active = jobActive(job) || jobActive(ws.oneclick)
   const plan = pf && pf.plan
+  const [ackRollback, setAckRollback] = useState(false)
+  // A release on the instance: an apply in the record, or a status check (e.g. after a job the restart cut off).
+  const remote = ws.history.some((e) => (e.event === 'apply' && e.status !== 'refused') || e.event === 'status')
+  const needs = !ws.project.target ? '先在「03 交付」配置 Workshop 环境' : !ws.project.lastBuild ? '先构建 Release（03 交付）' : '' // why 体检 is greyed out
   return h(Card, { title: '分步同步与回滚', sub: '一键覆盖的每个阶段都可以在这里单独执行；状态、确认保留和回滚在后台运行。' },
     h('div', { className: 'wc-b wc-sm' }, '1 · 只读体检'),
-    h('div', { className: 'wc-fx wc-mt1' }, h(Button, { disabled: !ws.project.target || !ws.project.lastBuild || active, busy: ws.busy === 'preflight', onClick: ws.runPreflight }, '体检'), pf ? h(Chip, { tone: pf.ok ? 'ok' : 'bad' }, pf.ok ? '通过' : '未通过') : null),
+    h('div', { className: 'wc-fx wc-mt1' }, h(Button, { disabled: !ws.project.target || !ws.project.lastBuild || active, busy: ws.busy === 'preflight', onClick: ws.runPreflight, title: needs }, '体检'), pf ? h(Chip, { tone: pf.ok ? 'ok' : 'bad' }, pf.ok ? '通过' : '未通过') : null,
+      needs ? h(Button, { small: true, kind: 'ghost', onClick: () => ws.go('3') }, `${needs} →`) : null),
+    h(ErrorLine, { error: ws.errors.preflight }),
     h('div', { className: 'wc-b wc-sm wc-mt' }, '2 · 上传并应用（一次性令牌，15 分钟内有效）'),
     plan && pf.ok ? h(Fragment, null,
       h('div', { className: 'wc-sm wc-mt1 wc-break' }, '把 ', h('span', { className: 'wc-mono' }, plan.version), ' 上传到 ', h('span', { className: 'wc-mono' }, plan.sourceUri), '，在账号 ', h('span', { className: 'wc-mono' }, plan.accountId), `（${plan.region}）的实例 `, h('span', { className: 'wc-mono' }, plan.instanceId), ' 上运行 ', h('span', { className: 'wc-mono' }, plan.documentName), '，身份 ', h('span', { className: 'wc-mono' }, plan.identityArn), '。'),
       h('div', { className: 'wc-mt1' }, h(Check, { checked: ack, onChange: setAck }, '确认这是正确的 Workshop 账号，场景的 AWS 资源还没创建。')),
-      h('div', { className: 'wc-mt1' }, h(Button, { kind: 'primary', disabled: !ack || active, busy: ws.busy === 'syncApply', onClick: () => ws.syncApply().then(() => setAck(false)) }, '应用 Release'))) : h(Note, null, pf && !pf.ok ? '体检未通过：修好红色项再体检。' : '先体检通过，才能应用。'),
+      h('div', { className: 'wc-mt1' }, h(Button, { kind: 'primary', disabled: !ack || active, busy: ws.busy === 'syncApply', onClick: () => ws.syncApply().then(() => setAck(false)) }, '应用 Release'))) : h(Note, null, pf && pf.unreachable ? '体检没跑成：原因见上面（多半是 profile 没登录），修好再体检。' : pf && !pf.ok ? '体检未通过：修好红色项再体检。' : '先体检通过，才能应用。'),
     h(ErrorLine, { error: ws.errors.syncApply }),
     h('div', { className: 'wc-b wc-sm wc-mt' }, '3 · 状态 / 确认保留 / 回滚'),
     h(Note, null, '应用后远端先用新版本并开恢复计时；冒烟通过再“确认保留”（不是 Git 提交）。“回滚”恢复上一个版本的文件，已创建的 AWS 资源不会回滚。'),
-    h('div', { className: 'wc-fx wc-mt1' }, SYNC_ACTIONS.map(([action, label]) => h(Button, { key: action, kind: action === 'rollback' ? 'danger' : 'default', disabled: !ws.project.target || active, busy: ws.busy === `sync:${action}`, onClick: () => ws.startSyncJob(action) }, label))),
+    h('div', { className: 'wc-fx wc-mt1' }, SYNC_ACTIONS.map(([action, label]) => h(Button, {
+      key: action, kind: action === 'rollback' ? 'danger' : 'default', busy: ws.busy === `sync:${action}`,
+      disabled: !ws.project.target || active || (action !== 'status' && !remote) || (action === 'rollback' && !ackRollback),
+      title: action !== 'status' && !remote ? '还没有上传应用过：先应用 Release（远端状态不明就先“查看状态”）' : '',
+      onClick: () => ws.startSyncJob(action).then(() => { if (action === 'rollback') setAckRollback(false) }),
+    }, label))),
+    remote ? h(Check, { checked: ackRollback, onChange: setAckRollback }, '要回滚：远端恢复上一个版本的文件；已创建的 AWS 资源不会回滚。')
+      : h(Note, null, '还没有上传应用过：确认保留和回滚要等应用之后；远端状态不明就先“查看状态”。'),
     job ? h('div', { className: 'wc-fx wc-mt1' }, h(ToneChip, { map: JOB_STATUS, value: job.status }), h('span', { className: 'wc-sm' }, JOB_KIND[job.kind] || job.kind),
       job.result && syncResult(job.result) ? h(Chip, { tone: syncStatus(syncResult(job.result))[0] }, syncStatus(syncResult(job.result))[1]) : null, h('span', { className: 'wc-xs wc-mono wc-mut' }, job.id)) : null,
     job && !jobActive(job) && (job.result || job.error) ? h(Pre, null, JSON.stringify(job.result || { status: job.status, error: job.error }, null, 2)) : null,
@@ -2772,8 +3333,10 @@ function ProjectRecordCard() {
 }
 
 function AdvancedPage() {
+  const ws = useWs()
   return h(Fragment, null,
     h(StepHeader, { n: '高级', title: '原始文件与手动操作', h1: '直接改文件、标定裁判、分步同步', sub: '常规流程用不到这里；这里的手工改动都会计入项目记录。' }),
+    holdingResult(ws) ? h('div', { className: 'wc-err wc-mt' }, holdText(ws, '保存这里的 YAML、文件或裁判噪声带', '再来改')) : null,
     h('div', { className: 'wc-g2e wc-mt' }, h('div', { className: 'wc-col' }, h(ScenarioYamlCard), h(CalibrationCard)), h('div', { className: 'wc-col' }, h(FileEditorCard), h(ManualSyncCard), h(ProjectRecordCard))))
 }
 

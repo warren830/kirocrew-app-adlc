@@ -4,7 +4,7 @@
 // deployment and chatted with here. Hand-written SVG; the server (console/studio.py) validates and generates.
 import React from 'react'
 import { call, api, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, useJob, Tabs,
-  JOB_TONE, JOB_LABEL, STATUS_TONE } from '../ui.mjs'
+  JOB_TONE, JOB_LABEL, STATUS_TONE, NeedWorkspace, loaded, JobError, firstChoice, AwsStatus, At, when, statusText, stageText, logLines, quiet, secs, personText } from '../ui.mjs'
 import { download } from './shared.mjs'
 
 const { useState, useEffect, useRef, useMemo, useCallback, createElement: h, Fragment } = React
@@ -73,7 +73,7 @@ function nodeLines(n, catalog, info) {
   if (n.type === 'input') return ['用户的问题', d.sample ? `例：${d.sample}` : '可在右侧填一个示例问题']
   if (n.type === 'output') return ['回答', d.traceTools ? '附上这一轮的工具调用' : '只有回答']
   if (n.type === 'agent' || n.type === 'orchestrator') return [d.name || '（起一个英文名称）', model]
-  if (n.type === 'swarm') return [d.name || '（起一个英文名称）', `最多交接 ${d.maxHandoffs} 次 · ${d.executionTimeout}s`]
+  if (n.type === 'swarm') return [d.name || '（起一个英文名称）', `最多交接 ${d.maxHandoffs} 次 · 最长 ${secs(d.executionTimeout)}`]
   if (n.type === 'tool') {
     const t = catalog.builtinTools.find((b) => b.id === d.tool)
     return [t ? `${t.label}（${t.id}）` : '（选一个工具）', d.tool === 'current_time' ? `默认时区 ${d.timezone}` : d.tool === 'http_request' ? `最多 ${d.maxChars} 字` : 'strands-agents-tools']
@@ -363,7 +363,7 @@ function ModelPicker({ catalog, value, onChange }) {
       h(Input, { value, onChange, mono: true })) : null)
 }
 
-function Inspector({ flow, catalog, selection, edit, remove, duplicate, issues, tools, kbs, loadKbs }) {
+function Inspector({ flow, catalog, selection, edit, remove, duplicate, issues, tools, kbs, kbsError, loadKbs }) {
   const node = selection && selection.kind === 'node' ? flow.nodes.find((n) => n.id === selection.id) : null
   const edge = selection && selection.kind === 'edge' ? flow.edges.find((e) => e.id === selection.id) : null
   const box = (title, ...children) => h('div', { style: { width: 300, flex: '0 0 300px', height: 580, overflowY: 'auto', border: '1px solid #d9e2ec', borderRadius: 10,
@@ -440,8 +440,9 @@ function Inspector({ flow, catalog, selection, edit, remove, duplicate, issues, 
       edit((f) => ({ ...f, nodes: f.nodes.map((n) => (n.id === node.id ? { ...n, data: { ...n.data, kbId: id, kbName: kb ? kb.name : '', kbType: kb && kb.type === 'VECTOR' ? 'VECTOR' : 'MANAGED',
         label: n.data.label === '知识库检索' && kb ? kb.name : n.data.label } } : n)) }), `prop:${node.id}:kb`)
     }
-    body.push(h(Field, { key: 'k', label: '知识库', hint: kbs === null ? '加载中…' : '这个工作区的 Bedrock 知识库（托管或向量）' },
-      h(Select, { value: d.kbId || '', onChange: pick, options: [['', d.kbId ? `${d.kbName || d.kbId}（不在列表里）` : '选一个知识库'], ...options] })),
+    body.push(h(Field, { key: 'k', label: '知识库', hint: kbsError || kbs === null ? null : kbs.length ? '这个工作区的 Bedrock 知识库（托管或向量）' : '这个工作区还没有知识库（在「知识库」页新建）' },
+      h(Select, { value: d.kbId || '', onChange: pick, options: [['', d.kbId ? `${d.kbName || d.kbId}${kbs === null ? '' : '（不在列表里）'}` : firstChoice(kbsError ? null : kbs, kbsError, '没有可选的知识库', '选一个知识库')], ...options] })),
+    quiet(kbsError) ? h(ErrorLine, { key: 'ke', error: kbsError }) : null,
     h(Button, { key: 'rf', onClick: loadKbs }, '刷新列表'),
     h(Field, { key: 'n', label: '工具名', hint: '模型按这个名字调用它（英文）' }, h(Input, { value: d.toolName, onChange: set('toolName'), mono: true, placeholder: kbToolName({ ...d, toolName: '' }) })),
     h(Field, { key: 'd', label: '何时使用', hint: '留空则用知识库的描述生成' }, h(TextArea, { value: d.description, onChange: set('description'), rows: 3 })),
@@ -485,11 +486,11 @@ function JobView({ job }) {
   return h(Fragment, null,
     stages.length ? h(Table, { head: ['阶段', '状态', '耗时', '说明'], rows: stages.map((s) => ({ key: s.name, cells: [h('b', null, STAGE_LABEL[s.name] || s.name),
       s.status === 'running' ? h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), STAGE_TEXT.running) : h(Chip, { tone: STAGE_TONE[s.status] }, STAGE_TEXT[s.status] || s.status),
-      s.seconds !== undefined && s.seconds !== null ? `${s.seconds} s` : '—', s.detail ? h('span', { className: s.status === 'failed' ? 'cs-err' : 'cs-mut' }, s.detail) : '—'] })) })
+      secs(s.seconds), s.detail ? h('span', { className: s.status === 'failed' ? 'cs-err' : 'cs-mut', title: s.detail }, stageText(s.status, s.detail)) : '—'] })) })
       : h(Empty, null, '准备中…'),
-    smoke ? h(Note, { tone: 'ok' }, h('b', null, `冒烟调用（${smoke.seconds} s）：`), smoke.answer) : null,
-    job.error ? h('div', { className: 'cs-err' }, job.error) : null,
-    h('pre', { className: 'cs-pre', style: { maxHeight: 220, overflow: 'auto' } }, listOf(job.log).slice(-14).join('\n') || '…'))
+    smoke ? h(Note, { tone: 'ok' }, h('b', null, `冒烟调用（${secs(smoke.seconds)}）：`), smoke.answer) : null,
+    h(JobError, { error: job.error }),
+    h('pre', { className: 'cs-pre', style: { maxHeight: 220, overflow: 'auto' } }, logLines(job.log, 14) || (job.status === 'unreadable' ? '（读不到这个任务的日志）' : '…')))
 }
 
 function splitFooter(text) {
@@ -519,15 +520,21 @@ function RuntimeChat({ runtime, sample, go, setSelected }) {
     if (!text) return
     setMessage(''); setSending(true); setError(null)
     setTurns((list) => [...list, { role: 'user', text }, { role: 'agent', text: '', live: true }])
-    const patch = (fn) => setTurns((list) => { const copy = list.slice(); copy[copy.length - 1] = fn({ ...copy[copy.length - 1] }); return copy })
+    const patch = (fn) => setTurns((list) => { if (!list.length) return list; const copy = list.slice(); copy[copy.length - 1] = fn({ ...copy[copy.length - 1] }); return copy })
+    let heard = false  // anything of the reply arrived: keep it, with the error
     try {
       await api.chat(wid, 'runtime', runtime.runtimeId, { message: text, sessionId, actorId: me && me.username }, (e) => {
+        if (e.type !== 'session') heard = true
         if (e.type === 'session') setSessionId(e.sessionId)
         else if (e.type === 'text') patch((t) => ({ ...t, text: t.text + e.text }))
         else if (e.type === 'error') patch((t) => ({ ...t, error: e.error }))
         else if (e.type === 'stop') patch((t) => ({ ...t, live: false, seconds: e.seconds }))
       })
-    } catch (err) { setError(err) } finally { setSending(false); patch((t) => ({ ...t, live: false })) }
+      patch((t) => ({ ...t, live: false }))
+    } catch (err) {
+      if (heard) { patch((t) => ({ ...t, live: false })); setError(Object.assign(err, { lead: '回答没有完整收到' })) }
+      else { setTurns((list) => list.slice(0, -2)); setMessage(text); setError(Object.assign(err, { lead: '没发出去（你的话放回输入框了）' })) }
+    } finally { setSending(false) }
   }
   return h(Card, { title: `和 ${runtime.name} 对话`, extra: h('span', { className: 'cs-row' },
     h(Button, { onClick: () => { setTurns([]); setSessionId(null); setLogs(null) } }, '新会话'),
@@ -539,10 +546,10 @@ function RuntimeChat({ runtime, sample, go, setSelected }) {
       h('div', { className: 'cs-bubble' }, body || (t.live ? '…（第一轮要等 Runtime 冷启动）' : t.error ? '' : '（没有文字）')),
       calls ? h('div', { className: 'cs-row', style: { marginTop: 3 } }, calls.length ? calls.map((c, k) => h(Chip, { key: k, tone: c.includes('失败') ? 'bad' : 'info' }, c))
         : h('span', { className: 'cs-mut' }, '这一轮没有调用工具')) : null,
-      t.seconds ? h('div', { className: 'cs-mut' }, `${t.seconds}s`) : null,
-      t.error ? h('div', { className: 'cs-err' }, t.error) : null)
+      t.seconds ? h('div', { className: 'cs-mut' }, secs(t.seconds)) : null,
+      h(JobError, { error: t.error }))
   }) : h(Empty, null, '问点什么：回答末尾会列出这一轮调用的工具（输出节点可关掉）。'), h('div', { ref: bottom })),
-  h('div', { className: 'cs-row' }, h('div', { style: { flex: 1 } }, h(TextArea, { value: message, onChange: setMessage, rows: 2, placeholder: '输入问题' })),
+  h('div', { className: 'cs-row' }, h('div', { style: { flex: 1 } }, h(TextArea, { value: message, onChange: setMessage, rows: 2, placeholder: '输入问题，Ctrl+Enter（⌘+Enter）发送', onSubmit: send })),
     h(Button, { kind: 'pri', onClick: send, busy: sending }, '发送')),
   sessionId ? h('div', { className: 'cs-mut cs-mono' }, `会话 ${sessionId}`) : null,
   failed ? h(Note, { tone: 'warn' }, 'Runtime 返回了错误，但 AgentCore 不把出错的原因传回来：点「Runtime 日志」看这一轮在日志里写了什么。') : null,
@@ -551,7 +558,7 @@ function RuntimeChat({ runtime, sample, go, setSelected }) {
       h('span', { className: 'cs-mut' }, `${logs.logGroup || ''} · ${logs.scope || ''} · 最近 ${logs.minutes || 120} 分钟的工具调用、提醒和错误`),
       h('span', { className: 'cs-row' }, h(Button, { onClick: () => loadLogs(logs.scope === '全部会话') }, '刷新'), h(Button, { onClick: () => loadLogs(true) }, '全部会话'),
         h(Button, { onClick: () => setLogs(null) }, '收起'))),
-    logs.error ? h('div', { className: 'cs-err' }, logs.error) : null,
+    h(JobError, { error: logs.error }),
     h('pre', { className: 'cs-pre', style: { maxHeight: 260, overflow: 'auto', whiteSpace: 'pre-wrap' } },
       listOf(logs.events).map((e) => `${e.at.slice(11, 19)} ${e.session ? e.session.slice(0, 14) : ''}  ${e.message}`).join('\n')
         || (logs.missing ? '这个 Runtime 还没有日志' : '还没有记录：CloudWatch 日志通常晚几十秒才查得到，过一会儿点「刷新」'))) : null,
@@ -572,6 +579,7 @@ function DeployPanel({ project, dirty, valid, save, reload, sample, go, setSelec
   const [jobId, setJobId] = useState(running ? running.jobId : null)
   const [chatWith, setChatWith] = useState(runtimes[0] ? runtimes[0].runtimeId : null)
   const [live, setLive] = useState({})
+  const [liveError, setLiveError] = useState(null)  // the Runtimes' states did not load: say so, never "—"
   const { busy, error, run } = useAction()
   const job = useJob(jobId)
   useEffect(() => {
@@ -580,7 +588,7 @@ function DeployPanel({ project, dirty, valid, save, reload, sample, go, setSelec
       if (job.status === 'succeeded' && job.result && job.result.runtimeId) { setChatWith(job.result.runtimeId); setTarget(job.result.runtimeId) }
     }
   }, [job && job.status])
-  const loadLive = () => call('GET', `/workspaces/${wid}/deployments`).then((r) => setLive(Object.fromEntries(listOf(r.deployments).map((d) => [d.runtimeId, d])))).catch(() => {})
+  const loadLive = () => call('GET', `/workspaces/${wid}/deployments`).then((r) => { setLive(Object.fromEntries(listOf(r.deployments).map((d) => [d.runtimeId, d]))); setLiveError(null) }).catch(setLiveError)
   useEffect(() => { loadLive() }, [project.id, deployments.length, job && job.status])
   const start = () => run('deploy', async () => {
     if (dirty && !(await save('部署前保存'))) throw new Error('没能保存画布，没有部署')
@@ -595,12 +603,12 @@ function DeployPanel({ project, dirty, valid, save, reload, sample, go, setSelec
   const targets = runtimes.filter((r) => !known || live[r.runtimeId])
   const intoExisting = targets.some((r) => r.runtimeId === target)
   const chatRuntime = runtimes.find((r) => r.runtimeId === chatWith)
-  const status = (rid) => (live[rid] ? live[rid].status : '—')
+  const status = (rid) => (live[rid] ? live[rid].status : null)
   return h(Fragment, null,
     h(Card, { title: '部署到 AgentCore Runtime', extra: admin ? h(Button, { kind: 'pri', onClick: start, busy: busy === 'deploy', disabled: !valid || (!intoExisting && !name.trim()) },
       dirty ? '保存并部署' : intoExisting ? '发布新版本' : '部署') : null },
     !admin ? h(Note, { tone: 'warn' }, '只有管理员可以部署。') : null,
-    !valid ? h(Note, { tone: 'warn' }, '流程还有错误（见画布下方）：改好才能部署。') : null,
+    !valid ? h(Note, { tone: 'warn' }, '流程还有错误（列在「画布」标签的画布下方）：改好才能部署。') : null,
     h('div', { className: 'cs-grid' },
       h(Field, { label: '部署到' }, h(Select, { value: intoExisting ? target : '', onChange: setTarget,
         options: [['', '新的 Runtime'], ...targets.map((r) => [r.runtimeId, `${r.name} 的新版本（现在 v${(live[r.runtimeId] || {}).version || r.runtimeVersion || '?'}，流程 v${r.flowVersion}）`])] })),
@@ -614,14 +622,16 @@ function DeployPanel({ project, dirty, valid, save, reload, sample, go, setSelec
   h(Card, { title: `这个项目的部署（${deployments.length}）`, extra: h(Button, { onClick: () => { reload(); loadLive() } }, '刷新') },
     h(Table, { head: ['Runtime', '流程版本', 'Runtime 版本', '任务', '状态', '时间', ''], rows: deployments.map((d, i) => ({ key: d.jobId || i, cells: [
       h('b', null, d.name), `v${d.flowVersion}`, d.runtimeVersion || '—', h(Chip, { tone: JOB_TONE[d.jobStatus] }, JOB_LABEL[d.jobStatus] || d.jobStatus || '—'),
-      d.runtimeId ? h(Chip, { tone: STATUS_TONE[status(d.runtimeId)] }, status(d.runtimeId)) : '—', (d.at || '').slice(0, 19).replace('T', ' '),
+      d.runtimeId ? (status(d.runtimeId) ? h(AwsStatus, { status: status(d.runtimeId) }) : liveError ? h(Chip, { tone: 'warn', title: liveError.message }, '读不到') : h(Chip, { title: '这个 Runtime 已经不在控制台的部署列表里' }, '不在了')) : '—', h(At, { iso: d.at }),
       h('span', { className: 'cs-row' },
         h(Button, { onClick: () => setJobId(d.jobId) }, '任务'),
         d.runtimeId && d.jobStatus === 'succeeded' ? h(Button, { onClick: () => setChatWith(d.runtimeId) }, '对话') : null,
         admin && d.runtimeId && d.jobStatus === 'succeeded' && live[d.runtimeId] ? h(Button, { kind: 'danger', onClick: () => remove(d), busy: busy === `del-${d.runtimeId}` }, '删除 Runtime') : null)] })),
     empty: '还没有部署过。' })),
   chatRuntime && live[chatWith] && live[chatWith].status === 'READY' ? h(RuntimeChat, { runtime: chatRuntime, sample, go, setSelected })
-    : chatRuntime ? h(Note, null, `${chatRuntime.name} 现在是 ${status(chatWith)}：就绪后可以在这里对话。`) : null)
+    : chatRuntime ? h(Note, null, liveError ? `读不到 ${chatRuntime.name} 现在的状态（${liveError.message}）：读到「就绪」后才能在这里对话。`
+      : status(chatWith) ? `${chatRuntime.name} 现在是「${statusText(status(chatWith))}」：就绪后可以在这里对话。` : `${chatRuntime.name} 已经不在控制台的部署列表里：不能对话。`) : null,
+    h(ErrorLine, { error: liveError }))
 }
 
 // -- versions and projects -------------------------------------------------------------------------------------------
@@ -632,7 +642,7 @@ function VersionsPanel({ project, baseVersion, openVersion, rename, removeProjec
   const deployed = (v) => listOf(project.deploymentsList).filter((d) => d.flowVersion === v && d.jobStatus === 'succeeded').map((d) => d.name)
   return h(Fragment, null,
     h(Card, { title: `版本（${listOf(project.versionsList).length}）` }, h(Table, { head: ['版本', '保存时间', '保存人', '说明', '内容', '部署到', ''],
-      rows: listOf(project.versionsList).map((v) => ({ key: v.version, cells: [h('b', null, `v${v.version}`), (v.savedAt || '').slice(0, 19).replace('T', ' '), v.savedBy || '—', v.note || '—',
+      rows: listOf(project.versionsList).map((v) => ({ key: v.version, cells: [h('b', null, `v${v.version}`), h(At, { iso: v.savedAt }), personText(v.savedBy), v.note || '—',
         v.summary ? `${v.summary.agents} 个 Agent · ${v.summary.tools} 个工具${v.summary.graphMode ? ' · Graph' : ''}` : '—', [...new Set(deployed(v.version))].join('、') || '—',
         v.version === baseVersion ? h(Chip, { tone: 'ok' }, '画布上') : h(Button, { onClick: () => openVersion(v.version) }, '打开')] })) }),
     h(Note, null, '打开旧版本会把它放到画布上；保存后它成为最新的版本（旧版本都保留，最多 50 个）。')),
@@ -643,14 +653,15 @@ function VersionsPanel({ project, baseVersion, openVersion, rename, removeProjec
       admin ? h(Button, { kind: 'danger', onClick: removeProject }, '删除项目') : null))
 }
 
-function Projects({ projects, catalog, onOpen, reload }) {
+function Projects({ projects, error: projectsError, catalog, onOpen, reload }) {
   const { wid, me } = useCtx()
   const admin = me && me.role === 'admin'
   const [name, setName] = useState('')
-  const [runtimes, setRuntimes] = useState([])
+  const [runtimes, setRuntimes] = useState(null)
+  const [runtimesError, setRuntimesError] = useState(null)
   const [rid, setRid] = useState('')
   const { busy, error, run } = useAction()
-  useEffect(() => { call('GET', `/workspaces/${wid}/deployments`).then((r) => setRuntimes(listOf(r.deployments).filter((d) => d.source === 'zip' && d.status !== 'MISSING'))).catch(() => {}) }, [wid])
+  useEffect(() => { call('GET', `/workspaces/${wid}/deployments`).then((r) => { setRuntimes(listOf(r.deployments).filter((d) => d.source === 'zip' && d.status !== 'MISSING')); setRuntimesError(null) }).catch(setRuntimesError) }, [wid])
   const create = (tid) => run('create', () => call('POST', ws(wid, '/projects'), { name: name.trim() || catalog.templates.find((t) => t.id === tid).name, template: tid }),
     (p) => `已创建 ${p.name}`).then((p) => { if (p) onOpen(p.id) })
   const importRuntime = () => run('import', () => call('POST', ws(wid, '/open-runtime'), { runtimeId: rid }),
@@ -663,13 +674,14 @@ function Projects({ projects, catalog, onOpen, reload }) {
         h('b', null, t.name), h('div', { className: 'cs-mut', style: { margin: '4px 0 8px', minHeight: 36 } }, t.description),
         h(Button, { onClick: () => create(t.id), busy: busy === 'create' }, '用这个开始')))),
       h(ErrorLine, { error })),
-    h(Card, { title: `项目（${listOf(projects).length}）` }, projects === null ? h(Empty, null, '加载中…') : h(Table, { head: ['名称', '版本', '内容', '部署', '更新', ''],
-      rows: projects.map((p) => ({ key: p.id, cells: [h('b', null, p.name), `v${p.version}`, p.summary ? `${p.summary.agents} 个 Agent · ${p.summary.tools} 个工具${p.summary.graphMode ? ' · Graph' : ''}` : '—',
-        p.deployments || '—', (p.updatedAt || '').slice(0, 19).replace('T', ' '),
+    h(Card, { title: projects === null ? '项目' : `项目（${projects.length}）` }, loaded(projects, projectsError, (all) => h(Table, { head: ['名称', '版本', '内容', '部署', '更新', ''],
+      rows: all.map((p) => ({ key: p.id, cells: [h('b', null, p.name), `v${p.version}`, p.summary ? `${p.summary.agents} 个 Agent · ${p.summary.tools} 个工具${p.summary.graphMode ? ' · Graph' : ''}` : '—',
+        p.deployments || '—', h(At, { iso: p.updatedAt }),
         h('span', { className: 'cs-row' }, h(Button, { kind: 'pri', onClick: () => onOpen(p.id) }, '打开'), admin ? h(Button, { kind: 'danger', onClick: () => remove(p) }, '删除') : null)] })),
-      empty: '还没有项目：从上面的模板开始。' })),
+      empty: '还没有项目：从上面的模板开始。' }))),
     h(Card, { title: '打开一个已部署的 Runtime', extra: h(Button, { onClick: importRuntime, busy: busy === 'import', disabled: !rid }, '在 Studio 打开') },
-      h(Select, { value: rid, onChange: setRid, options: [['', runtimes.length ? '选一个控制台部署的 Runtime' : '没有控制台部署的代码 Runtime'], ...runtimes.map((r) => [r.runtimeId, `${r.name} · ${r.status} · v${r.version || '?'}`])] }),
+      h(Select, { value: rid, onChange: setRid, options: [['', firstChoice(runtimes, runtimesError, '没有控制台部署的代码 Runtime', '选一个控制台部署的 Runtime')], ...listOf(runtimes).map((r) => [r.runtimeId, `${r.name} · ${statusText(r.status)} · v${r.version || '?'}`])] }),
+      h(ErrorLine, { error: quiet(runtimesError) }),
       h(Note, null, 'Studio 部署的 zip 里带着流程（studio_flow.json）：在这个控制台找得到项目就打开它，找不到就从 Runtime 的源码导入成新项目。')))
 }
 
@@ -688,6 +700,7 @@ function StudioPage({ go, setSelected }) {
   const [tab, setTab] = useState('canvas')
   const [preview, setPreview] = useState(null)
   const [kbs, setKbs] = useState(null)
+  const [kbsError, setKbsError] = useState(null)
   const [note, setNote] = useState('')
   const [draft, setDraft] = useState(null)
   const [fitSignal, setFitSignal] = useState(0)
@@ -801,16 +814,16 @@ function StudioPage({ go, setSelected }) {
     return out
   })
   const pickIssue = (i) => { setTab('canvas'); if (i.node) setSelection({ kind: 'node', id: i.node }); else if (i.edge) setSelection({ kind: 'edge', id: i.edge }) }
-  const loadKbs = () => call('GET', ws(wid, '/knowledge-bases')).then((r) => setKbs(listOf(r.knowledgeBases))).catch((err) => { setKbs([]); toast('error', err.message) })
+  const loadKbs = () => call('GET', ws(wid, '/knowledge-bases')).then((r) => { setKbs(listOf(r.knowledgeBases)); setKbsError(null) }).catch(setKbsError)
 
-  if (!workspace) return h(Empty, null, '先在「设置 → 工作区」添加一个 AWS 账号和区域。')
-  if (!catalog) return h(Fragment, null, h('h1', null, 'Studio'), h(ErrorLine, { error: failure }), h(Empty, null, '加载中…'))
+  if (!workspace) return h(NeedWorkspace, { title: 'Studio' })
+  if (!catalog) return h(Fragment, null, h('h1', null, 'Studio'), loaded(null, failure))
   const style = h('style', null, '.cs-st-port{transition:r .08s}.cs-st-port:hover{r:7.5px}.cs-st-canvas:focus{box-shadow:0 0 0 2px #bcdcf5}')
   if (!project || !flow) {
     return h(Fragment, null, style, h('h1', null, 'Studio'),
       h(Note, null, '在画布上搭一个 Strands Agent：模型、Prompt、工具、知识库、子 Agent、Swarm 或 Graph；Studio 生成 Python 代码，部署成 AgentCore Runtime，然后就在这里对话。'),
-      h(ErrorLine, { error: failure }),
-      h(Projects, { projects, catalog, onOpen: openProject, reload: loadProjects }))
+      projects === null ? null : h(ErrorLine, { error: failure }),
+      h(Projects, { projects, error: projects === null ? failure : null, catalog, onOpen: openProject, reload: loadProjects }))
   }
   const dirty = !same(flow, saved)
   const issues = preview ? listOf(preview.issues) : null
@@ -839,7 +852,7 @@ function StudioPage({ go, setSelected }) {
           flow.graphMode ? '关闭 Graph 模式' : '打开 Graph 模式'),
         h(Button, { onClick: bundle, busy: busy === 'bundle', disabled: !valid }, '下载 zip'),
         h(Button, { onClick: () => { if (!dirty || window.confirm('画布有未保存的修改，确定离开？（草稿留在这个浏览器里）')) { setProject(null); setFlowState(null); window.localStorage.removeItem(LAST_KEY(wid)); loadProjects() } } }, '全部项目'))),
-    draft ? h(Note, { tone: 'warn' }, `这个浏览器里有一份 ${String(draft.at || '').slice(0, 19).replace('T', ' ')} 的未保存草稿。`, ' ',
+    draft ? h(Note, { tone: 'warn' }, `这个浏览器里有一份 ${when(draft.at)} 的未保存草稿。`, ' ',
       h('a', { className: 'cs-click', onClick: () => { edit(() => draft.flow, 'draft'); setDraft(null) } }, '恢复草稿'), ' · ',
       h('a', { className: 'cs-click', onClick: () => { window.localStorage.removeItem(DRAFT_KEY(wid, project.id)); setDraft(null) } }, '丢弃')) : null,
     h(Tabs, { value: tab, onChange: setTab, options: [['canvas', '画布'], ['code', '代码'], ['deploy', '部署与对话'], ['versions', `版本（${listOf(project.versionsList).length}）`]] }),
@@ -847,7 +860,7 @@ function StudioPage({ go, setSelected }) {
       h('div', { style: { display: 'flex', gap: 10, alignItems: 'flex-start' } },
         h(Palette, { flow, onAdd: (type) => addNode(type) }),
         h(Canvas, { flow, catalog, edit, selection, setSelection, marks, tools, onNotice: (m) => toast('error', m), onAdd: addNode, fitSignal, undo, redo }),
-        h(Inspector, { flow, catalog, selection, edit, remove: removeSelected, duplicate, issues: listOf(issues), tools, kbs, loadKbs })),
+        h(Inspector, { flow, catalog, selection, edit, remove: removeSelected, duplicate, issues: listOf(issues), tools, kbs, kbsError, loadKbs })),
       h('div', { className: 'cs-row', style: { marginTop: 10 } },
         h('div', { style: { flex: 1 } }, h(Input, { value: note, onChange: setNote, placeholder: '这次改了什么（可选，记在版本里）' })),
         h(Button, { kind: 'pri', onClick: () => save(), busy: busy === 'save', disabled: !dirty }, dirty ? '保存为新版本' : '已保存')),

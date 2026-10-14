@@ -184,6 +184,8 @@ STRINGS: dict[str, dict[str, str]] = {
                                     "cannot be rehearsed without it."),
         "fix.PARITY_MISSING": "Declare at least one {what} phenomenon (the HR workshop teaches it).",
         "parity.l1": "tool_use / refusal / escalation",
+        "fix.RUN_NOT_STARTED": ("Not started yet: sync this release to the Workshop environment and keep it, then run the "
+                                "15 Guided steps and record the rehearsal."),
         "fix.RUN_INCOMPLETE": ("Run all 15 Guided steps to a complete report (reset from baseline to "
                                "re-run the evaluation), then rehearse again."),
         "fix.GUIDE_MISSING": ("Rebuild the release: every build generates both "
@@ -211,6 +213,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "why.NOISE_NOT_OBSERVED": "no scored probe shows SP1 above SP2",
         "why.PARITY_MISSING": "group {group} is missing",
         "why.RUN_INCOMPLETE": "the current run is incomplete",
+        "why.RUN_NOT_STARTED": "no step of the current run has run yet",
         "why.RUN_INCOMPLETE.missing": "the current run is incomplete: missing {missing}",
         "why.GUIDE_MISSING": "not built or not verified: {paths}",
         "why.SCENARIO_NOT_BUILD_SNAPSHOT": "the scenario was read from a scenario file, not from build/instructor/scenario-snapshot.*",
@@ -343,6 +346,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "fix.TEACHING_UNDECLARED": "声明 labs.teaching（第一次对话、基线缺陷、教学现象）后重新构建；没有它就无法彩排教学对比。",
         "fix.PARITY_MISSING": "至少声明一个 {what} 教学现象（HR 通用版也教这一点）。",
         "parity.l1": "tool_use / refusal / escalation",
+        "fix.RUN_NOT_STARTED": "还没开始跑：先把这个 Release 同步到 Workshop 环境并确认保留，再跑完 15 个 Guided 步骤，然后记录彩排结论。",
         "fix.RUN_INCOMPLETE": "把 15 个 Guided 步骤全部跑完、得到完整报告（要重跑评估就从基线重置），再重新彩排。",
         "fix.GUIDE_MISSING": ("重新构建 Release：每次构建都会生成两份手册；缺失的手册，或构建后被改过、"
                               "与 build/checksums.json 或 RELEASE.json 不符的手册，都不算数。"),
@@ -365,6 +369,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "why.NOISE_NOT_OBSERVED": "没有一道已打分的探针题 SP1 高于 SP2",
         "why.PARITY_MISSING": "缺少 {group} 这一组",
         "why.RUN_INCOMPLETE": "当前运行不完整",
+        "why.RUN_NOT_STARTED": "当前运行还一步都没跑",
         "why.RUN_INCOMPLETE.missing": "当前运行不完整：缺少 {missing}",
         "why.GUIDE_MISSING": "没有生成或没通过校验：{paths}",
         "why.SCENARIO_NOT_BUILD_SNAPSHOT": "scenario 读自单独的 scenario 文件，不是 build/instructor/scenario-snapshot.*",

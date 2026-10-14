@@ -27,8 +27,12 @@ def test_contract_sets_are_kept_per_workspace_and_imported_from_a_pack(tmp_path)
                                                               {"id": "no-checks", "query": "Hi", "expected": {}}]))
     got = ev.import_from_pack(store, "dev", tmp_path / "workshop", "hr")
     assert [c["id"] for c in got["contracts"]] == ["leave"] and got["l1"] == {"refusalMarkers": ["cannot"]} and got["source"] == "pack:hr"
+    assert got["skipped"] == ["no-checks"]  # L1 has nothing to check on it: the page says it was left out
     with pytest.raises(ev.EvaluationError):
         ev.import_from_pack(store, "dev", tmp_path / "workshop", "missing")
+    (pack / "golden" / "practice.json").write_text(json.dumps([{"id": "no-checks", "query": "Hi", "expected": {"shouldRefuse": False}}]))
+    with pytest.raises(ValueError, match="none of the pack's 1 practice question"):  # not "no contracts": why there are none
+        ev.import_from_pack(store, "dev", tmp_path / "workshop", "hr")
 
 
 def test_a_contract_becomes_a_dataset_example_in_the_services_snake_case_schema():

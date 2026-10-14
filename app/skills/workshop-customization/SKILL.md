@@ -374,7 +374,26 @@ pack, not the customer's production agent.
    `synthetic` or `internal`) before generating with any material, SA-written ones included;
    `confidential` material is never sent. Materials are never pack sources: they stay out of the pack
    digest, build, release and export, and a `fromMaterial` file copies only a material sent in that task.
-2. **Generate** (`draft`, 1200 s): Kiro returns a complete pack after the task's SELF-CHECK: golden
+2. **Generate** (`draft`, staged): one Kiro reply per part of the pack, so no reply hits Kiro's per-reply
+   output limit (a whole pack in one reply was cut off four documents into its files). **Structure**
+   (agent, facts, the document plan, tools, skill list; 1200 s) → **evaluation** (golden set and
+   `labs.teaching`, written against the structure; 1200 s) → then in parallel the **knowledge** documents
+   (batches of 4), the **prompts**, the **skills** (already after the structure) and the **guides** (900 s
+   each). The file stages never see a holdout case, and only the structure and the documents see the
+   materials. After each reply the app checks what a later stage cannot repair (S1 counts and holdout,
+   basis / role / tool ids, the probes, every probe answer term literally in its noise document, no absent
+   term in any document, `candidateFix` / `baselineMarker` verbatim in the right prompt, and the engine's
+   schema and cross-reference rules on the sections the stage wrote) and asks that stage once more with
+   the problems and its reply; the better of the two replies is kept, what still fails becomes a generation
+   warning, and a stage whose reply is unusable twice fails the draft with its name. A run that fails (the
+   response stream broke off, a timeout, no output) runs again up to 3 times on its own budget, never the
+   quality retry's. The assembled draft then gets the **precheck** (what validation will report once it is
+   applied: schema, cross-references, the engine policy with the files, the compiled pack); once per draft,
+   a precheck error in a file one file stage wrote sends that stage again with it. The page shows each
+   stage and the precheck before Apply, and Apply asks for an extra acknowledgement while it found errors.
+   A gap or bait term of one character beside a usable one is dropped (with a warning). A reply
+   that is the whole pack is accepted as the draft; `"staged": false` asks for the one-reply draft
+   (1800 s). Each stage's reply comes after the task's SELF-CHECK: golden
    counts per category and set with the holdout arithmetic (15 cases need 5 holdout), every `basis` id a
    fact id, every baseline defect listed by a probe phenomenon, absent terms and the gap question in no
    document, verbatim `candidateFix` / `baselineMarker`, control designs, `firstConversation.mustNotMention`.
@@ -389,7 +408,9 @@ pack, not the customer's production agent.
    `skills/`, `guides/`, `tools/`, and `generate_content.py`) behind a snapshot; the current UI's
    bare Apply keeps them, and `POST /projects/{pid}/files/prune` (dry run first) moves them to
    `generation/pruned/`. **Revert** restores the exact pre-apply bytes while the project is unchanged
-   since that apply (the newest five snapshots are kept).
+   since that apply (the newest five snapshots are kept). A result applies only to the project it was
+   generated from: while a draft or repair waits or runs, the page locks reviews and the pack-kind switch
+   (a change would void it), and a result whose project changed anyway is shown as void (`stale`).
 3. **Validate** (draft mode, dry build): every finding carries `scopes`; `build/validate.json` lists
    them as numbered `repair.repairable` (Kiro can fix them), `saOnly` (reviews, confirmations,
    anchors) and `engine` findings, with `suggestedScopes`.

@@ -42,21 +42,49 @@ class ContractError(ValueError):
     pass
 
 
+def _shape_problem(key: str, value: Any) -> str | None:
+    """What ``value`` must be for L1 to check ``key`` as written (the scenario schema's goldenCase.expected), or None:
+    a string where a list belongs would be checked one character at a time."""
+    def words(v: Any) -> bool:
+        return isinstance(v, list) and all(isinstance(t, str) and t.strip() for t in v)
+    if key in ("shouldRefuse", "shouldEscalate"):
+        return None if isinstance(value, bool) else "true or false"
+    if key == "mustMentionAnyOf":
+        return None if isinstance(value, list) and all(words(g) and g for g in value) else 'a list of groups, each a list of strings, e.g. [["A", "B"]]'
+    return None if words(value) else 'a list of strings, e.g. ["15"]'
+
+
+def checks_something(expected: Mapping[str, Any]) -> bool:
+    """Whether L1 checks anything for ``expected``: a non-empty list, or a flag that is true. A false flag is not L1's
+    (an unwarranted refusal or handoff is the goal judge's) and an empty list checks nothing: a contract with only those
+    can never pass a verification."""
+    return any((isinstance(v, list) and len(v) > 0) or v is True for v in expected.values())
+
+
 def check_contracts(cases: Sequence[Any]) -> list[dict[str, Any]]:
     """Each contract: ``id``, ``query``, ``expected`` (L1's checks; at least one), optional ``actorId`` and ``label``."""
-    out, seen = [], set()
+    out, seen = [], {}
     for i, case in enumerate(cases, 1):
         if not isinstance(case, dict):
             raise ContractError(f"contract {i} is not a mapping")
         cid, query, expected = case.get("id"), case.get("query"), case.get("expected")
-        if not isinstance(cid, str) or not CASE_ID.match(cid) or cid in seen:
+        if not isinstance(cid, str) or not CASE_ID.match(cid):
             raise ContractError(f"contract {i}: id must be a unique short identifier, not {cid!r}")
+        if cid in seen:
+            raise ContractError(f"contract {i}: id {cid!r} is not unique: contract {seen[cid]} has it too")
         if not isinstance(query, str) or not query.strip():
             raise ContractError(f"contract {cid}: query is empty")
         if not isinstance(expected, dict) or not expected or set(expected) - EXPECTED_KEYS:
             raise ContractError(f"contract {cid}: expected needs one or more of {', '.join(sorted(EXPECTED_KEYS))} "
                                 f"(unknown: {', '.join(sorted(set(expected or {}) - EXPECTED_KEYS)) or 'none'})")
-        seen.add(cid)
+        for key, value in expected.items():
+            shape = _shape_problem(key, value)
+            if shape:
+                raise ContractError(f"contract {cid}: expected.{key} must be {shape}, not {json.dumps(value, ensure_ascii=False)[:60]}")
+        if not checks_something(expected):
+            raise ContractError(f"contract {cid}: expected checks nothing (false flags and empty lists are no L1 check): give a non-empty "
+                                "mustMention, mustMentionAnyOf, mustNotMention, requiredTools or forbiddenTools, or shouldRefuse / shouldEscalate true")
+        seen[cid] = i
         out.append({"id": cid, "query": query.strip(), "expected": dict(expected), "actorId": str(case.get("actorId") or "verify"),
                     "label": str(case.get("label") or cid), "category": case.get("category")})
     if not out:
@@ -74,13 +102,22 @@ def load_contracts(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     return check_contracts(cases or []), dict(l1cfg)
 
 
-def contracts_from_pack(project_dir: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """A built pack's practice cases as contracts, with its L1 markers."""
+def contracts_from_pack(project_dir: Path, skipped: list[str] | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """A built pack's practice cases as contracts, with its L1 markers. A practice case L1 has nothing to check on (the
+    goal judge's alone) is no contract: its id goes to ``skipped``, when given."""
     release = project_dir / "build" / "release" / "pack"
     pack = json.loads((release / "pack.json").read_text(encoding="utf-8"))
     practice = json.loads((release / "golden" / "practice.json").read_text(encoding="utf-8"))
-    return check_contracts([{k: c.get(k) for k in ("id", "query", "expected", "actorId", "label", "category")} for c in practice
-                            if c.get("expected")]), dict(pack.get("l1") or {})
+    cases = []
+    for c in practice:
+        if isinstance(c.get("expected"), dict) and checks_something(c["expected"]):
+            cases.append({k: c.get(k) for k in ("id", "query", "expected", "actorId", "label", "category")})
+        elif skipped is not None:
+            skipped.append(str(c.get("id") or "?"))
+    if practice and not cases:
+        raise ContractError(f"none of the pack's {len(practice)} practice question(s) gives L1 anything to check (each is the goal "
+                            "judge's alone): write the contracts by hand")
+    return check_contracts(cases), dict(pack.get("l1") or {})
 
 
 def harness_info(ctl: Any, ident: str) -> dict[str, Any]:

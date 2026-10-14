@@ -56,6 +56,20 @@ def _batch(env, body: dict):
     return status, payload
 
 
+def test_a_noise_teaching_device_is_not_listed_as_a_blocking_item(env):
+    """The gate never holds a labeled noise document for the customer (D12): the review UI must not count it either."""
+    data = _load(env)
+    data["packKind"] = "customer"
+    device, plain = data["knowledge"]["documents"][:2]
+    device.update(noise=True, provenance="sa_synthetic", origin={"kind": "teaching_design"})
+    plain.update(noise=False, provenance="sa_synthetic", origin={"kind": "sa_authored"})
+    env["path"].write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    status, body, _ = env["client"].call("GET", f"/projects/{PROJECT}/items")
+    assert status == 200, body
+    rows = {it["id"]: it for it in body["items"] if it["kind"] == "document"}
+    assert rows[device["id"]]["criticality"] == "advisory" and rows[plain["id"]]["criticality"] == "blocking", rows
+
+
 def test_batch_marks_every_selected_item_sa_synthetic(env):
     ids = _draft_everything(env)
     assert len(ids) >= 4, ids

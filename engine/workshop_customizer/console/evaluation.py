@@ -100,15 +100,16 @@ def import_from_pack(store: Any, workspace: str, workshop_data: Path, project: s
     pdir = Path(workshop_data) / "projects" / project
     if not (pdir / "build" / "release" / "pack" / "golden" / "practice.json").is_file():
         raise EvaluationError(f"workshop project {project} has no built release")
-    cases, l1cfg = verify.contracts_from_pack(pdir)
+    skipped: list[str] = []  # practice questions L1 has nothing to check on: no contract, and the page says which
+    cases, l1cfg = verify.contracts_from_pack(pdir, skipped)
     sets = store.read("contract_sets", {})
     legacy = f"cs-pack-{project}"[:40]  # the id before it could be 63 characters long: the same import updates that set
     sid = legacy if (sets.get(legacy) or {}).get("workspace") == workspace else f"cs-pack-{project}"[:63]
     taken = (sets.get(sid) or {}).get("workspace")
     if taken and taken != workspace:  # the same pack imported in another workspace keeps its own set
         sid = f"cs-pack-{workspace}-{project}"[:63].rstrip("-")
-    return put_contract_set(store, workspace, {"name": f"{project} practice", "contracts": cases, "l1": l1cfg, "source": f"pack:{project}",
-                                               "id": sid})
+    return {**put_contract_set(store, workspace, {"name": f"{project} practice", "contracts": cases, "l1": l1cfg, "source": f"pack:{project}",
+                                                  "id": sid}), "skipped": skipped}
 
 
 def dataset_examples(contracts: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:

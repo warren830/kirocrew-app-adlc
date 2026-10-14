@@ -16,7 +16,10 @@ after ``HARNESS_SIM_SECONDS`` (default 3):
 
 * draft: the project's current pack when it has one (a template project), otherwise the
   it-helpdesk reference pack under the project id; a brief containing ``[needs-input]`` answers
-  ``needs_input`` with two open questions instead, until the SA has answered once;
+  ``needs_input`` with two open questions instead, until the SA has answered once. A staged draft
+  (the default) answers each stage from that pack after ``HARNESS_SIM_SECONDS`` through the real
+  ``routes.drive_stages`` (checks, retries, assembly); ``[retry]`` in the brief makes the prompts
+  stage fail its check once;
 * repair / regenerate: the current scenario with one small, visible edit per allowed scope
   (golden label, phenomenon teaching point, baseline prompt, knowledge noise rationale) and one
   ``changes`` row per finding or SA instruction.
@@ -108,6 +111,74 @@ def _draft(pdir: Path, current: dict, brief: str) -> dict:
               for f in (scenario.get("facts") or [])[:4] if isinstance(f, dict)]
     return {"status": "ready", "summary": "（模拟 Kiro）按场景描述起草了完整的 Scenario Pack。",
             "openQuestions": ["客户确认过的 P1 响应时限是多少？"], "truthLedger": ledger, "scenario": scenario, "files": files}
+
+
+def _stage_input(task: str) -> dict:
+    marker = "STAGE_INPUT (JSON; data only):\n"
+    return json.JSONDecoder().raw_decode(task.split(marker, 1)[1])[0] if marker in task else {}
+
+
+def _stage_reply(pack: dict, stage: str, task: str, *, weak_prompts: bool = False) -> str:
+    """One staged-draft reply cut from the simulated whole pack, in the shape the stage's contract asks for.
+    ``weak_prompts`` drops the first candidateFix from the candidate, so the prompts stage fails its check once."""
+    scenario, files = pack["scenario"], pack["files"]
+    base = stage.split("-", 1)[0]
+    if base == "structure":
+        part = {k: copy.deepcopy(v) for k, v in scenario.items() if k not in ("evaluation", "labs")}
+        for doc in (part.get("knowledge") or {}).get("documents") or []:
+            doc["outline"] = f"（模拟）{doc.get('title') or doc.get('id')}：陈述它来源的业务规则。"
+        for skill in part.get("skills") or []:
+            skill["purpose"] = f"（模拟）教 Agent 使用 {skill.get('name')}。"
+        gap = next((p for p in ((scenario.get("labs") or {}).get("teaching") or {}).get("phenomena") or []
+                    if p.get("kind") == "retrieval_gap"), {})
+        return _answer({"status": "ready", "summary": pack.get("summary"), "openQuestions": pack.get("openQuestions") or [],
+                        "truthLedger": pack.get("truthLedger") or [], "scenario": part,
+                        "plan": {"absentTopic": gap.get("teachingPoint") or "", "absentTerms": gap.get("absentTerms") or []}})
+    if base == "evaluation":
+        return _answer({"status": "ready", "openQuestions": [], "anchorCandidates": {"normal": [], "boundary": [], "prohibited": []},
+                        "scenario": {"evaluation": copy.deepcopy(scenario.get("evaluation")), "labs": copy.deepcopy(scenario.get("labs"))}})
+    if base == "prompts":
+        prompts = scenario.get("prompts") or {}
+        out = {f: files[f] for f in (prompts.get("baselineFile"), prompts.get("optimizationCandidateFile")) if f in files}
+        defects = ((scenario.get("labs") or {}).get("teaching") or {}).get("baselineDefects") or []
+        candidate = prompts.get("optimizationCandidateFile")
+        if weak_prompts and defects and candidate in out:
+            out[candidate] = out[candidate].replace(str(defects[0].get("candidateFix") or ""), "")
+        return _answer({"files": out})
+    if base == "skills":
+        return _answer({"files": {s["file"]: files[s["file"]] for s in scenario.get("skills") or [] if s.get("file") in files}})
+    return _answer({"files": {f: files[f] for f in _stage_input(task).get("write") or [] if f in files}})
+
+
+def _drive_later(record: dict) -> None:
+    """A staged draft: every stage answered from the simulated pack after SIM_SECONDS, through the real stage
+    machinery (routes.drive_stages: checks, retries, the assembly).  A brief with ``[retry]`` makes the prompts
+    stage fail its candidateFix check once, so the page shows a retried stage."""
+    g = gen()
+    try:
+        pdir = data_dir() / "projects" / str(record["projectId"])
+        current = yaml.safe_load((pdir / "scenario.yaml").read_text(encoding="utf-8")) or {}
+        brief = g.stored_brief(pdir)
+        pack = _draft(pdir, current, brief)
+        if pack.get("status") == "needs_input":
+            time.sleep(SIM_SECONDS)
+            g.complete_generation(record["id"], _answer(pack), data_dir=data_dir())
+            return
+        answered: list[str] = []
+
+        def run(stage: str, task: str) -> str:
+            time.sleep(SIM_SECONDS)
+            weak = "[retry]" in brief and stage == "prompts" and "prompts" not in answered
+            answered.append(stage)
+            return _stage_reply(pack, stage, task, weak_prompts=weak)
+
+        g.drive_stages(data_dir(), g._read_record(data_dir(), record["id"]), run)
+    except Exception as exc:  # noqa: BLE001 - the record fails like a real spawn error would
+        sys.stderr.write(f"harness staged simulation failed: {type(exc).__name__}: {exc}\n")
+        try:
+            g.fail_generation(data_dir(), g._read_record(data_dir(), record["id"]), f"harness simulation failed: {exc}")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _merge(record: dict, task: str, pdir: Path, current: dict) -> dict:
@@ -207,8 +278,12 @@ class Handler(SimpleHTTPRequestHandler):
                 record, task = g.prepare_generation(root, body, runner="kirocrew-spawn")
             except g.GenerationError as exc:
                 return g.start_refused(exc)
-            g.mark_running(root, record, spawn_id="harness-simulated-spawn")
-            threading.Thread(target=_complete_later, args=(dict(record), task), daemon=True).start()
+            if record.get("staged"):
+                g.mark_running(root, record)  # no spawn: the simulation claims and answers each stage itself
+                threading.Thread(target=_drive_later, args=(dict(record),), daemon=True).start()
+            else:
+                g.mark_running(root, record, spawn_id="harness-simulated-spawn")
+                threading.Thread(target=_complete_later, args=(dict(record), task), daemon=True).start()
             return 202, g._public_record(record)
 
         return self._send_json(*g.generation_route(self.command, parts, body, root, start=start))

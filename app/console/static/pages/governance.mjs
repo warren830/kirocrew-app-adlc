@@ -2,7 +2,7 @@
 // the service, a policy from one sentence), attaching an engine to a Gateway, the Gateway's rules, rate limits and
 // resource policy, and the decision log (every Allow / Deny with the policy that decided it).
 import React from 'react'
-import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, Tabs, STATUS_TONE } from '../ui.mjs'
+import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, Tabs, STATUS_TONE, NeedWorkspace, loaded, loadFailed, JobError, At, statusText, parseJson } from '../ui.mjs'
 
 const { useState, useEffect, useRef, createElement: h, Fragment } = React
 const gov = (wid, path) => `/workspaces/${wid}/governance${path}`
@@ -11,8 +11,15 @@ const shortId = (id) => String(id || '').replace(/-[a-z0-9_]{10}$/, '')
 const mono = (text, title) => h('span', { className: 'cs-mono', title }, text)
 const nowrap = (...children) => h('span', { style: { whiteSpace: 'nowrap' } }, ...children)
 const narrow = (width, child) => h('span', { style: { display: 'inline-block', width } }, child)
-const when = (at) => nowrap(String(at || '').slice(0, 19).replace('T', ' '))
+const when = (at) => nowrap(h(At, { iso: at }))
+// AWS's status as a chip in the page's words (the code as its tooltip)
+const status = (s, title) => h(Chip, { tone: tone(s), title: title || s }, statusText(s))
 const MODE = { LOG_ONLY: '仅记录', ENFORCE: '拦截', ACTIVE: '生效' }
+// What the policy generator and Cedar validation report, in words; and a Gateway's sign-in.
+const GEN_STATUS = { GENERATING: '生成中', GENERATED: '已生成', FAILED: '没生成出来' }
+const FINDING = { INVALID: '不合法', NOT_TRANSLATABLE: '没法用工具表达', ALLOW_ALL: '放行一切', DENY_ALL: '拒绝一切', ALLOW_NONE: '什么都不放行', DENY_NONE: '什么都不拒绝',
+  OVERLY_PERMISSIVE: '过于宽泛', OVERLY_RESTRICTIVE: '过于严格', REDUNDANT: '多余' }
+const AUTH = { AWS_IAM: 'IAM 签名（SigV4）', CUSTOM_JWT: 'JWT（OAuth 令牌）', NONE: '不需要登录' }
 
 // A Gateway the console did not create is changed only after the user agrees (the server asks for acknowledged: true).
 function consent(g, what) {
@@ -44,11 +51,11 @@ function Generate({ engine, gateways, onUse, onCreated }) {
   }, [gen])
   const start = () => run('gen', async () => setGen(await call('POST', gov(wid, `/engines/${engine.id}/generations`), { gatewayId, text })))
   const create = (a) => {
-    const findings = listOf(a.findings).map((f) => f.type)
+    const findings = listOf(a.findings).map((f) => FINDING[f.type] || f.type)
     if (findings.length && !window.confirm(`这条有校验发现（${findings.join('，')}），仍要建为策略？会以「忽略发现」创建，先仅记录。`)) return
     const name = window.prompt('策略名称（字母开头，字母、数字或下划线）', `${(gen.name || 'generated').slice(0, 30)}_${a.id.slice(-4)}`)
     if (name) run(`mk-${a.id}`, () => call('POST', gov(wid, `/engines/${engine.id}/policies`), { name, generationId: gen.id, assetId: a.id, enforcementMode: 'LOG_ONLY',
-      ignoreFindings: listOf(a.findings).length > 0 }), (r) => `已建策略 ${r.name}：${r.status}（仅记录）`).then((r) => r && onCreated())
+      ignoreFindings: listOf(a.findings).length > 0 }), (r) => `已建策略 ${r.name}：${statusText(r.status)}（仅记录）`).then((r) => r && onCreated())
   }
   return h(Card, { title: '用一句话生成 Cedar', extra: h(Button, { kind: 'pri', onClick: start, busy: busy === 'gen' || (gen && gen.status === 'GENERATING'),
     disabled: !gatewayId || !text.trim() || !engine.console }, '生成') },
@@ -58,10 +65,10 @@ function Generate({ engine, gateways, onUse, onCreated }) {
   h(Field, { label: '一句话（谁可以或不可以做什么）', hint: '例如：任何人都可以查余额；退款金额超过 100 美元一律不允许。' },
     h(TextArea, { value: text, onChange: setText, rows: 3 })),
   gen ? h(Note, { tone: gen.status === 'GENERATED' ? 'ok' : gen.status === 'GENERATING' ? '' : 'warn' },
-    gen.status === 'GENERATING' ? '生成中（约 15 秒）…' : `${gen.status}${listOf(gen.statusReasons).length ? '：' + gen.statusReasons.join('；') : ''}`) : null,
+    gen.status === 'GENERATING' ? '生成中（约 15 秒）…' : `${GEN_STATUS[gen.status] || gen.status}${listOf(gen.statusReasons).length ? '：' + gen.statusReasons.join('；') : ''}`) : null,
   gen && listOf(gen.assets).map((a) => h('div', { key: a.id, className: 'cs-card' },
     h('div', { className: 'cs-card-h' }, h('span', null, '「', a.fragment, '」'),
-      h('span', { className: 'cs-row' }, listOf(a.findings).map((f, i) => h(Chip, { key: i, tone: f.type === 'INVALID' || f.type === 'NOT_TRANSLATABLE' ? 'bad' : 'warn', title: f.description }, f.type)),
+      h('span', { className: 'cs-row' }, listOf(a.findings).map((f, i) => h(Chip, { key: i, tone: f.type === 'INVALID' || f.type === 'NOT_TRANSLATABLE' ? 'bad' : 'warn', title: `${f.type}：${f.description || ''}` }, FINDING[f.type] || f.type)),
         a.usable ? h(Button, { onClick: () => onUse(a.statement) }, '放进编辑器') : null,
         a.usable ? h(Button, { kind: 'pri', onClick: () => create(a), busy: busy === `mk-${a.id}` }, '建为策略（仅记录）') : null)),
     a.statement ? h('pre', { className: 'cs-pre' }, a.statement) : h(Note, { tone: 'warn' }, listOf(a.findings).map((f) => f.description).join('；') || '这句话没法用这个 Gateway 的工具表达。'))),
@@ -88,7 +95,7 @@ function Editor({ engine, gateways, policy, statement, setStatement, onSaved, on
     saved.current = out.id || ''
     onSaved(out)
     return out
-  }, (r) => `${r.name}：${r.status}`)
+  }, (r) => `${r.name}：${statusText(r.status)}`)
   const gwArn = (gateways.find((g) => g.id === form.gateway) || {}).arn
   const reasons = result ? listOf(result.reasons || result.statusReasons) : []
   return h(Card, { title: policy ? `编辑 ${policy.name}` : '新建 Cedar 策略', extra: h('span', { className: 'cs-row' },
@@ -109,7 +116,7 @@ function Editor({ engine, gateways, policy, statement, setStatement, onSaved, on
     h(TextArea, { value: statement, onChange: setStatement, rows: 12, mono: true, placeholder: cedarTemplate('forbid') })),
   result ? h(Note, { tone: (result.kind === 'check' ? result.valid : result.status === 'ACTIVE') ? 'ok' : 'warn' },
     result.kind === 'check' ? (result.valid ? '校验通过：服务端接受这条策略。' : `校验不通过（${result.stage === 'parse' ? '语法' : 'schema / 发现'}）`)
-      : `${result.status}${result.kept ? '：修改没生效，原来的定义仍在执行' : ''}`) : null,
+      : `${statusText(result.status)}${result.kept ? '：修改没生效，原来的定义仍在执行' : ''}`) : null,
   reasons.length ? h('pre', { className: 'cs-pre' }, reasons.join('\n\n')) : null,
   result && result.leftover ? h(Note, { tone: 'warn' }, `校验用的临时策略 ${result.leftover.name} 没删掉，请在列表里删除。`) : null,
   h(ErrorLine, { error }))
@@ -125,7 +132,8 @@ function PoliciesTab({ data, reload }) {
   const { busy, error, run } = useAction()
   const engines = listOf(data.engines)
   const engine = engines.find((e) => e.id === engineId) || null
-  const load = () => engineId && call('GET', gov(wid, `/engines/${engineId}/policies`)).then((r) => setPolicies(listOf(r.policies))).catch(() => setPolicies([]))
+  const [policiesError, setPoliciesError] = useState(null)
+  const load = () => engineId && call('GET', gov(wid, `/engines/${engineId}/policies`)).then((r) => { setPolicies(listOf(r.policies)); setPoliciesError(null) }).catch(setPoliciesError)
   useEffect(() => { setPolicies(null); setEditing(null); setStatement(''); load() }, [engineId])
   const create = () => run('engine', () => call('POST', gov(wid, '/engines'), form), (r) => `已建策略引擎 ${r.name}`).then((r) => { if (r) { setForm({ name: '', description: '' }); reload() } })
   const removeEngine = (e) => {
@@ -138,7 +146,7 @@ function PoliciesTab({ data, reload }) {
   return h(Fragment, null,
     h(Card, { title: '策略引擎（Cedar 策略的容器，挂到 Gateway 上生效）' }, h(Table, {
       head: ['名称', '状态', '来源', '策略', '挂在', ''],
-      rows: engines.map((e) => ({ key: e.id, onClick: () => setEngineId(e.id), cells: [h('b', null, e.name), h(Chip, { tone: tone(e.status) }, e.status),
+      rows: engines.map((e) => ({ key: e.id, onClick: () => setEngineId(e.id), cells: [h('b', null, e.name), status(e.status),
         e.console ? h(Chip, { tone: 'info' }, '控制台') : h(Chip, null, '其他（只读）'), e.policies ?? '—',
         listOf(e.gateways).map((g) => `${g.name}（${MODE[g.mode] || g.mode}）`).join('，') || '—',
         e.console ? nowrap(h(Button, { kind: 'danger', onClick: (ev) => { ev.stopPropagation(); removeEngine(e) }, busy: busy === `del-${e.id}`, disabled: listOf(e.gateways).length > 0,
@@ -151,14 +159,14 @@ function PoliciesTab({ data, reload }) {
     engine ? h(Fragment, null,
       engine.console ? null : h(Note, { tone: 'warn' }, `「${engine.name}」不是这个控制台创建的：只能查看，不能改它的策略。`),
       h(Card, { title: `${engine.name} 的策略`, extra: h(Button, { onClick: () => { setEditing(null); setStatement('') } }, '写新策略') },
-        policies === null ? h(Empty, null, '加载中…') : h(Table, {
+        loaded(policies, policiesError, (all) => h(Table, {
           head: ['名称', '状态', '模式', 'Cedar', '更新', ''],
-          rows: policies.map((p) => ({ key: p.id, onClick: () => { setEditing(p); setStatement(p.statement) }, cells: [h('b', { title: p.id }, p.name),
-            nowrap(h(Chip, { tone: tone(p.status), title: listOf(p.statusReasons).join('\n') }, p.status)),
+          rows: all.map((p) => ({ key: p.id, onClick: () => { setEditing(p); setStatement(p.statement) }, cells: [h('b', { title: p.id }, p.name),
+            nowrap(status(p.status, [p.status, ...listOf(p.statusReasons)].join('\n'))),
             nowrap(h(Chip, { tone: p.enforcementMode === 'ACTIVE' ? 'ok' : 'warn' }, MODE[p.enforcementMode] || '—')),
             mono(p.statement.replace(/\s+/g, ' ').slice(0, 90)), when(p.updatedAt),
             engine.console ? nowrap(h(Button, { kind: 'danger', onClick: (ev) => { ev.stopPropagation(); removePolicy(p) }, busy: busy === `delp-${p.id}` }, '删除')) : null] })),
-          empty: '这个引擎还没有策略：挂到 ENFORCE 的 Gateway 上会拒绝所有调用。' })),
+          empty: '这个引擎还没有策略：挂到 ENFORCE 的 Gateway 上会拒绝所有调用。' }))),
       h(Editor, { engine, gateways: listOf(data.gateways), policy: editing, statement, setStatement, onClear: () => { setEditing(null); setStatement('') },
         onSaved: (p) => { if (p && p.id) setEditing(p); load(); reload() } }),
       h(Generate, { engine, gateways: listOf(data.gateways), onUse: (s) => { setEditing(null); setStatement(s) }, onCreated: () => { load(); reload() } })) : h(Empty, null, '选一个策略引擎看它的策略。'))
@@ -191,19 +199,20 @@ function Rules({ gateway }) {
   const [list, setList] = useState(null)
   const [form, setForm] = useState({ priority: '10', description: '', template: 'bundle', json: JSON.stringify(RULE_TEMPLATES.bundle, null, 1) })
   const { busy, error, run } = useAction()
-  const load = () => call('GET', gov(wid, `/gateways/${gateway.id}/rules`)).then((r) => setList(listOf(r.rules))).catch(() => setList([]))
+  const [loadError, setLoadError] = useState(null)
+  const load = () => call('GET', gov(wid, `/gateways/${gateway.id}/rules`)).then((r) => { setList(listOf(r.rules)); setLoadError(null) }).catch(setLoadError)
   useEffect(() => { setList(null); load() }, [gateway.id])
   const create = () => {
     const ack = consent(gateway, '加规则')
-    if (ack) run('create', async () => call('POST', gov(wid, `/gateways/${gateway.id}/rules`), { ...JSON.parse(form.json), priority: Number(form.priority), description: form.description, ...ack }), '已加规则').then((r) => r && load())
+    if (ack) run('create', async () => call('POST', gov(wid, `/gateways/${gateway.id}/rules`), { ...parseJson(form.json, '规则'), priority: Number(form.priority), description: form.description, ...ack }), '已加规则').then((r) => r && load())
   }
   const remove = (r) => { const ack = consent(gateway, '删规则'); if (ack && window.confirm(`删除优先级 ${r.priority} 的规则？`)) run(`del-${r.id}`, () => call('DELETE', gov(wid, `/gateways/${gateway.id}/rules/${r.id}`), ack), '已删除').then((x) => x && load()) }
   return h(Card, { title: 'Gateway 规则（按调用者或路径改路由、换配置包）' },
-    list === null ? h(Empty, null, '加载中…') : h(Table, { head: ['优先级', '条件', '动作', '状态', ''], rows: list.map((r) => {
+    loaded(list, loadError, (all) => h(Table, { head: ['优先级', '条件', '动作', '状态', ''], rows: all.map((r) => {
       const [matches, effect] = describeRule(r)
-      return { key: r.id, cells: [r.priority, h('span', { title: r.description || '' }, matches), effect, h(Chip, { tone: tone(r.status) }, r.status),
+      return { key: r.id, cells: [r.priority, h('span', { title: r.description || '' }, matches), effect, status(r.status),
         r.managedBy ? h(Chip, { title: '由别的功能管理，不在这里删' }, r.managedBy) : nowrap(h(Button, { kind: 'danger', onClick: () => remove(r), busy: busy === `del-${r.id}` }, '删除'))] }
-    }), empty: '没有规则。' }),
+    }), empty: '没有规则。' })),
     h('div', { className: 'cs-grid' },
       h(Field, { label: '优先级（1-1000000，小的先匹配）' }, h(Input, { value: form.priority, onChange: (v) => setForm((f) => ({ ...f, priority: v })) })),
       h(Field, { label: '模板' }, h(Select, { value: form.template, onChange: (v) => setForm((f) => ({ ...f, template: v, json: JSON.stringify(RULE_TEMPLATES[v], null, 1) })),
@@ -226,7 +235,8 @@ function RateLimits({ gateway }) {
   const [form, setForm] = useState({ id: '', key: 'toolName', value: '*', metric: 'requests', rate: '60', period: 'minute', description: '' })
   const { busy, error, run } = useAction()
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v, ...(k === 'metric' ? { period: METRICS[v][1][0] } : {}) }))
-  const load = () => call('GET', gov(wid, `/gateways/${gateway.id}/rate-limits`)).then((r) => setList(listOf(r.rateLimits))).catch(() => setList([]))
+  const [loadError, setLoadError] = useState(null)
+  const load = () => call('GET', gov(wid, `/gateways/${gateway.id}/rate-limits`)).then((r) => { setList(listOf(r.rateLimits)); setLoadError(null) }).catch(setLoadError)
   useEffect(() => { setList(null); load() }, [gateway.id])
   const create = () => {
     const ack = consent(gateway, '加限流')
@@ -236,9 +246,9 @@ function RateLimits({ gateway }) {
   const remove = (r) => { const ack = consent(gateway, '删限流'); if (ack && window.confirm(`删除限流 ${r.id}？`)) run(`del-${r.id}`, () => call('DELETE', gov(wid, `/gateways/${gateway.id}/rate-limits/${r.id}`), ack), '已删除').then((x) => x && load()) }
   const limits = (e) => Object.keys(METRICS).filter((m) => e[m]).map((m) => `${METRICS[m][0]} ${e[m][0].rate} ${PERIOD[e[m][0].period] || e[m][0].period}`).join('，')
   return h(Card, { title: '限流（超限的调用得到 HTTP 429 / JSON-RPC -32003）' },
-    list === null ? h(Empty, null, '加载中…') : h(Table, { head: ['ID', '维度', '限额', '状态', ''], rows: list.map((r) => ({ key: r.id, cells: [mono(r.id, r.description || ''),
+    loaded(list, loadError, (all) => h(Table, { head: ['ID', '维度', '限额', '状态', ''], rows: all.map((r) => ({ key: r.id, cells: [mono(r.id, r.description || ''),
       r.dimensionKeys.join(' + '), listOf(r.entries).map((e, i) => h('div', { key: i }, `${Object.entries(e.dimensions).map(([k, v]) => `${k}=${v}`).join('，')}：${limits(e)}`)),
-      h(Chip, { tone: tone(r.status) }, r.status), nowrap(h(Button, { kind: 'danger', onClick: () => remove(r), busy: busy === `del-${r.id}` }, '删除'))] })), empty: '没有限流。' }),
+      status(r.status), nowrap(h(Button, { kind: 'danger', onClick: () => remove(r), busy: busy === `del-${r.id}` }, '删除'))] })), empty: '没有限流。' })),
     h('div', { className: 'cs-grid' },
       h(Field, { label: '按什么分别计数' }, h(Select, { value: form.key, onChange: set('key'), options: KEYS })),
       h(Field, { label: '取值（* 表示每个值各自计数）' }, h(Input, { value: form.value, onChange: set('value'), mono: true })),
@@ -259,15 +269,16 @@ function ResourcePolicy({ gateway }) {
   const [current, setCurrent] = useState(undefined)
   const [text, setText] = useState('')
   const { busy, error, run } = useAction()
-  const load = () => call('GET', gov(wid, `/gateways/${gateway.id}/resource-policy`)).then((r) => { setCurrent(r.policy); setText(JSON.stringify(r.policy || JSON.parse(RESOURCE_TEMPLATE(gateway)), null, 1)) })
-    .catch(() => setCurrent(null))
+  const [loadError, setLoadError] = useState(null)  // a policy that did not load is not "no policy": no template to save over it
+  const load = () => call('GET', gov(wid, `/gateways/${gateway.id}/resource-policy`)).then((r) => { setCurrent(r.policy); setLoadError(null); setText(JSON.stringify(r.policy || JSON.parse(RESOURCE_TEMPLATE(gateway)), null, 1)) })
+    .catch(setLoadError)
   useEffect(() => { setCurrent(undefined); load() }, [gateway.id])
-  const save = () => { const ack = consent(gateway, '改资源策略'); if (ack) run('save', async () => call('PUT', gov(wid, `/gateways/${gateway.id}/resource-policy`), { policy: JSON.parse(text), ...ack }), '已保存').then((r) => r && load()) }
+  const save = () => { const ack = consent(gateway, '改资源策略'); if (ack) run('save', async () => call('PUT', gov(wid, `/gateways/${gateway.id}/resource-policy`), { policy: parseJson(text, '资源策略'), ...ack }), '已保存').then((r) => r && load()) }
   const remove = () => { const ack = consent(gateway, '删资源策略'); if (ack && window.confirm('删除这个 Gateway 的资源策略？')) run('del', () => call('DELETE', gov(wid, `/gateways/${gateway.id}/resource-policy`), ack), '已删除').then((r) => r && load()) }
   return h(Card, { title: '资源策略（谁可以调用这个 Gateway，IAM JSON）', extra: h('span', { className: 'cs-row' },
-    h(Button, { kind: 'pri', onClick: save, busy: busy === 'save' }, '保存'), current ? h(Button, { kind: 'danger', onClick: remove, busy: busy === 'del' }, '删除') : null) },
-  current === undefined ? h(Empty, null, '加载中…') : current ? null : h(Note, null, '还没有资源策略：下面是模板（允许本账号调用）。'),
-  h(TextArea, { value: text, onChange: setText, rows: 10, mono: true }), h(ErrorLine, { error }))
+    h(Button, { kind: 'pri', onClick: save, busy: busy === 'save', disabled: current === undefined }, '保存'), current ? h(Button, { kind: 'danger', onClick: remove, busy: busy === 'del' }, '删除') : null) },
+  current === undefined ? loaded(null, loadError) : h(Fragment, null, current ? null : h(Note, null, '还没有资源策略：下面是模板（允许本账号调用）。'),
+    h(TextArea, { value: text, onChange: setText, rows: 10, mono: true })), h(ErrorLine, { error }))
 }
 
 function Attach({ gateway, engines, reload }) {
@@ -308,8 +319,8 @@ function GatewaysTab({ data, reload }) {
   const gateway = gateways.find((g) => g.id === gid) || null
   return h(Fragment, null,
     h(Card, { title: 'Gateway' }, h(Table, { head: ['名称', '认证', '来源', '策略引擎', '状态'], rows: gateways.map((g) => ({ key: g.id, onClick: () => setGid(g.id), cells: [
-      h('b', { title: g.id }, g.name), g.authorizerType, g.console ? h(Chip, { tone: 'info' }, '控制台') : h(Chip, null, '其他'),
-      g.engine ? h(Chip, { tone: g.engine.mode === 'ENFORCE' ? 'ok' : 'warn' }, `${shortId(g.engine.id)} · ${MODE[g.engine.mode] || g.engine.mode}`) : '—', h(Chip, { tone: tone(g.status) }, g.status)] })),
+      h('b', { title: g.id }, g.name), h('span', { title: g.authorizerType }, AUTH[g.authorizerType] || g.authorizerType || '—'), g.console ? h(Chip, { tone: 'info' }, '控制台') : h(Chip, null, '其他'),
+      g.engine ? h(Chip, { tone: g.engine.mode === 'ENFORCE' ? 'ok' : 'warn' }, `${shortId(g.engine.id)} · ${MODE[g.engine.mode] || g.engine.mode}`) : '—', status(g.status)] })),
     empty: '这个工作区没有 Gateway。' })),
     gateway ? h(Fragment, null, h('h1', null, gateway.name), h(Attach, { gateway, engines: listOf(data.engines), reload }), h(Rules, { gateway }), h(RateLimits, { gateway }),
       h(ResourcePolicy, { gateway })) : h(Empty, null, '选一个 Gateway：挂策略引擎、规则、限流、资源策略。'))
@@ -342,7 +353,7 @@ function DecisionsTab({ data }) {
     !gid ? h(Empty, null, '选一个 Gateway。') : !log ? h(Empty, null, busy ? '读取中…' : '—') : h(Fragment, null,
       log.source ? h(Note, null, source, log.source === 'logs' ? ' · ' : '', log.source === 'logs' ? h('a', { className: 'cs-click', onClick: () => toggle(false) }, '关闭投递') : null)
         : h(Note, { tone: 'warn' }, '这个 Gateway 没有把应用日志或追踪投递出去：下面只有 CloudWatch 指标里的计数。', ' ', h(Button, { onClick: () => toggle(true), busy: busy === 'toggle' }, '开启决策日志')),
-      log.error ? h('div', { className: 'cs-err' }, log.error) : null,
+      h(JobError, { error: log.error }),
       h('div', { className: 'cs-grid' },
         [['允许', s.allow, 'ok'], ['拒绝', s.deny, 'bad'], ['默认拒绝（没有策略命中）', s.defaultDeny, 'warn'], ['仅记录策略命中', s.logOnlyMatches, ''], ['生效后会翻转的决定', s.flips, 'warn']]
           .map(([label, n, t]) => h(Card, { key: label, title: label }, h('div', { className: `cs-big ${t ? `cs-tx-${t === 'bad' ? 'warn' : t}` : ''}` }, n)))),
@@ -350,7 +361,7 @@ function DecisionsTab({ data }) {
         cells: [mono(shortId(p.policy), p.policy), p.allow, p.deny, p.logOnlyMatches, p.flips] })) })) : null,
       h(Card, { title: `每次决定（${log.total} 条${log.total > listOf(log.rows).length ? `，显示最近 ${log.rows.length} 条` : ''}）` }, h(Table, {
         head: ['时间', '决定', '工具', '决定性策略', '原因', '调用者', '参数'],
-        rows: listOf(log.rows).map((r, i) => ({ key: `${r.requestId || i}-${i}`, cells: [nowrap(String(r.at || '').slice(5, 19).replace('T', ' ')),
+        rows: listOf(log.rows).map((r, i) => ({ key: `${r.requestId || i}-${i}`, cells: [nowrap(h(At, { iso: r.at, seconds: true })),
           nowrap(r.decision === 'ALLOW' ? h(Chip, { tone: 'ok' }, '允许') : r.blocked ? h(Chip, { tone: 'bad' }, '拒绝') : h(Chip, { tone: 'warn', title: 'LOG_ONLY：调用照常执行' }, '拒绝·未拦截')),
           mono(r.tool || '—'), listOf(r.policies).length ? listOf(r.policies).map((p) => h('div', { key: p }, mono(shortId(p), p))) : '—',
           h('span', { className: 'cs-mut' }, r.reason || (listOf(r.logOnly).length ? `仅记录命中：${r.logOnly.map(shortId).join('，')}` : '—')),
@@ -366,11 +377,11 @@ function GovernancePage() {
   const { error, run } = useAction()
   const reload = () => run('load', async () => setData(await call('GET', gov(wid, ''))))
   useEffect(() => { setData(null); if (wid) reload() }, [wid])
-  if (!workspace) return h(Empty, null, '先添加工作区。')
+  if (!workspace) return h(NeedWorkspace, { title: '策略' })
   const Body = { policies: PoliciesTab, gateways: GatewaysTab, decisions: DecisionsTab }[tab]
   return h(Fragment, null, h('h1', null, '策略'),
     h(Tabs, { value: tab, onChange: setTab, options: [['policies', '策略引擎与 Cedar'], ['gateways', 'Gateway：挂载、规则、限流'], ['decisions', '决策日志']] }),
-    h(ErrorLine, { error }), data ? h(Body, { data, reload }) : h(Empty, null, '加载中…'))
+    loaded(data, error, (d) => h(Body, { data: d, reload })))
 }
 
 export default { id: 'governance', label: '策略', group: '治理', Page: GovernancePage }

@@ -5,7 +5,7 @@
 // code) and deploys it the same way; the console's deployments with their versions and endpoints, a new version, delete.
 import React from 'react'
 import { call, useCtx, listOf, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, useJob, Tabs, JOB_TONE,
-  JOB_LABEL, STATUS_TONE } from '../ui.mjs'
+  JOB_LABEL, STATUS_TONE, NeedWorkspace, loaded, AwsStatus, At, JobError, stageText, logLines, secs, unscannedText } from '../ui.mjs'
 import { ws, listUnder, download } from './shared.mjs'
 
 const { useState, useEffect, createElement: h, Fragment } = React
@@ -103,17 +103,20 @@ function RuntimeOptions({ value, onChange, mode, container }) {
 
 // -- the image scan, as a job keeps it ----------------------------------------------------------------------------
 
+// a scan with its results: ECR's basic scan COMPLETE, the enhanced one (Inspector) ACTIVE (deploy.SCANNED)
+const SCANNED = ['COMPLETE', 'ACTIVE']
+
 function ScanSummary({ scan }) {
   if (!scan) return null
   const counts = ranked(scan.counts)
   const gate = listOf(scan.block).length ? `拦截级别 ${listOf(scan.block).join(' / ')}` : '只报告，不拦'
-  if (scan.status === 'UNSCANNED') return h(Note, { tone: 'warn' }, h('b', null, '镜像扫描没有完成，按未扫描部署：'), scan.reason || '—')
-  if (scan.status !== 'COMPLETE') return h(Note, null, h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), `等待 ECR 扫描结果（${scan.repository || ''}）…`))
+  if (scan.status === 'UNSCANNED') return h(Note, { tone: 'warn' }, h('b', null, '镜像扫描没有完成，按未扫描部署：'), scan.reason ? unscannedText(scan.reason) : '—')
+  if (!SCANNED.includes(scan.status)) return h(Note, null, h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), `等待 ECR 扫描结果（${scan.repository || ''}）…`))
   const blocked = Object.keys(scan.blocking || {}).length > 0
   return h('div', { className: 'cs-note' },
     h('div', { className: 'cs-row' }, h('b', null, '镜像扫描'), blocked ? h(Chip, { tone: 'bad' }, '已拦下') : h(Chip, { tone: 'ok' }, '通过'),
       counts.length ? counts.map(([k, v]) => h(Chip, { key: k, tone: SEVERITY_TONE[k] }, `${k} ${v}`)) : h(Chip, { tone: 'ok' }, '没有发现漏洞'),
-      h('span', { className: 'cs-mut' }, `${gate} · ${scan.seconds ?? '—'} s`)),
+      h('span', { className: 'cs-mut' }, `${gate} · ${secs(scan.seconds)}${scan.status === 'ACTIVE' ? ' · 增强扫描：之后持续监控' : ''}`)),
     listOf(scan.findings).length ? h('ul', { style: { margin: '6px 0 0', paddingLeft: 18 } }, listOf(scan.findings).map((f) => h('li', { key: f, className: 'cs-mono' }, f))) : null,
     blocked ? h('div', { className: 'cs-mut' }, '换一个打过补丁的基础镜像重新构建，或者在「镜像扫描」里放宽拦截级别再部署。') : null)
 }
@@ -121,7 +124,7 @@ function ScanSummary({ scan }) {
 const scanBrief = (scan) => {
   if (!scan) return '—'
   if (scan.status === 'UNSCANNED') return h(Chip, { tone: 'warn' }, '未扫描')
-  if (scan.status !== 'COMPLETE') return h(Chip, { tone: 'info' }, '扫描中')
+  if (!SCANNED.includes(scan.status)) return h(Chip, { tone: 'info' }, '扫描中')
   const counts = ranked(scan.counts)
   const blocked = Object.keys(scan.blocking || {}).length > 0
   return h(Chip, { tone: blocked ? 'bad' : counts.length ? 'warn' : 'ok' }, counts.length ? counts.map(([k, v]) => `${k[0]}${v}`).join(' ') : '无漏洞')
@@ -136,8 +139,8 @@ function Stages({ job }) {
   return h(Table, { head: ['阶段', '状态', '耗时', '说明'], rows: stages.map((s) => ({ key: s.name, cells: [
     h('b', null, labels[s.name] || s.name),
     s.status === 'running' ? h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), STAGE_TEXT.running) : h(Chip, { tone: STAGE_TONE[s.status] }, STAGE_TEXT[s.status] || s.status),
-    s.seconds !== undefined && s.seconds !== null ? `${s.seconds} s` : '—',
-    s.detail ? h('span', { className: s.status === 'failed' ? 'cs-err' : 'cs-mut' }, s.detail) : '—'] })) })
+    secs(s.seconds),
+    s.detail ? h('span', { className: s.status === 'failed' ? 'cs-err' : 'cs-mut', title: s.detail }, stageText(s.status, s.detail)) : '—'] })) })
 }
 
 function JobPanel({ id, onDone, go, setSelected }) {
@@ -153,13 +156,13 @@ function JobPanel({ id, onDone, go, setSelected }) {
     h(Chip, { tone: JOB_TONE[job.status] }, JOB_LABEL[job.status] || job.status)) },
   h(Stages, { job }),
   h(ScanSummary, { scan: (job.progress || {}).scan }),
-  smoke ? h(Note, { tone: 'ok' }, h('b', null, `冒烟调用（${smoke.qualifier}，${smoke.seconds} s）回复：`), smoke.answer) : null,
+  smoke ? h(Note, { tone: 'ok' }, h('b', null, `冒烟调用（${smoke.qualifier}，${secs(smoke.seconds)}）回复：`), smoke.answer) : null,
   result.runtimeId && job.kind === 'deploy' ? h('div', { className: 'cs-mut cs-mono' }, `${result.runtimeId} · 版本 ${result.version || '—'}${result.image ? ` · ${result.image}` : ''}`) : null,
   options.sessionStorage || options.lifecycle || options.network === 'VPC' ? h('div', { className: 'cs-mut' }, [
     options.sessionStorage ? `会话存储 ${options.sessionStorage}` : '', options.lifecycle ? `生命周期 ${lifecycleText(options.lifecycle)}` : '',
     options.network === 'VPC' ? '网络 VPC' : ''].filter(Boolean).join(' · ')) : null,
-  job.error ? h('div', { className: 'cs-err' }, job.error) : null,
-  h('pre', { className: 'cs-pre' }, listOf(job.log).slice(-40).join('\n') || '…'))
+  h(JobError, { error: job.error }),
+  h('pre', { className: 'cs-pre' }, logLines(job.log, 40) || (job.status === 'unreadable' ? '（读不到这个任务的日志）' : '…')))
 }
 
 function lifecycleText(life) {
@@ -254,7 +257,8 @@ function Group({ label, hint, children }) {
   return h('div', { className: 'cs-field' }, h('span', null, label), children, hint ? h('small', null, hint) : null)
 }
 
-function Checks({ items, picked, onChange, empty }) {
+function Checks({ items, picked, onChange, empty, error }) {
+  if (error) return h(ErrorLine, { error })
   if (items === null) return h('div', { className: 'cs-mut' }, '加载中…')
   if (!items.length) return h('div', { className: 'cs-mut' }, empty)
   return h('div', { className: 'cs-row' }, items.map(([v, label, title]) => h('label', { key: v, className: 'cs-row', title, style: { marginRight: 10 } },
@@ -281,16 +285,16 @@ function CodePreview({ preview }) {
 function ClaudeAgents({ refresh, onEdit, go, setSelected }) {
   const { wid } = useCtx()
   const [list, load, error] = useList(wid, '/claude-sdk/agents', 'agents', [refresh])
-  return h(Card, { title: '从这个模板部署的 Agent', extra: h(Button, { onClick: load }, '刷新') }, h(ErrorLine, { error }),
-    list === null ? h(Empty, null, '加载中…') : h(Table, { head: ['名称', 'Runtime', '最近一次', '镜像扫描', '会话存储', ''],
-      rows: list.map((a) => {
+  return h(Card, { title: '从这个模板部署的 Agent', extra: h(Button, { onClick: load }, '刷新') },
+    loaded(list, error, (all) => h(Table, { head: ['名称', 'Runtime', '最近一次', '镜像扫描', '会话存储', ''],
+      rows: all.map((a) => {
         const last = listOf(a.deployments)[0] || {}
         return { key: a.name, cells: [h('b', null, a.name), a.runtimeId ? h('span', { className: 'cs-mono' }, a.runtimeId) : '—',
           h(Chip, { tone: JOB_TONE[last.jobStatus] }, `${last.mode === 'update' ? '新版本' : '部署'} ${JOB_LABEL[last.jobStatus] || last.jobStatus || '—'}`),
           scanBrief(last.scan), last.sessionStorage || '—',
           h('span', { className: 'cs-row' }, h(Button, { onClick: () => onEdit(a) }, a.runtimeId ? '改了再发布' : '再部署'),
             a.runtimeId ? h(Button, { onClick: () => { setSelected({ kind: 'runtime', id: a.runtimeId }); go('chat') } }, '对话') : null)] }
-      }), empty: '还没有从这个模板部署的 Agent。' }))
+      }), empty: '还没有从这个模板部署的 Agent。' })))
 }
 
 function ClaudeForm({ onStarted, refresh, go, setSelected }) {
@@ -299,6 +303,8 @@ function ClaudeForm({ onStarted, refresh, go, setSelected }) {
   const [cat, setCat] = useState(null)
   const [skills, setSkills] = useState(null)
   const [kbs, setKbs] = useState(null)
+  const [failed, setFailed] = useState({})  // what did not load: {catalog, skills, kbs}, each the error
+  const failedTo = (what) => (err) => setFailed((f) => ({ ...f, [what]: err }))
   const [form, setForm] = useState(CLAUDE_FORM)
   const [opts, setOpts] = useState(createOptions({ storage: 'y' }))
   const [target, setTarget] = useState(null) // {name, runtimeId}: publishing a new version of it
@@ -309,11 +315,12 @@ function ClaudeForm({ onStarted, refresh, go, setSelected }) {
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }))
   useEffect(() => {
     if (!wid) return
+    setFailed({})
     call('GET', ws(wid, '/claude-sdk/catalog')).then((c) => { setCat(c); setForm((f) => ({ ...f, model: f.model || c.defaultModel, fastModel: f.fastModel || c.defaultFastModel,
-      systemPrompt: f.systemPrompt || c.defaults.systemPrompt })) }).catch(() => {})
-    call('GET', ws(wid, '/skill-lab/skills')).then((r) => setSkills(listOf(r.skills))).catch(() => setSkills([]))
+      systemPrompt: f.systemPrompt || c.defaults.systemPrompt })) }).catch(failedTo('catalog'))
+    call('GET', ws(wid, '/skill-lab/skills')).then((r) => setSkills(listOf(r.skills))).catch(failedTo('skills'))
     // one ListKnowledgeBases call; the deploy checks each chosen KB's type (MANAGED or VECTOR) itself
-    call('GET', ws(wid, '/knowledge-bases')).then((r) => setKbs(listOf(r.knowledgeBases))).catch(() => setKbs([]))
+    call('GET', ws(wid, '/knowledge-bases')).then((r) => setKbs(listOf(r.knowledgeBases))).catch(failedTo('kbs'))
   }, [wid])
   const sample = () => { const s = cat.sample; setTarget(null); setForm((f) => ({ ...f, ...s, name: f.name || `claude_points_${Math.random().toString(16).slice(2, 8)}`,
     maxTurns: String(s.maxTurns), tools: listOf(s.tools), skills: listOf(s.skills).filter((n) => listOf(skills).some((k) => k.name === n)),
@@ -332,7 +339,7 @@ function ClaudeForm({ onStarted, refresh, go, setSelected }) {
   const deployIt = () => run('deploy', () => call('POST', ws(wid, '/claude-sdk/deploy'), { ...specBody(form), ...optionsBody(opts, { container: true }),
     endpoint: endpoint.trim(), smoke: smoke === 'y', ...(target ? { runtimeId: target.runtimeId } : {}) }), (j) => `已开始：${j.label}`)
     .then((j) => { if (j) { onStarted(j) } })
-  if (!cat) return h(Card, { title: '从模板生成：Claude Agent SDK' }, h(Empty, null, '加载中…'))
+  if (!cat) return h(Card, { title: '从模板生成：Claude Agent SDK' }, loaded(null, failed.catalog))
   const modelList = h('datalist', { id: 'claude-models' }, listOf(cat.models).map((m) => h('option', { key: m.id, value: m.id }, m.label)))
   const usable = kbs === null ? null : kbs.filter((k) => k.status === 'ACTIVE' && (!k.type || ['MANAGED', 'VECTOR'].includes(k.type)))
   return h(Fragment, null,
@@ -357,14 +364,14 @@ function ClaudeForm({ onStarted, refresh, go, setSelected }) {
       h(Field, { label: '示例问题', hint: '部署后的冒烟调用就问它' }, h(Input, { value: form.sample, onChange: set('sample'), placeholder: cat.defaults.sample }))),
     h(Field, { label: '系统 Prompt' }, h(TextArea, { value: form.systemPrompt, onChange: set('systemPrompt'), rows: 6 })),
     h(Group, { label: '内置工具', hint: '只给勾选的工具（其它工具模型看不到）；它们在 Runtime 的容器里运行，不需要确认' },
-      h(Checks, { items: listOf(cat.tools).map((t) => [t.id, `${t.id}（${t.label}）`]), picked: form.tools, onChange: set('tools') })),
-    h(Group, { label: '技能（来自「技能」页的技能库）', hint: '打包成 .claude/skills/<名称>/SKILL.md，模型通过 Skill 工具加载；用技能库的当前版本' },
+      h(Checks, { items: listOf(cat.tools).map((t) => [t.id, `${t.id}：${t.label}`]), picked: form.tools, onChange: set('tools') })),
+    h(Group, { label: '技能（来自「Skill Lab → 技能库」）', hint: '打包成 .claude/skills/<名称>/SKILL.md，模型通过 Skill 工具加载；用技能库的当前版本' },
       h(Checks, { items: skills === null ? null : skills.map((s) => [s.name, s.name, s.description]), picked: form.skills.map((s) => s.split('@')[0]),
-        onChange: (names) => set('skills')(keepPins(form.skills, names)),
-        empty: '技能库是空的：到「技能」页导入样例或保存一个技能。' })),
+        onChange: (names) => set('skills')(keepPins(form.skills, names)), error: failed.skills,
+        empty: '技能库是空的：到「Skill Lab → 技能库」导入样例或保存一个技能。' })),
     h(Group, { label: '知识库', hint: `作为进程内 MCP 工具 ${cat.kbTool} 提供（Bedrock Retrieve）；执行角色只能检索勾选的知识库` },
       h(Checks, { items: usable === null ? null : usable.map((k) => [k.id, `${k.name}（${k.id}${k.type ? ` · ${k.type}` : ''}）`, k.description]), picked: form.knowledgeBases, onChange: set('knowledgeBases'),
-        empty: '这个工作区没有可检索的知识库。' })),
+        error: failed.kbs, empty: '这个工作区没有可检索的知识库（「知识库」页可以新建）。' })),
     form.knowledgeBases.length ? h(Field, { label: '每次检索的段落数' }, h(Input, { value: form.topK, onChange: set('topK') })) : null,
     h('b', { className: 'cs-mut' }, target ? '运行时选项（新版本）' : '运行时选项'),
     h(RuntimeOptions, { value: opts, onChange: setOpts, mode: target ? 'update' : 'create', container: true }),
@@ -389,7 +396,7 @@ function Detail({ runtimeId, stamp, onStarted, go, setSelected }) {
   const { busy, error, run } = useAction()
   const load = () => run('load', async () => setDetail(await call('GET', ws(wid, `/deployments/${runtimeId}`))))
   useEffect(() => { setUpdating(false); load() }, [runtimeId, stamp]) // stamp: its row in the list (status, version) changed
-  if (!detail) return h(Card, { title: runtimeId }, h(ErrorLine, { error }), h(Empty, null, '加载中…'))
+  if (!detail) return h(Card, { title: runtimeId }, loaded(null, error))
   const record = detail.record || {}
   const artifact = detail.artifact || {}
   const where = artifact.containerConfiguration ? artifact.containerConfiguration.containerUri
@@ -406,10 +413,10 @@ function Detail({ runtimeId, stamp, onStarted, go, setSelected }) {
   return h(Fragment, null,
     h(Card, { title: detail.name, extra: h('span', { className: 'cs-row' },
       detail.status !== 'MISSING' ? h(Button, { onClick: chat }, '对话') : null, detail.status !== 'MISSING' ? h(Button, { onClick: observe }, '观测') : null,
-      h(Button, { onClick: load, busy: busy === 'load' }, '刷新'), h(Chip, { tone: STATUS_TONE[detail.status] || (detail.status === 'MISSING' ? 'warn' : '') }, detail.status)) },
+      h(Button, { onClick: load, busy: busy === 'load' }, '刷新'), h(AwsStatus, { status: detail.status, tone: STATUS_TONE[detail.status] || (detail.status === 'MISSING' ? 'warn' : '') })) },
     detail.status === 'MISSING' ? h(Note, { tone: 'warn' }, '这个 Runtime 已经不在了（在控制台外被删除）。可以删除控制台为它建的角色、ECR 仓库和源码。') : h(Table, { head: ['项', '值'], rows: [
       ['Runtime ID', h('code', null, detail.runtimeId)], ['当前版本', detail.version], ['制品', h('span', { className: 'cs-mono' }, where)],
-      ['协议', detail.protocol || 'HTTP'], ['网络', vpc ? h('span', { className: 'cs-mono' }, `VPC · ${listOf(vpc.subnets).join(', ')} · ${listOf(vpc.securityGroups).join(', ')}`) : detail.network || '—'],
+      ['协议', detail.protocol || 'HTTP'], ['网络', vpc ? h('span', { className: 'cs-mono' }, `VPC · ${listOf(vpc.subnets).join(', ')} · ${listOf(vpc.securityGroups).join(', ')}`) : { PUBLIC: '公网', VPC: 'VPC' }[detail.network] || detail.network || '—'],
       ['会话存储', detail.sessionStorage ? h('span', { className: 'cs-mono' }, detail.sessionStorage) : '不开'], ['生命周期', lifecycleText(detail.lifecycle)],
       ['执行角色', h('span', { className: 'cs-mono' }, detail.roleArn || '—')],
       ['环境变量', listOf(detail.environment).join('，') || '—'], ['来源', SOURCE_LABEL[record.source] || record.source || '—'],
@@ -418,11 +425,11 @@ function Detail({ runtimeId, stamp, onStarted, go, setSelected }) {
     ].map((cells, i) => ({ key: i, cells })) }),
     h(ErrorLine, { error })),
     detail.status !== 'MISSING' ? h(Card, { title: `版本（${listOf(detail.versions).length}）` }, h(Table, { head: ['版本', '状态', '说明', '更新'],
-      rows: listOf(detail.versions).map((v) => ({ key: v.version, cells: [h('b', null, v.version), h(Chip, { tone: STATUS_TONE[v.status] }, v.status), v.description || '—',
-        (v.updatedAt || '').slice(0, 19)] })) })) : null,
+      rows: listOf(detail.versions).map((v) => ({ key: v.version, cells: [h('b', null, v.version), h(AwsStatus, { status: v.status }), v.description || '—',
+        h(At, { iso: v.updatedAt })] })) })) : null,
     detail.status !== 'MISSING' ? h(Card, { title: '端点' },
     h(Table, { head: ['端点', '服务中的版本', '目标版本', '状态', ''], rows: listOf(detail.endpoints).map((e) => ({ key: e.name, cells: [h('b', null, e.name), e.liveVersion || '—',
-      e.targetVersion || '—', h(Chip, { tone: STATUS_TONE[e.status] }, e.status),
+      e.targetVersion || '—', h(AwsStatus, { status: e.status }),
       admin && e.name !== 'DEFAULT' ? h(Button, { kind: 'danger', onClick: () => dropEndpoint(e.name), busy: busy === `ep-${e.name}` }, '删除') : null] })) }),
     admin ? h('div', { className: 'cs-row' },
       h('div', { style: { width: 200 } }, h(Input, { value: point.name, onChange: (v) => setPoint((p) => ({ ...p, name: v })), placeholder: '端点名，如 stable', mono: true })),
@@ -432,7 +439,7 @@ function Detail({ runtimeId, stamp, onStarted, go, setSelected }) {
     h(Note, null, 'DEFAULT 总是跟随最新版本；命名端点固定在一个版本上，回滚就是把它指回旧版本。')) : null,
     listOf(record.history).length ? h(Card, { title: '控制台的部署记录' }, h(Table, { head: ['版本', '来源', '制品', '镜像扫描', '任务', '时间'],
       rows: listOf(record.history).slice().reverse().map((x, i) => ({ key: i, cells: [x.version || '—', SOURCE_LABEL[x.source] || x.source, h('span', { className: 'cs-mono' }, x.artifact || '—'),
-        x.scan ? scanBrief(x.scan) : '—', h('span', { className: 'cs-mono' }, x.jobId), (x.at || '').slice(0, 19)] })) })) : null,
+        x.scan ? scanBrief(x.scan) : '—', h('span', { className: 'cs-mono' }, x.jobId), h(At, { iso: x.at })] })) })) : null,
     admin ? h(Card, { title: '更新与删除' },
       h('div', { className: 'cs-row' },
         detail.status !== 'MISSING' ? h(Button, { kind: 'pri', onClick: () => setUpdating((u) => !u) }, updating ? '收起' : '发布新版本') : null,
@@ -449,21 +456,21 @@ function Deployments({ refresh, onStarted, go, setSelected }) {
   const row = open && listOf(list).find((d) => d.runtimeId === open)
   useEffect(() => { if (list && open && !row) setOpen(null) }, [list]) // deleted: close it
   return h(Fragment, null,
-    h(Card, { title: '控制台部署的 Runtime', extra: h(Button, { onClick: load }, '刷新') }, h(ErrorLine, { error }), list === null ? h(Empty, null, '加载中…') : h(Table, {
+    h(Card, { title: '控制台部署的 Runtime', extra: h(Button, { onClick: load }, '刷新') }, loaded(list, error, (all) => h(Table, {
       head: ['名称', '来源', '状态', '版本', '命名端点', '更新'],
-      rows: list.map((d) => ({ key: d.runtimeId, onClick: () => setOpen(d.runtimeId), cells: [h('b', null, d.name), SOURCE_LABEL[d.source] || d.source || '—',
-        h(Chip, { tone: STATUS_TONE[d.status] || (d.status === 'MISSING' ? 'warn' : '') }, d.status), d.version || '—', d.endpoint || '—', (d.updatedAt || '').slice(0, 19)] })),
-      empty: '还没有从控制台部署的 Runtime。在「新部署」里部署一个。' })),
+      rows: all.map((d) => ({ key: d.runtimeId, onClick: () => setOpen(d.runtimeId), cells: [h('b', null, d.name), SOURCE_LABEL[d.source] || d.source || '—',
+        h(AwsStatus, { status: d.status, tone: STATUS_TONE[d.status] || (d.status === 'MISSING' ? 'warn' : '') }), d.version || '—', d.endpoint || '—', h(At, { iso: d.updatedAt })] })),
+      empty: '还没有从控制台部署的 Runtime。在「新部署」里部署一个。' }))),
     row ? h(Detail, { key: open, runtimeId: open, stamp: `${row.status}:${row.version}:${row.updatedAt}`, onStarted, go, setSelected }) : null)
 }
 
 function Jobs({ refresh, openJob }) {
   const { wid } = useCtx()
-  const [jobs, load] = useList(wid, '/deployments/jobs', 'jobs', [refresh])
-  return h(Card, { title: '部署记录', extra: h(Button, { onClick: load }, '刷新') }, h(Table, { head: ['名称', '操作', '状态', '阶段', '镜像扫描', '开始', ''],
-    rows: listOf(jobs).map((j) => ({ key: j.id, onClick: () => openJob(j.id), cells: [h('b', null, (j.params || {}).name || '—'), jobKind(j),
+  const [jobs, load, error] = useList(wid, '/deployments/jobs', 'jobs', [refresh])
+  return h(Card, { title: '部署记录', extra: h(Button, { onClick: load }, '刷新') }, loaded(jobs, error, (all) => h(Table, { head: ['名称', '操作', '状态', '阶段', '镜像扫描', '开始', ''],
+    rows: all.map((j) => ({ key: j.id, onClick: () => openJob(j.id), cells: [h('b', null, (j.params || {}).name || '—'), jobKind(j),
       h(Chip, { tone: JOB_TONE[j.status] }, JOB_LABEL[j.status] || j.status), (LABELS[j.kind] || {})[(j.progress || {}).stage] || '—', scanBrief((j.progress || {}).scan),
-      (j.createdAt || '').slice(0, 19), h(Button, null, '查看')] })), empty: '还没有部署任务。' }))
+      h(At, { iso: j.createdAt }), h(Button, null, '查看')] })), empty: '还没有部署任务。' })))
 }
 
 function DeployPage({ go, setSelected }) {
@@ -471,7 +478,7 @@ function DeployPage({ go, setSelected }) {
   const [tab, setTab] = useState('new')
   const [jobId, setJobId] = useState(null)
   const [refresh, setRefresh] = useState(0)
-  if (!workspace) return h(Empty, null, '先添加工作区。')
+  if (!workspace) return h(NeedWorkspace, { title: '部署代码' })
   const started = (j) => { setJobId(j.id); setRefresh((n) => n + 1) }
   const body = { new: () => h(DeployForm, { mode: 'create', onStarted: started }),
     claude: () => h(ClaudeForm, { onStarted: started, refresh, go, setSelected }),

@@ -587,6 +587,18 @@ def test_an_admin_override_promotes_against_the_gate_with_its_reason_recorded(wo
     assert p["gate"]["ok"] is False
 
 
+def test_while_it_promotes_the_canary_shows_the_gate_it_went_by(world):
+    """The promotion job moves production before the record says promoted: the gate shown meanwhile is the one decided,
+    not one that reads production's new version as a production moved during the canary."""
+    w = world
+    rec = running(w)
+    decided = rc.canary_detail(w.x, rec["id"])["gate"]
+    rc._save(w.x, rec["id"], status="promoting", decision={"at": "2026-10-01T15:00:00Z", "gate": decided, "override": True})
+    w.aws.runtimes[w.rid]["agentRuntimeVersion"] = "2"  # the job moved production already
+    gate = rc.canary_detail(w.x, rec["id"])["gate"]
+    assert gate["decidedAt"] == "2026-10-01T15:00:00Z" and gate["conditions"][2]["ok"]
+
+
 def test_the_gate_refuses_a_candidate_worse_beyond_the_band_and_a_production_that_moved(world):
     w = world
     rec = running(w)
@@ -721,6 +733,30 @@ def test_cleanup_deletes_what_the_canary_made_and_nothing_of_production(world):
     assert shown["live"]["final"] and shown["metrics"][0]["band"] == ex.MIN_BAND and shown["production"]["version"] == "1"
     with pytest.raises(ex.ExperimentError, match="already cleaned"):
         rc.cleanup_canary(w.x, rec["id"])
+
+
+def test_cleaning_a_canary_whose_ab_test_agentcore_stopped_keeps_its_results(world):
+    """The canary's A/B test reached its maximum duration (AgentCore stopped it, the record still says running):
+    cleaning records the final results first, as the confirmation promises."""
+    w = world
+    rec = running(w)
+    w.aws.results = results(0.70, 12, 0.80, 12)
+    w.aws.tests[rec["abTest"]["id"]]["executionStatus"] = "STOPPED"
+    job = finish(w.console, rc.cleanup_canary(w.x, rec["id"])["id"])
+    after = rc._get(w.x, rec["id"])
+    assert job["status"] == "succeeded" and after["status"] == "cleaned"
+    assert after["finalResults"]["metrics"][0]["treatment"]["mean"] == 0.80
+
+
+def test_while_cleaning_the_gate_does_not_count_the_arms_cleanup_deletes(world):
+    """Mid-cleanup production's control endpoint is gone: the gate's (c) does not read that as production moved."""
+    w = world
+    rec = running(w)
+    del w.aws.endpoints[w.rid][rec["controlEndpoint"]]
+    assert "control endpoint" in rc.canary_detail(w.x, rec["id"])["gate"]["conditions"][2]["evidence"]  # while it runs, it counts
+    rc._save(w.x, rec["id"], status="cleaning")
+    agent = rc.canary_detail(w.x, rec["id"])["gate"]["conditions"][2]
+    assert agent["ok"] and "arm" not in agent
 
 
 def test_cleanup_keeps_a_promoted_artifact_and_leaves_what_is_not_this_canarys(world):

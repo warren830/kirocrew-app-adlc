@@ -178,8 +178,22 @@ def refusal(console: "Console | None", exc: BaseException) -> tuple[int, dict[st
         return 409, {"error": str(exc)}
     if isinstance(exc, ValueError):  # a module's own refusal (AgentError, KnowledgeError, SkillLabError, …): the caller's to fix
         return 400, {"error": str(exc)}
+    if type(exc).__name__ in CREDENTIAL_ERRORS or _expired_token(exc):  # botocore: no usable credentials for the workspace
+        profile = (getattr(exc, "kwargs", None) or {}).get("profile")
+        return 409, {"error": f"AWS profile '{profile or '?'}' is not usable from the console: {type(exc).__name__}: {str(exc)[:300]}",
+                     "hint": "log in first (aws sso login / assume the temporary role), then 核对 the workspace"}
     sys.stderr.write(traceback.format_exc())
     return 500, {"error": f"internal error: {type(exc).__name__}: {str(exc)[:300]}"}
+
+
+CREDENTIAL_ERRORS = ("ProfileNotFound", "NoCredentialsError", "PartialCredentialsError", "CredentialRetrievalError",
+                     "TokenRetrievalError", "SSOTokenLoadError", "UnauthorizedSSOTokenError", "NoRegionError")
+
+
+def _expired_token(exc: BaseException) -> bool:
+    """A ClientError for credentials that expired or are not valid (an SSO session that ran out)."""
+    code = ((getattr(exc, "response", None) or {}).get("Error") or {}).get("Code") if type(exc).__name__ == "ClientError" else None
+    return code in ("ExpiredToken", "ExpiredTokenException", "InvalidClientTokenId", "UnrecognizedClientException", "RequestExpired")
 
 
 def run_route(console: "Console", method: str, path: str, query: dict[str, str], body: dict[str, Any], raw: bytes,
@@ -243,7 +257,19 @@ class KiroRunner:
         timeout = int(record["timeoutSecs"])
         generation.mark_running(self.data_dir, record, timeout_secs=timeout)
 
+        def stage(name: str, stage_task: str) -> str:
+            stdout, stderr, code, _seconds = self.runner()(stage_task, timeout=generation.stage_timeout(name))
+            if code != 0 and (not stdout.strip() or "error in the response stream" in stderr.lower()):
+                raise RuntimeError(f"Kiro CLI exited {code}: {stderr.strip()[-800:]}")  # the stage runs again
+            return stdout
+
         def work() -> None:
+            if record.get("staged"):
+                try:
+                    generation.drive_stages(self.data_dir, record, stage)
+                except Exception as exc:  # noqa: BLE001 - recorded on the generation, the UI shows it
+                    generation.fail_generation(self.data_dir, record, f"Kiro CLI could not run: {type(exc).__name__}: {exc}"[:1000])
+                return
             try:
                 stdout, stderr, code, _seconds = self.runner()(task, timeout=timeout)
             except Exception as exc:  # noqa: BLE001 - recorded on the generation, the UI shows it

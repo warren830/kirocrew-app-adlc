@@ -31,14 +31,14 @@ scenario.labs.teaching = {firstConversation, baselineDefects, phenomena, stabili
   documents (an off-topic FAQ section at the end), so noisy passages are retrieved next to the answer.
 - retrieval_gap with mechanism "absent" (the reliable gap): the needed fact is deliberately in NO
   knowledge document, and the question is about a topic no document covers (not a qualifier on one:
-  "can cross-border clinics use the standard template?" and "overseas claim rules vs domestic?" failed). absentTerms lists 1-3 concept words of the missing fact; none may appear in any
+  "can cross-border clinics use the standard template?" and "overseas claim rules vs domestic?" failed). absentTerms lists 1-3 concept words (2+ characters each) of the missing fact; none may appear in any
   document or holdout query. The case sets expected.shouldEscalate true and names the hand-off target
   in mustMention (or mustMentionAnyOf for alternatives, e.g. [["work order", "maintenance planner"]]).
   baitTerms (optional; prefer none, as the HR gap: bait from the question's domain covered it in 4 live
   runs): 1-2 phrases copied verbatim from the question; a noise:true document repeats them in at least 3
   short Q&A entries outside the question's domain that say nothing about the missing fact. Each entry reuses ONE bait phrase in a different topic; no document restates the gap question itself or answers
-  it with "not recorded here, ask team X" (live 2026-09-28: such an FAQ entry made THELMA treat the
-  retrieval as covering the question, so the gap did not reproduce).
+  it with "not recorded here, ask team X" (live 2026-09-28: THELMA then took the retrieval as
+  covering the question, so the gap did not reproduce).
 - retrieval_gap "buried" (an existing pack's only; never declare one): its answer appears once, reworded,
   and no paragraph contains both a bait term and an answer term.
 - baselineDefects (2-6) {id, description, candidateFix, baselineMarker?}: candidateFix is a sentence

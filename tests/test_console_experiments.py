@@ -635,6 +635,25 @@ def test_the_minimum_band_applies_when_the_panel_did_not_measure_the_metric(worl
     assert ab["band"] == ex.MIN_BAND and ab["worse"] and "minimum band" in ab["bandSource"]
 
 
+def test_a_promotion_that_fails_after_stopping_the_ab_test_leaves_the_experiment_stopped(world):
+    """The promotion stops the A/B test first: when applying the treatment then fails, the record says stopped (not
+    running beside a stopped test, which the page would read as AgentCore stopping it), its results kept."""
+    w = world
+    rec = running_experiment(w)
+    w.session.data.results = results(0.70, 12, 0.80, 12)
+
+    def refused(**kw):
+        raise AwsError("AccessDeniedException", "not authorized to perform UpdateHarness")
+    w.session.ctl.update_harness = refused
+    with pytest.raises(Exception, match="UpdateHarness"):
+        ex.promote(w.x, rec["id"], {"acknowledged": True, "reason": "the customer demo needs the citations today"})
+    after = ex._get(w.x, rec["id"])
+    assert after["status"] == "stopped" and after["finalResults"]["metrics"][0]["treatment"]["mean"] == 0.80
+    assert not after.get("promotion") and after["error"].startswith("promotion: AwsError")  # why it stopped, for the page
+    assert after["error"].endswith("; the A/B test was stopped first")
+    assert ex.list_experiments(w.x)[0]["cleanedAt"] is None  # the list says cleaned beside promoted
+
+
 def test_an_admin_override_is_recorded_with_the_conditions_it_overrode(world):
     w = world
     rec = running_experiment(w)
@@ -703,6 +722,30 @@ def test_cleanup_deletes_what_the_experiment_made_and_nothing_else(world):
     assert f"/aws/bedrock-agentcore/runtimes/{RUNTIME_ID}-DEFAULT" not in w.session.logs.deleted  # never the agent's own logs
     after = ex._get(w.x, rec["id"])
     assert after["status"] == "cleaned" and after["finalResults"]["metrics"][0]["treatment"]["mean"] == 0.80  # the evidence is kept
+
+
+def test_cleaning_an_ab_test_agentcore_stopped_on_its_own_keeps_its_results(world):
+    """At its maximum duration AgentCore stops the A/B test itself, and the record still says running: cleaning it
+    records the final results first, as the confirmation promises, without another write to the test."""
+    w = world
+    rec = running_experiment(w)
+    w.session.data.results = results(0.70, 12, 0.80, 12)
+    w.session.data.tests[rec["abTest"]["id"]]["executionStatus"] = "STOPPED"
+    job = finish(w.console, ex.cleanup_experiment(w.x, rec["id"])["id"])
+    after = ex._get(w.x, rec["id"])
+    assert job["status"] == "succeeded" and after["status"] == "cleaned"
+    assert after["finalResults"]["metrics"][0]["treatment"]["mean"] == 0.80
+
+
+def test_once_cleaned_the_gate_does_not_count_the_arms_cleanup_deleted(world):
+    """Cleanup deletes the control endpoint and the treatment Harness: the gate's (c), kept as a record, does not read
+    that as the versions moved under the A/B test."""
+    w = world
+    rec = running_experiment(w)
+    finish(w.console, ex.cleanup_experiment(w.x, rec["id"])["id"])
+    assert rec["treatmentHarness"]["id"] not in w.session.ctl.harnesses
+    agent = ex.experiment_detail(w.x, rec["id"])["gate"]["conditions"][2]
+    assert agent["ok"] and "arm" not in agent and "too" not in agent["evidence"]
 
 
 def test_cleanup_leaves_a_treatment_harness_that_is_not_this_experiments(world):
@@ -865,10 +908,12 @@ def test_a_cleanup_that_left_something_is_incomplete_and_runs_again(world, monke
     finish(w.console, ex.cleanup_experiment(w.x, rec["id"])["id"])
     after = ex._get(w.x, rec["id"])
     assert after["status"] == "cleanup_incomplete" and not after.get("cleanedAt") and after["cleanupLeft"] == [f"Gateway {rec['gateway']['id']}"]
+    assert after["error"].startswith("cleanup left 1 resource(s)")
     refusing[0] = False
     finish(w.console, ex.cleanup_experiment(w.x, rec["id"])["id"])
     after = ex._get(w.x, rec["id"])
     assert after["status"] == "cleaned" and after["cleanedAt"] and not w.session.ctl.gateways
+    assert after["error"] is None  # the earlier cleanup's "clean up again" is done with
     with pytest.raises(ex.ExperimentError, match="already cleaned"):
         ex.cleanup_experiment(w.x, rec["id"])
 

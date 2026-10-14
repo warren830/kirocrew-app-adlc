@@ -121,6 +121,49 @@ def test_a_loop_that_refused_or_whose_kiro_failed_fails_the_job(tmp_path, monkey
     loop(1, {"projectId": "gas", "converged": False, "rounds": []})
     job = autopilot.start(console, "dev", {"projectId": "gas", "brief": BRIEF, "direct": False, "preRehearse": False})["job"]
     assert job["status"] == "succeeded" and job["result"]["exitCode"] == 1 and job["result"]["converged"] is False
+    loop(3, {"projectId": "gas", "error": "direct 1 failed: NoCredentialsError: Unable to locate credentials"})
+    job = autopilot.start(console, "dev", {"projectId": "gas", "brief": BRIEF})["job"]
+    assert job["status"] == "failed" and "exited 3: direct 1 failed" in job["error"]
+    for code, error in ((4, "pre-rehearsal findings remain: pre-rehearsal 2 (likely_not_ready) still finds 3 after 1 repair(s)"),
+                        (5, "direct rehearsal 4 is not_ready (TEACHING_PHENOMENON_MISSING) after 3 repair(s): X (c1)")):
+        loop(code, {"projectId": "gas", "converged": True, "rounds": [], "error": error})  # findings left: an outcome, with its report
+        job = autopilot.start(console, "dev", {"projectId": "gas", "brief": BRIEF, "packKind": "reference"})["job"]
+        assert job["status"] == "succeeded" and job["result"]["exitCode"] == code and job["result"]["error"] == error
+
+
+def test_a_finished_run_says_what_it_came_to():
+    """The records list names the outcome (a stop is no "done"): from the exit and the report's error."""
+    customer, reference = {"packKind": "customer"}, {"packKind": "reference"}
+    assert autopilot.outcome(0, {"readyForClassDirect": True}, reference) == "ready"
+    assert autopilot.outcome(0, {"readyForClassDirect": False}, reference) == "built"  # no direct rehearsal asked for
+    assert autopilot.outcome(1, {"error": "the validation is not ok; build skipped"}, customer) == "awaits-customer"
+    assert autopilot.outcome(1, {"error": "the validation is not ok; build skipped"}, reference) == "stopped"
+    assert autopilot.outcome(1, {"error": "Kiro needs input: who approves refunds?"}, reference) == "needs-input"
+    assert autopilot.outcome(1, {"error": "repairable errors or live-learned teaching warnings remain after 6 rounds: A"}, reference) == "not-converged"
+    assert autopilot.outcome(1, {"error": "direct 1 repair: no progress: the same findings remain after an escalation to regenerate: A"},
+                             reference) == "not-converged"
+    assert autopilot.outcome(4, {}, reference) == "pre-findings" and autopilot.outcome(5, {}, reference) == "not-ready"
+    assert autopilot.outcome(3, {}, reference) is None
+
+
+def test_the_records_list_adds_the_outcome_of_older_runs_and_whether_the_project_exists(tmp_path):
+    from workshop_customizer.console.jobs import Jobs
+
+    jobs = Jobs(tmp_path / "jobs")
+    old = {"id": "autopilot-0123456789", "kind": "autopilot", "workspace": "dev", "label": "自动驾驶 gas", "params": {"projectId": "gas", "packKind": "customer"},
+           "status": "succeeded", "createdAt": "t", "progress": {}, "log": [], "error": None,
+           "result": {"exitCode": 1, "error": "the validation is not ok; build skipped"}}
+    jobs._save(old)
+    (tmp_path / "data" / "projects" / "gas").mkdir(parents=True)
+    (tmp_path / "data" / "projects" / "gas" / "project.json").write_text("{}")
+    console = type("C", (), {"jobs": jobs, "workshop_data": tmp_path / "data"})()
+    [row] = autopilot.records(console, "dev")
+    assert row["progress"]["outcome"] == "awaits-customer" and row["projectExists"] is True and "result" not in row
+    assert autopilot.records(console, "prod") == []
+    (tmp_path / "data" / "projects" / "made-on-the-workshop-page").mkdir()
+    (tmp_path / "data" / "projects" / "made-on-the-workshop-page" / "project.json").write_text("{}")
+    (tmp_path / "data" / "projects" / "half-written").mkdir()  # no project.json: not a project
+    assert autopilot.projects(console) == ["gas", "made-on-the-workshop-page"]
 
 
 def test_the_loop_and_the_release_scripts_run_on_the_checkouts_python(tmp_path, monkeypatch):

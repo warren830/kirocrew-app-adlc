@@ -802,11 +802,11 @@ def test_verify_bundle_accepts_an_untampered_record(tmp_path):
 def test_prepare_writes_a_bound_queued_record(tmp_path):
     data = tmp_path / "data"
     pdir = _project(data)
-    record, task = gen.prepare_generation(data, {"projectId": PID, "brief": BRIEF})
+    record, task = gen.prepare_generation(data, {"projectId": PID, "brief": BRIEF, "staged": False})
     on_disk = json.loads((data / "generations" / f"{record['id']}.json").read_text(encoding="utf-8"))
     assert on_disk == record
     assert record["status"] == "queued" and record["mode"] == "draft" and record["runner"] == "kirocrew-spawn"
-    assert record["round"] == 1 and record["timeoutSecs"] == 1200
+    assert record["round"] == 1 and record["timeoutSecs"] == 1800
     assert record["sourceScenarioSha256"] == hashlib.sha256((pdir / "scenario.yaml").read_bytes()).hexdigest()
     assert record["sourcePackDigest"] == server_mod.pack_digest(pdir)
     assert record["task"] == {"chars": len(task), "bytes": len(task.encode()), "estTokens": gen.est_tokens(task),
@@ -842,7 +842,7 @@ def test_prepare_refuses_bad_requests(tmp_path, body, needle):
 def test_prepare_refuses_a_second_live_generation_but_settles_stale_ones(tmp_path):
     data = tmp_path / "data"
     _project(data)
-    first, _ = gen.prepare_generation(data, {"projectId": PID, "brief": BRIEF})
+    first, _ = gen.prepare_generation(data, {"projectId": PID, "brief": BRIEF, "staged": False})
     gen.mark_running(data, first, spawn_id="spawn-1")
     with pytest.raises(gen.GenerationConflict) as info:
         gen.prepare_generation(data, {"projectId": PID, "brief": BRIEF})
@@ -1020,9 +1020,9 @@ def test_server_pack_digest_is_the_routes_implementation(tmp_path, monkeypatch):
 
 def test_timeouts_per_mode_and_env_clamp(monkeypatch):
     monkeypatch.delenv(gen.TIMEOUT_ENV, raising=False)
-    assert gen.timeout_for("draft") == 1200
+    assert gen.timeout_for("draft") == 1800
     assert gen.timeout_for("repair") == 900 and gen.timeout_for("regenerate") == 900
-    for raw, expected in (("100", 300), ("99999", 3600), ("1500", 1500), ("soon", 1200)):
+    for raw, expected in (("100", 300), ("99999", 3600), ("1500", 1500), ("soon", 1800)):
         monkeypatch.setenv(gen.TIMEOUT_ENV, raw)
         assert gen.timeout_for("draft") == expected
     assert gen._record_timeout({}) == gen.GENERATION_TIMEOUT_SECS == 600  # legacy records
@@ -1077,7 +1077,7 @@ def test_a_late_result_never_revives_a_record_settled_on_disk(tmp_path):
     _project(data)
     record, _ = gen.prepare_generation(data, {"projectId": PID, "brief": BRIEF}, runner="kiro-cli")
     gen.mark_running(data, record)  # the runner keeps this in-memory copy for the whole run
-    settled = gen._settle(_age_on_disk(data, record["id"], 1400), data_dir=data)  # the UI poll
+    settled = gen._settle(_age_on_disk(data, record["id"], 2000), data_dir=data)  # the UI poll
     assert settled["status"] == "failed" and "abandoned" in settled["error"]
     second, _ = gen.prepare_generation(data, {"projectId": PID, "brief": BRIEF}, runner="kiro-cli")
 
@@ -1253,6 +1253,63 @@ def test_route_handlers_keep_their_http_contract(tmp_path, handlers):
     assert missing.status == 404
 
 
+def test_a_spawned_generation_settles_without_a_poll(tmp_path, handlers, monkeypatch):
+    """The start route watches its spawn: Kiro's answer is stored as soon as it lands, with no page polling, because
+    KiroCrew prunes a finished spawn's result.txt an hour later (a page reopened after that found nothing to read)."""
+    data = tmp_path / "data"
+    _project(data)
+    monkeypatch.setattr(gen, "WATCH_INTERVAL_SECS", 0.01)
+    infos: dict = {}
+    ctx = SimpleNamespace(data_dir=str(data), spawn=_Spawn(), logger=SimpleNamespace(exception=lambda *a, **k: None))
+
+    async def scenario():
+        started = await handlers[("POST", "/generations")](_request({"projectId": PID, "brief": BRIEF}, infos=infos), ctx)
+        gid = started.payload["id"]
+        await asyncio.sleep(0.05)
+        assert _on_disk(data, gid)["status"] == "running"  # still running: the watch keeps going
+        infos["spawn-42"] = SimpleNamespace(done=True, result=_answer(_payload()), result_truncated=False, error="",
+                                            app="workshop-customizer")
+        for _ in range(200):
+            if _on_disk(data, gid)["status"] != "running":
+                break
+            await asyncio.sleep(0.01)
+        return gid
+
+    gid = asyncio.run(scenario())
+    assert _on_disk(data, gid)["status"] == "ready"
+
+
+def test_the_watch_wakes_when_the_gateway_run_task_ends(tmp_path, handlers, monkeypatch):
+    """With the gateway's run task in SubagentManager._tasks the watch waits on it, not on a timer: the answer is
+    stored the moment the run ends, and the run itself is never cancelled by the watch."""
+    data = tmp_path / "data"
+    _project(data)
+    monkeypatch.setattr(gen, "WATCH_INTERVAL_SECS", 3600)  # only the run task can wake the watch in time
+    infos: dict = {}
+    ctx = SimpleNamespace(data_dir=str(data), spawn=_Spawn(), logger=SimpleNamespace(exception=lambda *a, **k: None))
+
+    async def scenario():
+        run_task = asyncio.get_running_loop().create_future()
+        request = _request({"projectId": PID, "brief": BRIEF}, infos=infos)
+        request.app["state"].subagents._tasks = {"spawn-42": run_task}
+        started = await handlers[("POST", "/generations")](request, ctx)
+        gid = started.payload["id"]
+        await asyncio.sleep(0.05)
+        assert _on_disk(data, gid)["status"] == "running" and not run_task.done()
+        infos["spawn-42"] = SimpleNamespace(done=True, result=_answer(_payload()), result_truncated=False, error="",
+                                            app="workshop-customizer")
+        run_task.set_result(None)
+        for _ in range(200):
+            if _on_disk(data, gid)["status"] != "running":
+                break
+            await asyncio.sleep(0.01)
+        assert not run_task.cancelled()
+        return gid
+
+    gid = asyncio.run(scenario())
+    assert _on_disk(data, gid)["status"] == "ready"
+
+
 def test_route_handlers_never_block_the_event_loop_on_the_project_lock(tmp_path, handlers, monkeypatch):
     """While another writer holds generation/.lock, start/apply/revert wait in a worker thread: the
     gateway's event loop keeps serving, and the handler answers 409 once the lock times out."""
@@ -1377,7 +1434,7 @@ def test_kiro_generate_drives_prepare_complete_apply(tmp_path, fake_kiro):
     argv = json.loads((fake_kiro.dir / "argv.json").read_text())
     assert argv == ["chat", "--no-interactive", "--agent", "workshop-customizer", "--trust-tools=", (out / "task.txt").read_text()]
     assert report["task"]["sha256"] == hashlib.sha256(argv[-1].encode()).hexdigest()
-    assert report["timeoutSecs"] == 1200 and report["stats"]["golden"] == 16
+    assert report["timeoutSecs"] == 1200 and report["stats"]["golden"] == 16  # the structure stage's (it answered the whole pack)
     record = json.loads((out / "appdata" / "generations" / f"{report['generationId']}.json").read_text())
     assert record["runner"] == "kiro-cli" and record["status"] == "applied"
     scenario = yaml.safe_load((out / "appdata" / "projects" / PID / "scenario.yaml").read_text())

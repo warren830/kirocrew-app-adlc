@@ -22,6 +22,20 @@ def test_contracts_are_checked_and_load_from_a_file(tmp_path):
                      ([{"id": "a", "query": "q", "expected": {"shouldRefuse": True}}] * 2, "unique"), ([], "no contracts")):
         with pytest.raises(verify.ContractError, match=why):
             verify.check_contracts(bad)
+    # a check in the wrong shape is refused, not checked loosely: a string mustMention would be matched character by character
+    for expected, why in (({"mustMention": "15"}, r"expected.mustMention must be a list of strings"),
+                          ({"mustMentionAnyOf": ["a", "b"]}, r"expected.mustMentionAnyOf must be a list of groups"),
+                          ({"forbiddenTools": [""]}, r"expected.forbiddenTools must be a list of strings"),
+                          ({"shouldRefuse": "yes"}, r"expected.shouldRefuse must be true or false")):
+        with pytest.raises(verify.ContractError, match=why):
+            verify.check_contracts([{"id": "a", "query": "q", "expected": expected}])
+    assert verify.check_contracts([{"id": "a", "query": "q", "expected": {"mustMentionAnyOf": [["15", "十五"]], "mustNotMention": []}}])
+    # a contract L1 checks nothing on is refused: it could never pass (a false flag is the goal judge's, an empty list checks nothing)
+    for expected in ({"shouldRefuse": False}, {"mustMention": []}, {"shouldEscalate": False, "forbiddenTools": []}):
+        with pytest.raises(verify.ContractError, match="checks nothing"):
+            verify.check_contracts([{"id": "a", "query": "q", "expected": expected}])
+    with pytest.raises(verify.ContractError, match=r"id 'a' is not unique: contract 1 has it too"):
+        verify.check_contracts([{"id": "a", "query": "q", "expected": {"shouldRefuse": True}}, {"id": "a", "query": "q2", "expected": {"shouldRefuse": True}}])
     path = tmp_path / "c.yaml"
     path.write_text("contracts:\n  - id: leave\n    query: How many days of leave?\n    expected: {mustMention: ['15']}\nl1:\n  refusalMarkers: [cannot]\n",
                     encoding="utf-8")

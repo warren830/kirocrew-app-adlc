@@ -5,7 +5,7 @@
 import React from 'react'
 import { Plus, Send, RefreshCw, Trash2 } from 'lucide-react'
 import { call, events, useCtx, listOf, cx, Card, Button, Field, Input, TextArea, Select, Chip, Note, Empty, ErrorLine, Table, useAction, Tabs, JOB_TONE,
-  JOB_LABEL } from '../ui.mjs'
+  JOB_LABEL, NeedWorkspace, L1_MEANS, loaded, when, JobError, jobErrorText, checksText, contractNote, logLines, personText, parseJson } from '../ui.mjs'
 
 const { useState, useEffect, useRef, useCallback, createElement: h, Fragment } = React
 const base = (wid) => `/workspaces/${wid}/assistant`
@@ -20,7 +20,6 @@ const TOOL_LABEL = { list_knowledge_bases: '查看知识库列表', describe_kno
   list_skills: '查看技能库', read_skill: '读技能', list_gateways: '查看 Gateway', describe_gateway: '查看 Gateway 的工具', list_agents: '查看现有 Agent',
   list_models: '查看可用模型', propose_agent: '提交提案' }
 const EXAMPLE = '我需要一个回答会员积分问题的客服 Agent：积分怎么获得、多久过期、推荐奖励什么时候到账。只根据知识库回答，查不到就说不知道；不能承诺补发积分，也不能查别人的积分。'
-const when = (s) => (s || '').replace('T', ' ').slice(0, 19)
 
 const CSS = `
 .cs-as-cols{display:grid;grid-template-columns:240px minmax(0,1fr);gap:14px;align-items:start}
@@ -118,7 +117,7 @@ function Row({ m, me, onRevision }) {
     m.author && me && m.author !== me.username ? h('div', { className: 'cs-mut' }, m.author) : null)
   if (m.role === 'assistant') return h('div', { className: 'cs-turn cs-agent' }, h('div', { className: 'cs-bubble' }, h(Markdown, { text: m.text })))
   if (m.role === 'tool') return h(ToolLine, { m })
-  if (m.role === 'error') return h('div', { className: 'cs-err' }, `这一轮没有完成：${m.text}`)
+  if (m.role === 'error') return h('div', { className: 'cs-err', title: `原文：${m.text}` }, `这一轮没有完成：${jobErrorText(m.text)}`)
   if (m.role === 'meta') return h('div', { className: 'cs-mut', style: { margin: '2px 0 10px 4px' } },
     `${m.seconds}s · 模型 ${m.modelCalls} 次 · 输入 ${(m.usage || {}).inputTokens || 0}（缓存 ${(m.usage || {}).cacheReadInputTokens || 0}）· 输出 ${(m.usage || {}).outputTokens || 0} tokens · `
     + `${m.awsCalls} 次 AWS 调用，全部只读`)
@@ -138,7 +137,7 @@ function Transcript({ conv, live, me, onRevision }) {
     rows.map((m, i) => h(Row, { key: i, m, me, onRevision })),
     live ? h(Fragment, null, h(Row, { m: { role: 'user', text: live.user } }),
       live.items.map((m, i) => h(Row, { key: `l${i}`, m, me, onRevision })),
-      live.error ? h('div', { className: 'cs-err' }, live.error) : null,
+      live.error ? h('div', { className: 'cs-err', title: `原文：${live.error}` }, `这一轮没有完成：${jobErrorText(live.error)}`) : null,
       live.thinking && !live.error ? h('div', { className: 'cs-mut' }, h('span', { className: 'cs-spin' }), ' 助手在想…') : null) : null,
     conv.inFlight && !live ? h(Note, null, h('span', { className: 'cs-spin' }), ` 助手正在回复第 ${conv.inFlight.turn} 轮（${conv.inFlight.by}，自动刷新）`) : null,
     h('div', { ref: bottom }))
@@ -159,7 +158,7 @@ function Spec({ p }) {
       ['知识库', listOf(c.knowledgeBases).map((k) => (kbs[k] ? `${k}（${kbs[k].name}）` : k)).join('、') || '无'],
       ['技能', listOf(c.skills).map((s) => `${skillName(s)} ${(pinned[skillName(s)] || {}).version || (s || {}).version || ''}`.trim()).join('、') || '无'],
       ['Gateway', listOf(c.gateways).map((g) => `${g.toolName} → ${(gws[g.gatewayId] || {}).name || g.gatewayId}`).join('、') || '无'],
-      ['L1 看到的工具名', listOf(b.toolNames).length ? h('span', { className: 'cs-row' }, b.toolNames.map((t) => h(Chip, { key: t }, t))) : '—'],
+      [h('span', { title: L1_MEANS }, '验证时 L1 看到的工具名'), listOf(b.toolNames).length ? h('span', { className: 'cs-row' }, b.toolNames.map((t) => h(Chip, { key: t }, t))) : '—'],
       ['验证', `${c.verificationRounds || 2} 轮（每轮把每条契约问一遍）`],
       ['概述', c.summary || '—'],
       ['假设与待定', listOf(c.assumptions).length ? h('ul', { style: { margin: 0, paddingLeft: 18 } }, c.assumptions.map((a, i) => h('li', { key: i }, a))) : '—'],
@@ -187,7 +186,7 @@ function Diff({ text }) {
 function Steps({ steps }) {
   const result = (s) => {
     const r = s.result || {}
-    if (s.status === 'failed') return h('span', { className: 'cs-err' }, s.error)
+    if (s.status === 'failed') return h('span', { className: 'cs-err', title: s.error }, jobErrorText(s.error))
     if (s.key === 'harness') return h('span', { className: 'cs-mono' }, `${r.id || ''}${r.role ? ` · 角色 ${String(r.role).split('/').pop()}` : ''}`)
     if (s.key.startsWith('kb:')) return listOf(r.tools).join('、')
     if (s.key.startsWith('skill:')) return listOf(r.skills).join('、')
@@ -208,11 +207,11 @@ function Verification({ info, go }) {
     h(Note, { tone: r.robust ? 'ok' : 'warn' }, `${r.holding}/${listOf(r.contracts).length} 条契约在 ${r.repeat} 轮里每轮都通过：${r.robust ? '稳定' : '不稳定'}（${Math.round((r.seconds || 0) / 6) / 10} 分钟）`),
     h(Table, { head: ['契约', '通过轮次', '没过的检查', '提示'], rows: listOf(r.contracts).map((c) => ({ key: c.id, cells: [h('span', null, h('b', null, c.id),
       c.label && c.label !== c.id ? h('div', { className: 'cs-mut' }, c.label) : null), h(Chip, { tone: c.holds ? 'ok' : 'bad' }, `${c.passes}/${c.rounds}`),
-      listOf(c.failed).join('、') || '—', c.note ? h('span', { className: 'cs-mut' }, c.note) : '—'] })) }),
+      checksText(c.failed), c.note ? h('span', { className: 'cs-mut' }, contractNote(c.note)) : '—'] })) }),
     listOf(r.tools).length ? h('div', { className: 'cs-mut' }, `L1 在会话里看到的工具：${r.tools.join('、')}`) : null)
-    : h(Fragment, null, h('div', { className: 'cs-mut' }, info.status === 'running' ? '每轮把每条契约在新会话里问一遍，等轨迹落盘后用 L1 判断（几分钟）。' : ''),
-      listOf(info.log).length ? h('pre', { className: 'cs-pre' }, info.log.join('\n')) : null),
-  info.error ? h('div', { className: 'cs-err' }, info.error) : null)
+    : h(Fragment, null, h('div', { className: 'cs-mut' }, info.status === 'running' ? '每轮把每条契约在新会话里问一遍，等轨迹落盘后用 L1（按契约逐条的确定性检查，不靠模型打分）判断（几分钟）。' : ''),
+      listOf(info.log).length ? h('pre', { className: 'cs-pre' }, logLines(info.log)) : null),
+  h(JobError, { error: info.error }))
 }
 
 function Approval({ p, onResume, busy, go, setSelected }) {
@@ -224,10 +223,10 @@ function Approval({ p, onResume, busy, go, setSelected }) {
       a.agent ? h(Button, { onClick: () => open('agent') }, `打开 ${a.agent.name}`) : null,
       a.agent && a.effectiveStatus === 'succeeded' ? h(Button, { onClick: () => open('chat') }, '和它对话') : null,
       ['failed', 'interrupted'].includes(a.effectiveStatus) ? h(Button, { kind: 'pri', onClick: onResume, busy }, '从没完成的那步继续') : null) },
-    h('div', { className: 'cs-mut' }, `${a.approvedBy} 于 ${when(a.approvedAt)} 批准${a.resumedBy ? ` · ${a.resumedBy} 继续执行` : ''}${a.finishedAt ? ` · ${when(a.finishedAt)} 结束` : ''}`),
+    h('div', { className: 'cs-mut' }, `${personText(a.approvedBy)} 于 ${when(a.approvedAt)} 批准${a.resumedBy ? ` · ${personText(a.resumedBy)} 继续执行` : ''}${a.finishedAt ? ` · ${when(a.finishedAt)} 结束` : ''}`),
     h(Steps, { steps: a.steps }),
-    a.effectiveStatus === 'running' && a.jobInfo && listOf(a.jobInfo.log).length ? h('pre', { className: 'cs-pre' }, a.jobInfo.log.slice(-4).join('\n')) : null,
-    a.error ? h('div', { className: 'cs-err' }, a.error) : null),
+    a.effectiveStatus === 'running' && a.jobInfo && listOf(a.jobInfo.log).length ? h('pre', { className: 'cs-pre' }, logLines(a.jobInfo.log, 4)) : null,
+    h(JobError, { error: a.error })),
     h(Verification, { info: a.verificationInfo, go }))
 }
 
@@ -245,9 +244,9 @@ function EditForm({ p, latest, onSaved, onCancel }) {
   const { busy, error, run } = useAction()
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }))
   const save = () => run('save', () => {
-    const content = { ...JSON.parse(form.rest || '{}'), name: form.name.trim(), model: form.model.trim(), systemPrompt: form.systemPrompt,
+    const content = { ...parseJson(form.rest || '{}', '其余字段'), name: form.name.trim(), model: form.model.trim(), systemPrompt: form.systemPrompt,
       knowledgeBases: csv(form.knowledgeBases), skills: csv(form.skills).map((s) => (s.includes('@') ? { name: s.split('@')[0], version: s.split('@')[1] } : s)),
-      verificationRounds: Number(form.rounds), contracts: JSON.parse(form.contracts || '[]') }
+      verificationRounds: Number(form.rounds), contracts: parseJson(form.contracts || '[]', '契约') }
     if (form.summary.trim()) content.summary = form.summary
     return call('POST', `${base(wid)}/conversations/${p.conversation}/proposals`, { base: latest, content })
   }, (r) => `已存为第 ${r.revision} 版${r.status === 'draft' ? '' : '（无效，看错误）'}`).then((r) => { if (r) onSaved(r.revision) })
@@ -299,7 +298,7 @@ function Proposal({ conv, revision, setRevision, onChanged, go, setSelected }) {
       h(Chip, { tone: statusTone }, statusLabel),
       typeof p.content === 'object' && p.content ? h(Button, { onClick: () => setEditing(true) }, '编辑') : null,
       approvable ? h(Button, { kind: 'pri', onClick: approve, busy: busy === 'approve' }, `批准第 ${p.revision} 版`) : null) },
-    h('div', { className: 'cs-mut' }, `${p.source === 'model' ? '助手提出' : `${p.createdBy} 手动编辑`} · ${when(p.createdAt)} · 哈希 `, h('span', { className: 'cs-mono' }, p.hash.slice(0, 16))),
+    h('div', { className: 'cs-mut' }, `${p.source === 'model' ? '助手提出' : `${personText(p.createdBy)} 手动编辑`} · ${when(p.createdAt)} · 哈希 `, h('span', { className: 'cs-mono' }, p.hash.slice(0, 16))),
     listOf(p.errors).length ? h('div', { className: 'cs-err' }, `没通过检查，不能批准：\n${p.errors.map((e) => `· ${e}`).join('\n')}`) : null,
     listOf(p.warnings).length ? h(Note, { tone: 'warn' }, h('div', null, '提醒：'), p.warnings.map((w, i) => h('div', { key: i }, `· ${w}`))) : null,
     p.status === 'draft' && p.revision === latest.revision && !p.approval ? h(Note, null, '批准前什么都不会创建。批准时控制台按这一版的哈希重新核对它引用的知识库、技能（含 S3 上的内容）和 Gateway，变了就拒绝。') : null,
@@ -318,7 +317,8 @@ function Conversation({ cid, onChanged, onDeleted, go, setSelected }) {
   const [live, setLive] = useState(null)
   const [message, setMessage] = useState('')
   const [revision, setRevision] = useState(null)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState(null)  // the conversation did not load
+  const [sendError, setSendError] = useState(null)  // the last 发送 did not go through: kept until the next one
   const { busy, run } = useAction()
   const load = useCallback(() => call('GET', `${base(wid)}/conversations/${cid}`).then((c) => { setConv(c); setError(null); return c }).catch(setError), [wid, cid])
   useEffect(() => { setConv(null); setRevision(null); load() }, [load])
@@ -329,11 +329,11 @@ function Conversation({ cid, onChanged, onDeleted, go, setSelected }) {
     const timer = setTimeout(load, 3000)
     return () => clearTimeout(timer)
   }, [watching, conv])
-  if (!conv) return h(Card, null, h(ErrorLine, { error }), h(Empty, null, '加载中…'))
+  if (!conv) return h(Card, null, loaded(null, error))
   const send = async () => {
     const text = message.trim()
     if (!text || live) return
-    setMessage(''); setError(null)
+    setMessage(''); setSendError(null)
     setLive({ user: text, items: [], thinking: true })
     const patch = (fn) => setLive((l) => (l ? fn({ ...l, items: l.items.slice() }) : l))
     try {
@@ -352,7 +352,7 @@ function Conversation({ cid, onChanged, onDeleted, go, setSelected }) {
         else if (e.type === 'done') patch((l) => ({ ...l, thinking: false }))
       })
     } catch (err) {
-      setError(err)
+      setSendError(Object.assign(err, { lead: '这一轮没有发出去（你的话还在输入框里）' }))
       setMessage(text)
     }
     await load()
@@ -366,7 +366,7 @@ function Conversation({ cid, onChanged, onDeleted, go, setSelected }) {
   const keyDown = (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send() } }
   return h(Fragment, null,
     h(Card, { title: conv.title || '新对话', extra: h('span', { className: 'cs-row' },
-      conv.shared ? h(Chip, { tone: 'info' }, `共享${conv.sharedBy ? `（${conv.sharedBy}）` : ''}`) : null,
+      conv.shared ? h(Chip, { tone: 'info' }, `共享${conv.sharedBy ? `（${personText(conv.sharedBy)}）` : ''}`) : null,
       conv.mine ? null : h(Chip, null, `${conv.owner} 的对话`),
       h(Chip, null, (MODELS.find(([m]) => m === conv.model) || [null, conv.model])[1].replace('助手用 ', '')),
       me && me.role === 'admin' && (conv.mine || conv.shared) ? h(Button, { onClick: share, busy: busy === 'share' }, conv.shared ? '取消共享' : '共享给工作区') : null,
@@ -376,7 +376,8 @@ function Conversation({ cid, onChanged, onDeleted, go, setSelected }) {
     h('div', { className: 'cs-row', style: { alignItems: 'flex-end' } },
       h('textarea', { className: 'cs-input', rows: 3, value: message, placeholder: '回答助手的问题，或者说要怎么改（Ctrl+Enter 发送）', style: { flex: 1 },
         onChange: (e) => setMessage(e.target.value), onKeyDown: keyDown }),
-      h(Button, { kind: 'pri', icon: Send, onClick: send, busy: !!live, disabled: !message.trim() || !!conv.inFlight }, '发送')),
+      h(Button, { kind: 'pri', icon: Send, onClick: send, busy: !!live, disabled: !message.trim() || !!conv.inFlight, title: conv.inFlight ? '助手还在回复上一轮' : undefined }, '发送')),
+    h(ErrorLine, { error: sendError }),
     !listOf(conv.messages).length && !live ? h('div', { className: 'cs-row', style: { marginTop: 6 } }, h('span', { className: 'cs-mut' }, '例如：'),
       h('a', { className: 'cs-click cs-mut', onClick: () => setMessage(EXAMPLE) }, EXAMPLE.slice(0, 46) + '…')) : null,
     h(ErrorLine, { error })),
@@ -394,7 +395,7 @@ function AssistantPage({ go, setSelected }) {
   const { busy, run } = useAction()
   const load = () => call('GET', `${base(wid)}/conversations`).then((r) => { setList(listOf(r.conversations)); setError(null) }).catch(setError)
   useEffect(() => { setList(null); setOpen(null); if (wid) load() }, [wid])
-  if (!workspace) return h(Empty, null, '先在「设置 → 工作区」添加一个 AWS 账号和区域。')
+  if (!workspace) return h(NeedWorkspace, { title: '助手' })
   const create = () => run('new', () => call('POST', `${base(wid)}/conversations`, { model })).then((r) => { if (r) { setOpen(r.id); load() } })
   return h(Fragment, null, h('style', null, CSS),
     h('h1', null, '助手'),
@@ -404,13 +405,13 @@ function AssistantPage({ go, setSelected }) {
       h('div', null,
         h(Card, { title: '新对话' }, h(Select, { value: model, onChange: setModel, options: MODELS }),
           h('div', { style: { marginTop: 8 } }, h(Button, { kind: 'pri', icon: Plus, onClick: create, busy: busy === 'new' }, '开始'))),
-        h(Card, { title: '对话', extra: h(Button, { icon: RefreshCw, onClick: load, title: '刷新' }) }, h(ErrorLine, { error }),
-          list === null ? h(Empty, null, '加载中…') : list.length ? h('div', { className: 'cs-as-list' }, list.map((x) => h('a', { key: x.id, className: cx(open === x.id && 'on'),
-            onClick: () => setOpen(x.id) }, h('div', null, h('b', null, x.title || '新对话')),
+        h(Card, { title: '对话', extra: h(Button, { icon: RefreshCw, onClick: load, title: '刷新' }) },
+          loaded(list, error, (all) => (all.length ? h('div', { className: 'cs-as-list' }, all.map((x) => h('a', { key: x.id, className: cx(open === x.id && 'on'),
+            onClick: () => setOpen(x.id) }, h('div', null, h('b', null, x.title || `新对话 · ${when(x.updatedAt)}`)),
             h('div', { className: 'cs-row', style: { gap: 4, marginTop: 2 } },
               x.revision ? h(Chip, { tone: (STATUS[x.proposalStatus] || [])[1] }, `第 ${x.revision} 版 · ${(STATUS[x.proposalStatus] || [x.proposalStatus])[0]}`) : null,
               x.shared ? h(Chip, { tone: 'info' }, '共享') : null, listOf(x.agents).map((a) => h(Chip, { key: a, tone: 'ok' }, a))),
-            h('div', { className: 'cs-mut' }, `${x.mine ? '' : `${x.owner} · `}${when(x.updatedAt)}`)))) : h(Empty, null, '还没有对话。'))),
+            h('div', { className: 'cs-mut' }, `${x.mine ? '' : `${x.owner} · `}${when(x.updatedAt)}`)))) : h(Empty, null, '还没有对话。'))))),
       open ? h('div', null, h(Conversation, { key: open, cid: open, onChanged: load, onDeleted: () => { setOpen(null); load() }, go, setSelected }))
         : h(Card, null, h(Empty, null, '选一个对话，或开始一个新对话。'))))
 }

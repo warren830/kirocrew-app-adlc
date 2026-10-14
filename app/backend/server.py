@@ -1110,7 +1110,9 @@ class Service:
                     "confirmable": bool(ITEM_ID_RE.match(item_id)),
                     "class": sc.item_class(item),
                     "origin": item.get("origin") if isinstance(item.get("origin"), dict) else None,
-                    "criticality": ("blocking" if kind == "tool" or (kind == "document" and data.get("packKind") in ("customer", "workshop"))
+                    # A labeled noise document is a teaching device the gate never holds for the customer (D12).
+                    "criticality": ("advisory" if kind == "document" and sc.is_noise_device(item)
+                                    else "blocking" if kind == "tool" or (kind == "document" and data.get("packKind") in ("customer", "workshop"))
                                     else "advisory" if kind in ("document", "narrative") else item.get("criticality", "blocking")),
                 }
                 if kind == "golden":

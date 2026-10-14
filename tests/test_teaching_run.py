@@ -240,6 +240,8 @@ def test_teaching_packs_need_l1_and_mind_the_goal_for_every_practice_case():
     [message] = guided_report.step_evidence_errors("baseline", no_l1, data)
     assert message.startswith("L1 scenario assertions (every practice case) from 09-run-eval.sh") and "stale" not in message
 
+    assert not any("stale" in e for e in guided_report.step_evidence_errors("baseline", {}, data))  # not run yet: no document to blame
+
     legacy = {"scores": [{k: v for k, v in s.items() if k not in ("caseId", "sessionId", "metrics")} for s in good["scores"]]}
     errors = guided_report.step_evidence_errors("baseline", legacy, data)
     assert any("RunStep document is probably stale" in e for e in errors)

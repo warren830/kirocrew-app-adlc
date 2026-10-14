@@ -101,6 +101,19 @@ def test_rehearsal_verdicts_equal_the_report_teaching_contrast(run):
     assert "readyForClass" not in json.dumps(report)
 
 
+def test_a_run_that_has_not_started_says_so_and_blames_no_document():
+    """Before any step runs, the hint says to run the steps: no stale RunStep document, no missing excerpt, no evidence list."""
+    state = _state("hr-reproduced")
+    for step in state["steps"].values():
+        step.update(status="not_started", outputs={}, finishedAt=None)
+    state["status"] = "not_started"
+    doc = _rehearse("hr-reproduced", state, guides=BOTH_GUIDES)
+    [hint] = _hints(doc, "RUN_INCOMPLETE")
+    assert hint["becauseEn"] == "no step of the current run has run yet" and hint["actionEn"].startswith("Not started yet"), hint
+    assert _hints(doc, "CONVERSATION_EVIDENCE_MISSING") == [] and "stale" not in json.dumps(doc), doc["remediation"]
+    assert doc["readyForClass"] is False
+
+
 def test_hr_reproduced_is_ready_for_class_only_with_both_guides():
     doc = _rehearse("hr-reproduced")
     assert (doc["verdict"], doc["reasonCode"]) == ("ready", "CONTRASTS_REPRODUCED")

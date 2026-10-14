@@ -1064,8 +1064,11 @@ class Pipeline(Staged):
                                                   if p.get("phaseType") != "COMPLETED"))
                 return build
             if status in ("FAILED", "FAULT", "TIMED_OUT", "STOPPED"):
-                failed = [f"{p.get('phaseType')}: {c.get('message')}" for p in build.get("phases") or [] if p.get("phaseStatus") not in (None, "SUCCEEDED")
-                          for c in p.get("contexts") or [] if c.get("message")]
+                unsuccessful = [p for p in build.get("phases") or [] if p.get("phaseStatus") not in (None, "SUCCEEDED")]
+                # each phase that did not succeed, with what it said; one that said nothing (a build that timed out in the
+                # queue) by its own status: the page tells a full queue from a long build by the phase
+                failed = [f"{p.get('phaseType')}: {c.get('message')}" for p in unsuccessful for c in p.get("contexts") or [] if c.get("message")] \
+                    or [f"{p.get('phaseType')}: {p.get('phaseStatus')}" for p in unsuccessful]
                 for line in self._build_log_tail(build):
                     self.log(f"  | {line}")
                 raise DeployError(f"CodeBuild {status}: {'; '.join(failed) or 'see the build log'}")

@@ -63,7 +63,7 @@ def test_driver_loop_with_fake_kiro(driver):
         task = (out / "rounds" / f"{entry['n']:02d}-{entry['mode']}" / "task.txt").read_text(encoding="utf-8")
         assert hashlib.sha256(task.encode()).hexdigest() == entry["taskSha256"]
     calls = _calls(driver.log)
-    assert [c["header"] for c in calls] == ["WORKSHOP_CUSTOMIZER_TASK mode=draft round=1 project=northstar-demo",
+    assert [c["header"] for c in calls] == ["WORKSHOP_CUSTOMIZER_TASK mode=draft round=1 project=northstar-demo stage=structure",
                                             "WORKSHOP_CUSTOMIZER_TASK mode=repair round=2 project=northstar-demo"]
     assert [c["sha256"] for c in calls] == [r["taskSha256"] for r in rounds]
     assert calls[0]["argv"] == ["chat", "--no-interactive", "--agent", "workshop-customizer"]
@@ -342,27 +342,34 @@ def test_a_chinese_brief_runs_a_zh_cn_non_hr_pack_through_the_loop(driver):
         assert not [w for w in ("绩效", "福利", "病假", "年假", "员工", "人力资源", "hrassistant") if w in text]
 
 
-def test_driver_retries_a_round_whose_output_is_invalid_json(driver, monkeypatch):
+def test_a_draft_stage_whose_output_is_invalid_json_is_asked_again_within_the_round(driver, monkeypatch):
+    """A staged draft re-asks the stage whose reply did not parse (live 2026-09-28: mismatched brackets): the round
+    itself succeeds, and both replies are kept under the round's stages/."""
     monkeypatch.setenv("FAKE_KIRO_SCENARIO", "invalid-once")
-    code, report, _out = driver.run("--max-rounds", "3")
+    code, report, out = driver.run("--max-rounds", "3")
     assert code == 0, report.get("error")
-    assert [(r["n"], r["mode"], r["status"]) for r in report["rounds"]] == [
-        (1, "draft", "invalid-output"), (2, "draft", "ready"), (3, "repair", "ready")]
-    assert "Kiro returned" in report["rounds"][0]["error"] and report["converged"] is True
-    assert sorted(p.name for p in (_out / "rounds").iterdir() if p.is_dir()) == ["01-draft", "02-draft", "03-repair"]
+    assert [(r["n"], r["mode"], r["status"]) for r in report["rounds"]] == [(1, "draft", "ready"), (2, "repair", "ready")]
+    assert [(s["stage"], s["attempt"]) for s in report["rounds"][0]["stages"]] == [("structure", 1), ("structure", 2)]
+    stages = out / "rounds" / "01-draft" / "stages"
+    assert "Kiro returned" not in (stages / "structure.2.task.txt").read_text(encoding="utf-8").split("RETRY_INPUT", 1)[0]
+    assert "RETRY_INPUT" in (stages / "structure.2.task.txt").read_text(encoding="utf-8")
+    assert report["converged"] is True
 
 
-def test_driver_retries_a_round_whose_response_stream_broke_off(driver, monkeypatch):
+def test_a_draft_stage_whose_response_stream_broke_off_is_asked_again(driver, monkeypatch):
     monkeypatch.setenv("FAKE_KIRO_SCENARIO", "stream-error-once")
     code, report, _out = driver.run("--max-rounds", "3")
     assert code == 0, report.get("error")
-    assert [(r["n"], r["status"]) for r in report["rounds"]][:2] == [(1, "invalid-output"), (2, "ready")]
+    assert [(r["n"], r["status"]) for r in report["rounds"]][:2] == [(1, "ready"), (2, "ready")]
+    assert [s["kiroExitCode"] for s in report["rounds"][0]["stages"]] == [1, 0]
 
 
-def test_driver_gives_up_after_the_invalid_output_retries(driver, monkeypatch):
+def test_a_draft_stage_retry_does_not_spend_a_round_retry(driver, monkeypatch):
+    """--retry-invalid counts unusable rounds; a draft stage that recovers on its second attempt is not one."""
     monkeypatch.setenv("FAKE_KIRO_SCENARIO", "invalid-once")
     code, report, _out = driver.run("--max-rounds", "3", "--retry-invalid", "0")
-    assert code == 1 and "Kiro returned" in report["error"]
+    assert code == 0, report.get("error")
+    assert all(r["status"] != "invalid-output" for r in report["rounds"])
 
 
 def _generation_records(out: Path) -> list[dict]:
