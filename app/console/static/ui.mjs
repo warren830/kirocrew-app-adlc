@@ -345,8 +345,8 @@ const CONSOLE_ERRORS = [
   [/^the endpoint (\S+) still serves (\S+) \((\w+)\) after (\d+) min/, (m) => `等了 ${m[4]} 分钟，端点 ${m[1]} 还${m[2] === 'nothing' ? '没指向任何版本' : `指向版本 ${m[2]}`}（${statusText(m[3])}）：过一会儿刷新看看。`],
   [/^the endpoints (.*) are still there after (\d+) min/, (m) => `等了 ${m[2]} 分钟，端点 ${m[1]} 还没删掉：过一会儿再删一次。`],
   [/^(\S+) has a (deploy|undeploy) job running \((\S+)\)/, (m) => `${m[1]} 有一个${m[2] === 'deploy' ? '部署' : '下线'}任务在跑（${m[3]}）：等它结束。`],
-  [/^(.+?): the runtime canary (\S+) of (.*?) is (\w+), and its job is publishing production/, (m) => `${m[1]}：${m[3]} 的金丝雀 ${m[2]} 正在发布生产版本、移动端点：等它结束。`],
-  [/^(.+?) belongs to the runtime canary (\S+) \((\w+)\) of (.*?): its gate/, (m) => `${m[1]} 属于 ${m[4]} 的金丝雀 ${m[2]}（${m[3]}）：它的门禁针对的就是这几个版本。先在「A/B 与发布 → 代码 Agent 金丝雀」回滚或发布它，再清理它。`],
+  [/^(.+?): the runtime canary (\S+) of (.*?) is (\w+), and its job is publishing production/, (m) => `${heldWhat(m[1])}：${m[3]} 的金丝雀 ${m[2]} 正在发布生产版本、移动端点：等它结束。`],
+  [/^(.+?) belongs to the runtime canary (\S+) \((\w+)\) of (.*?): its gate/, (m) => `${heldWhat(m[1])} 属于 ${m[4]} 的金丝雀 ${m[2]}（${stateText(m[3])}）：它的门禁针对的就是这几个版本。先在「A/B 与发布 → 代码 Agent 金丝雀」回滚或发布它，再清理它。`],
   [/^not a runtime id: (.*)$/, (m) => `${m[1]} 不是 Runtime ID。`],
   [/^only a named endpoint can be deleted/, '只能删命名端点：DEFAULT 端点随 Runtime 一起删。'],
   [/^version: a version number of the runtime/, '版本要填这个 Runtime 的版本号。'],
@@ -589,6 +589,9 @@ export function resourceText(label) {
   return (hit ? said.replace(hit[0], hit[1]) : said) + (String(label || '').endsWith('…') ? '…' : '')
 }
 
+// what a canary holds (deploy._held_error's ``what``)
+const heldWhat = (what) => String(what).replace(/^the runtime (\S+) \(a canary's candidate\)$/, 'Runtime $1（金丝雀的候选）')
+  .replace(/^the runtime (\S+)$/, 'Runtime $1').replace(/^the endpoint (\S+)$/, '端点 $1')
 // what is wrong with a Skill Lab task's input files (skills_lab._task_files)
 function taskFileText(said) {
   const rules = [[/^a list of \{"path", "asset"\}$/, () => '要写成 [{"path", "asset"}] 这样的列表'], [/^at most (\d+) a task$/, (m) => `每道题最多 ${m[1]} 个`],
@@ -700,6 +703,10 @@ const STAGE_DETAILS = [
   [/^the record names no sources of its own under (\S+)$/, (m) => `部署记录里没有它自己在 ${m[1]} 下的源码`],
 ]
 // Why the image scan gate did not run (the deploy goes on unscanned).
+// ECR scan states that end without results (describe_image_scan_findings), said plainly; AWS's own description adds nothing
+const SCAN_ENDED = { UNSUPPORTED_IMAGE: 'ECR 扫描不支持这个镜像（它的操作系统或包管理器不在支持范围里）',
+  SCAN_ELIGIBILITY_EXPIRED: '这个镜像过了 ECR 持续扫描的期限（增强扫描只持续扫描近期推送或拉取过的镜像）',
+  FINDINGS_UNAVAILABLE: 'ECR 的扫描结果读不到（镜像可能已删除，或扫描数据已过期）', FAILED: 'ECR 扫描失败了' }
 export function unscannedText(why) {
   let m = /^no scan of the image appeared within (\d+) s/.exec(why)
   if (m) return `${m[1]} 秒内没有出现这个镜像的扫描（镜像也许比仓库开「推送时扫描」更早）`
@@ -707,7 +714,7 @@ export function unscannedText(why) {
   m = /^the scan is still (\w+) after (\d+) s/.exec(why)
   if (m) return `等了 ${m[2]} 秒，扫描还是「${statusText(m[1])}」`
   m = /^the scan is (\w+)(?:: (.*))?$/s.exec(why)
-  if (m) return `扫描${statusText(m[1])}${m[2] ? `：${m[2]}` : ''}`
+  if (m) return SCAN_ENDED[m[1]] || `扫描「${statusText(m[1])}」${m[2] ? `：${m[2]}` : ''}`
   return consoleText(why) || why
 }
 // The deploy's facts and options, phrase by phrase (they come joined with " · ").

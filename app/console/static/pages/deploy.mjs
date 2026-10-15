@@ -106,12 +106,15 @@ function RuntimeOptions({ value, onChange, mode, container }) {
 // a scan with its results: ECR's basic scan COMPLETE, the enhanced one (Inspector) ACTIVE (deploy.SCANNED)
 const SCANNED = ['COMPLETE', 'ACTIVE']
 
-function ScanSummary({ scan }) {
+function ScanSummary({ scan, ended }) {
   if (!scan) return null
   const counts = ranked(scan.counts)
   const gate = listOf(scan.block).length ? `拦截级别 ${listOf(scan.block).join(' / ')}` : '只报告，不拦'
   if (scan.status === 'UNSCANNED') return h(Note, { tone: 'warn' }, h('b', null, '镜像扫描没有完成，按未扫描部署：'), scan.reason ? unscannedText(scan.reason) : '—')
-  if (!SCANNED.includes(scan.status)) return h(Note, null, h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), `等待 ECR 扫描结果（${scan.repository || ''}）…`))
+  if (!SCANNED.includes(scan.status)) {
+    return ended ? h(Note, { tone: 'warn' }, `任务结束时还没等到 ECR 的扫描结果（${scan.repository || ''}）：这次部署的镜像扫描没有结论。`)
+      : h(Note, null, h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), `等待 ECR 扫描结果（${scan.repository || ''}）…`))
+  }
   const blocked = Object.keys(scan.blocking || {}).length > 0
   return h('div', { className: 'cs-note' },
     h('div', { className: 'cs-row' }, h('b', null, '镜像扫描'), blocked ? h(Chip, { tone: 'bad' }, '已拦下') : h(Chip, { tone: 'ok' }, '通过'),
@@ -121,10 +124,10 @@ function ScanSummary({ scan }) {
     blocked ? h('div', { className: 'cs-mut' }, '换一个打过补丁的基础镜像重新构建，或者在「镜像扫描」里放宽拦截级别再部署。') : null)
 }
 
-const scanBrief = (scan) => {
+const scanBrief = (scan, ended) => {
   if (!scan) return '—'
   if (scan.status === 'UNSCANNED') return h(Chip, { tone: 'warn' }, '未扫描')
-  if (!SCANNED.includes(scan.status)) return h(Chip, { tone: 'info' }, '扫描中')
+  if (!SCANNED.includes(scan.status)) return ended ? h(Chip, { tone: 'warn' }, '没等到结果') : h(Chip, { tone: 'info' }, '扫描中')
   const counts = ranked(scan.counts)
   const blocked = Object.keys(scan.blocking || {}).length > 0
   return h(Chip, { tone: blocked ? 'bad' : counts.length ? 'warn' : 'ok' }, counts.length ? counts.map(([k, v]) => `${k[0]}${v}`).join(' ') : '无漏洞')
@@ -132,13 +135,17 @@ const scanBrief = (scan) => {
 
 // -- a job's stages and log ----------------------------------------------------------------------------------------
 
+// A stage still marked running in a job that ended (a console restart marks only the job): it did not finish.
+const stageCell = (s, job) => (s.status !== 'running' ? h(Chip, { tone: STAGE_TONE[s.status] }, STAGE_TEXT[s.status] || s.status)
+  : job.status === 'running' ? h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), STAGE_TEXT.running) : h(Chip, { tone: 'warn' }, '没跑完'))
+
 function Stages({ job }) {
   const stages = listOf(job.progress && job.progress.stages)
   const labels = LABELS[job.kind] || {}
-  if (!stages.length) return h(Empty, null, '准备中…')
+  if (!stages.length) return h(Empty, null, job.status === 'running' ? '准备中…' : '这个任务没有记下阶段。')
   return h(Table, { head: ['阶段', '状态', '耗时', '说明'], rows: stages.map((s) => ({ key: s.name, cells: [
     h('b', null, labels[s.name] || s.name),
-    s.status === 'running' ? h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), STAGE_TEXT.running) : h(Chip, { tone: STAGE_TONE[s.status] }, STAGE_TEXT[s.status] || s.status),
+    stageCell(s, job),
     secs(s.seconds),
     s.detail ? h('span', { className: s.status === 'failed' ? 'cs-err' : 'cs-mut', title: s.detail }, stageText(s.status, s.detail)) : '—'] })) })
 }
@@ -155,7 +162,7 @@ function JobPanel({ id, onDone, go, setSelected }) {
     job.status === 'succeeded' && job.kind === 'deploy' && result.runtimeId ? h(Button, { onClick: chat }, '和它对话') : null,
     h(Chip, { tone: JOB_TONE[job.status] }, JOB_LABEL[job.status] || job.status)) },
   h(Stages, { job }),
-  h(ScanSummary, { scan: (job.progress || {}).scan }),
+  h(ScanSummary, { scan: (job.progress || {}).scan, ended: job.status !== 'running' }),
   smoke ? h(Note, { tone: 'ok' }, h('b', null, `冒烟调用（${smoke.qualifier}，${secs(smoke.seconds)}）回复：`), smoke.answer) : null,
   result.runtimeId && job.kind === 'deploy' ? h('div', { className: 'cs-mut cs-mono' }, `${result.runtimeId} · 版本 ${result.version || '—'}${result.image ? ` · ${result.image}` : ''}`) : null,
   options.sessionStorage || options.lifecycle || options.network === 'VPC' ? h('div', { className: 'cs-mut' }, [
@@ -469,7 +476,7 @@ function Jobs({ refresh, openJob }) {
   const [jobs, load, error] = useList(wid, '/deployments/jobs', 'jobs', [refresh])
   return h(Card, { title: '部署记录', extra: h(Button, { onClick: load }, '刷新') }, loaded(jobs, error, (all) => h(Table, { head: ['名称', '操作', '状态', '阶段', '镜像扫描', '开始', ''],
     rows: all.map((j) => ({ key: j.id, onClick: () => openJob(j.id), cells: [h('b', null, (j.params || {}).name || '—'), jobKind(j),
-      h(Chip, { tone: JOB_TONE[j.status] }, JOB_LABEL[j.status] || j.status), (LABELS[j.kind] || {})[(j.progress || {}).stage] || '—', scanBrief((j.progress || {}).scan),
+      h(Chip, { tone: JOB_TONE[j.status] }, JOB_LABEL[j.status] || j.status), (LABELS[j.kind] || {})[(j.progress || {}).stage] || '—', scanBrief((j.progress || {}).scan, j.status !== 'running'),
       h(At, { iso: j.createdAt }), h(Button, null, '查看')] })), empty: '还没有部署任务。' })))
 }
 

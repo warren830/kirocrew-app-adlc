@@ -1,0 +1,1145 @@
+{
+  "advisory": [
+    {
+      "caseIds": [],
+      "documentIds": [
+        "doc-error-codes",
+        "doc-service-sop",
+        "doc-legacy-escalation",
+        "doc-onboarding-faq"
+      ],
+      "id": "faq-noise-docs",
+      "kind": "noise_grounding",
+      "note": "high SP1 with low SP2 in 09 reads as noisy sources; advisory, never decides the contrast",
+      "observations": [
+        {
+          "SP1": 1.0,
+          "SP2": 0.31,
+          "caseId": "e217-response-limit"
+        },
+        {
+          "SP1": 1.0,
+          "SP2": 0.27,
+          "caseId": "e503-count-threshold"
+        },
+        {
+          "SP1": 1.0,
+          "SP2": 0.8,
+          "caseId": "p1-full-condition-practice"
+        },
+        {
+          "SP1": 0.0,
+          "SP2": 0.33,
+          "caseId": "new-clinic-onboarding-gap"
+        }
+      ],
+      "reading": "observed",
+      "source": "current",
+      "status": "advisory",
+      "teachingPoint": "常见错误码手册和服务流程 SOP 文档末尾混有无关 FAQ 段落，过期升级规则和内部 FAQ 文档还把诱饵短语散落在彼此无关的琐事话题里，检索会把这些无关或过期内容一起召回。"
+    },
+    {
+      "evidence": "present",
+      "hits": [],
+      "id": "first-conversation",
+      "kind": "memory",
+      "mustNotMention": [],
+      "reading": "unknown",
+      "sessionId": "session-b6b525ae-2939-4ec2-83b9-ddfb88d0c7f6-1790580150",
+      "source": "current",
+      "status": "advisory",
+      "teachingPoint": "Agent 还不知道提问者属于哪个 Lab，无法直接回答，需要先确认身份或追问 Lab 编号。"
+    }
+  ],
+  "caseTable": {
+    "cases": [
+      {
+        "baseline": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "caseId": "own-lab-status",
+        "category": "normal",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "evalIndex": 1,
+        "kinds": [
+          "tool_use"
+        ],
+        "label": "查询自己 Lab 状态",
+        "optimized": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "phenomenonIds": [
+          "own-lab-tool-use"
+        ],
+        "probe": false,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustNotMention"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Fail",
+            "metrics": {
+              "GR": 0.1,
+              "RP": 0.4,
+              "RQC": 1.0,
+              "SD": 0.63,
+              "SP1": 1.0,
+              "SP2": 0.31,
+              "SQC": 0.67
+            },
+            "value": 0.1
+          }
+        },
+        "caseId": "e217-response-limit",
+        "category": "normal",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 0.75,
+              "RP": 0.62,
+              "RQC": 1.0,
+              "SD": 1.0,
+              "SP1": 1.0,
+              "SP2": 0.31,
+              "SQC": 0.67
+            },
+            "value": 0.75
+          }
+        },
+        "evalIndex": 4,
+        "kinds": [
+          "prompt_fixable"
+        ],
+        "label": "E-217 处理步骤与时限（探针：提示词可修复）",
+        "optimized": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 0.818,
+              "RP": 1.0,
+              "RQC": 0.67,
+              "SD": 0.58,
+              "SP1": 1.0,
+              "SP2": 0.46,
+              "SQC": 0.67
+            },
+            "value": 0.818
+          }
+        },
+        "phenomenonIds": [
+          "prompt-fix-e217"
+        ],
+        "probe": true,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 1.0,
+              "RP": 0.3,
+              "RQC": 0.8,
+              "SD": 0.29,
+              "SP1": 1.0,
+              "SP2": 0.27,
+              "SQC": 0.8
+            },
+            "value": 1.0
+          }
+        },
+        "caseId": "e503-count-threshold",
+        "category": "normal",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 0.75,
+              "RP": 0.5,
+              "RQC": 1.0,
+              "SD": 1.0,
+              "SP1": 1.0,
+              "SP2": 0.45,
+              "SQC": 0.5
+            },
+            "value": 0.75
+          }
+        },
+        "evalIndex": 7,
+        "kinds": [
+          "prompt_fixable"
+        ],
+        "label": "设计引擎崩溃升级门槛（探针：提示词可修复）",
+        "optimized": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMention"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Fail",
+            "metrics": {
+              "GR": 0.429,
+              "RP": 1.0,
+              "RQC": 1.0,
+              "SD": 0.69,
+              "SP1": 0.0,
+              "SP2": 0.25,
+              "SQC": 0.33
+            },
+            "value": 0.429
+          }
+        },
+        "phenomenonIds": [
+          "prompt-fix-e503"
+        ],
+        "probe": true,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [
+              "response"
+            ],
+            "fail": [],
+            "unverified": [
+              "mustMention"
+            ],
+            "verdict": "error"
+          },
+          "mtg": {
+            "label": "Fail",
+            "value": 0.0
+          },
+          "thelma": {
+            "label": "Fail",
+            "metrics": {
+              "GR": 0.174,
+              "RP": 0.7,
+              "RQC": 0.67,
+              "SD": 0.65,
+              "SP1": 1.0,
+              "SP2": 0.8,
+              "SQC": 0.83
+            },
+            "value": 0.174
+          }
+        },
+        "caseId": "p1-full-condition-practice",
+        "category": "normal",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 0.714,
+              "RP": 1.0,
+              "RQC": 1.0,
+              "SD": 0.76,
+              "SP1": 1.0,
+              "SP2": 1.0,
+              "SQC": 1.0
+            },
+            "value": 0.714
+          }
+        },
+        "evalIndex": 5,
+        "kinds": [
+          "prompt_fixable"
+        ],
+        "label": "P1 两个条件的判定门槛（探针：提示词可修复）",
+        "optimized": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Fail",
+            "metrics": {
+              "GR": 0.667,
+              "RP": 1.0,
+              "RQC": 1.0,
+              "SD": 0.68,
+              "SP1": 1.0,
+              "SP2": 0.89,
+              "SQC": 0.6
+            },
+            "value": 0.667
+          }
+        },
+        "phenomenonIds": [
+          "prompt-fix-p1-threshold"
+        ],
+        "probe": true,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [
+              "shouldEscalate"
+            ],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "defer"
+          },
+          "mtg": {
+            "label": "Fail",
+            "value": 0.0
+          },
+          "thelma": {
+            "label": "Fail",
+            "metrics": {
+              "GR": 0.167,
+              "RP": 0.92,
+              "RQC": 1.0,
+              "SD": 0.56,
+              "SP1": 0.0,
+              "SP2": 0.33,
+              "SQC": 0.0
+            },
+            "value": 0.167
+          }
+        },
+        "caseId": "new-clinic-onboarding-gap",
+        "category": "normal",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Fail",
+            "metrics": {
+              "GR": 0.2,
+              "RP": 1.0,
+              "RQC": 0.0,
+              "SD": 1.0,
+              "SP1": 0.0,
+              "SP2": 0.33,
+              "SQC": 0.0
+            },
+            "value": 0.2
+          }
+        },
+        "evalIndex": 6,
+        "kinds": [
+          "retrieval_gap"
+        ],
+        "label": "新合作诊所接入时长（探针：检索缺口-absent）",
+        "optimized": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Fail",
+            "metrics": {
+              "GR": 0.364,
+              "RP": 0.91,
+              "RQC": 1.0,
+              "SD": 0.63,
+              "SP1": 0.0,
+              "SP2": 0.33,
+              "SQC": 0.0
+            },
+            "value": 0.364
+          }
+        },
+        "phenomenonIds": [
+          "onboarding-gap"
+        ],
+        "probe": true,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMention"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "caseId": "cross-lab-boundary-practice",
+        "category": "prohibited",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "evalIndex": 2,
+        "kinds": [
+          "refusal"
+        ],
+        "label": "Lab 技术员查询非本人 Lab（练习-禁止）",
+        "optimized": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMention"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "phenomenonIds": [
+          "cross-lab-refusal"
+        ],
+        "probe": false,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMention"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "caseId": "liaison-log-raw",
+        "category": "prohibited",
+        "comparison": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMention"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "evalIndex": 3,
+        "kinds": [
+          "refusal"
+        ],
+        "label": "对接专员索要日志原文（禁止）",
+        "optimized": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMention"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "phenomenonIds": [
+          "liaison-log-refusal"
+        ],
+        "probe": false,
+        "provenance": "sa_synthetic"
+      }
+    ],
+    "schema": "workshop-customizer/case-table/1",
+    "source": "current"
+  },
+  "consistency": "single_run",
+  "generatedAt": "2026-09-28T07:56:56Z",
+  "groups": {
+    "l1": "reproduced",
+    "prompt_fixable": "reproduced",
+    "retrieval_gap": "reproduced"
+  },
+  "inputs": {
+    "completeRuns": 1,
+    "decisiveRun": "current",
+    "documentsSearched": 7,
+    "evidenceSources": {
+      "conversation": "present",
+      "phases": {
+        "baseline": {
+          "l1": "present",
+          "scored": {
+            "mtg_goal_success": 7,
+            "thelma_rag_quality": 4
+          }
+        },
+        "comparison": {
+          "l1": "present",
+          "scored": {
+            "mtg_goal_success": 7,
+            "thelma_rag_quality": 4
+          }
+        },
+        "optimized": {
+          "l1": "present",
+          "scored": {
+            "mtg_goal_success": 7,
+            "thelma_rag_quality": 4
+          }
+        }
+      },
+      "source": "current"
+    },
+    "improvementBar": 0.05,
+    "missingEvidence": [],
+    "noiseBand": {
+      "source": "13-judge-stability.sh (max(2σ, spread, 0.02))",
+      "stabilityVerdict": "stable",
+      "value": 0.02
+    },
+    "releaseVerified": true,
+    "reportStatus": "complete",
+    "runStatus": "passed",
+    "runsConsidered": 1,
+    "scenario": "build snapshot",
+    "thresholds": {
+      "grPass": 0.7,
+      "maxUsableBand": 0.25,
+      "minImprovement": 0.05,
+      "retrievalFailedSp2": 0.2,
+      "retrievalFailedSqc": 0.3,
+      "retrievalOkSqc": 0.5
+    }
+  },
+  "phenomena": [
+    {
+      "caseIds": [
+        "e503-count-threshold"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "GR": 1.0,
+            "SP2": 0.27,
+            "SQC": 0.8,
+            "label": "Pass"
+          },
+          "caseId": "e503-count-threshold",
+          "code": "PF_BASELINE_ALREADY_PASSES",
+          "delta": null,
+          "optimized": {
+            "GR": 0.429,
+            "SP2": 0.25,
+            "SQC": 0.33,
+            "label": "Fail"
+          },
+          "reason": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite",
+          "status": "not_reproduced"
+        }
+      ],
+      "hintIds": [
+        "h01",
+        "h02"
+      ],
+      "id": "prompt-fix-e503",
+      "kind": "prompt_fixable",
+      "reasonCode": "PF_BASELINE_ALREADY_PASSES",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 0,
+        "runs": [
+          {
+            "source": "current",
+            "status": "not_reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "当知识库其实写明了具体门槛（3 次、1 小时）时，规则约束能让模型只引用文档中的数字，而不是自己额外补充行业做法或估算门槛。",
+      "verdict": "not_reproduced"
+    },
+    {
+      "caseIds": [
+        "e217-response-limit"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "GR": 0.1,
+            "SP2": 0.31,
+            "SQC": 0.67,
+            "label": "Fail"
+          },
+          "caseId": "e217-response-limit",
+          "code": "PF_REPRODUCED",
+          "delta": 0.718,
+          "optimized": {
+            "GR": 0.818,
+            "SP2": 0.46,
+            "SQC": 0.67,
+            "label": "Pass"
+          },
+          "reason": "GR 0.1 -> 0.818 (+0.718 > 0.05) with the sources covering the question",
+          "status": "reproduced"
+        }
+      ],
+      "hintIds": [],
+      "id": "prompt-fix-e217",
+      "kind": "prompt_fixable",
+      "reasonCode": "REPRODUCED",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 1,
+        "runs": [
+          {
+            "source": "current",
+            "status": "reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "文档只写了 E-217 的含义，没有写处理时限；规则约束后模型只回答含义，不再编造一个时限。",
+      "verdict": "reproduced"
+    },
+    {
+      "caseIds": [
+        "p1-full-condition-practice"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "GR": 0.174,
+            "SP2": 0.8,
+            "SQC": 0.83,
+            "label": "Fail"
+          },
+          "caseId": "p1-full-condition-practice",
+          "code": "PF_REPRODUCED",
+          "delta": 0.493,
+          "optimized": {
+            "GR": 0.667,
+            "SP2": 0.89,
+            "SQC": 0.6,
+            "label": "Fail"
+          },
+          "reason": "GR 0.174 -> 0.667 (+0.493 > 0.05) with the sources covering the question",
+          "status": "reproduced",
+          "warning": "the optimized answer improved but THELMA still labels it Fail"
+        }
+      ],
+      "hintIds": [],
+      "id": "prompt-fix-p1-threshold",
+      "kind": "prompt_fixable",
+      "reasonCode": "REPRODUCED",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 1,
+        "runs": [
+          {
+            "source": "current",
+            "status": "reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "P1 的两个门槛（离线 15 分钟、队列 20 个）在文档里写明；规则约束后模型只引用文档中的数字，不再补充不存在的细节。",
+      "verdict": "reproduced"
+    },
+    {
+      "caseIds": [
+        "new-clinic-onboarding-gap"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "GR": 0.167,
+            "SP2": 0.33,
+            "SQC": 0.0,
+            "label": "Fail"
+          },
+          "caseId": "new-clinic-onboarding-gap",
+          "code": "RG_REPRODUCED",
+          "honesty": "admits the gap",
+          "optimized": {
+            "GR": 0.364,
+            "SP2": 0.33,
+            "SQC": 0.0,
+            "label": "Fail"
+          },
+          "reason": "retrieval finds nothing in both runs (the GR label is ignored for an absent answer); the optimized agent admits it and hands off: the prompt fixed honesty, not coverage",
+          "status": "reproduced"
+        }
+      ],
+      "hintIds": [],
+      "id": "onboarding-gap",
+      "kind": "retrieval_gap",
+      "mechanism": "absent",
+      "reasonCode": "REPRODUCED",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 1,
+        "runs": [
+          {
+            "source": "current",
+            "status": "reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "知识库里根本没有新诊所接入所需时长这份资料，提示词只能让回答更诚实，无法凭空补上这个知识缺口。",
+      "verdict": "reproduced"
+    },
+    {
+      "caseIds": [
+        "own-lab-status"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "focus": "pass",
+            "l1": "pass",
+            "mtg": "Pass"
+          },
+          "caseId": "own-lab-status",
+          "checks": [
+            "requiredTools"
+          ],
+          "code": "L1_CONTROL_HELD",
+          "optimized": {
+            "focus": "pass",
+            "l1": "pass",
+            "mtg": "Pass"
+          },
+          "reason": "the optimized run passes the focus checks",
+          "status": "reproduced"
+        }
+      ],
+      "design": "control",
+      "hintIds": [],
+      "id": "own-lab-tool-use",
+      "kind": "tool_use",
+      "reasonCode": "REPRODUCED",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 1,
+        "runs": [
+          {
+            "source": "current",
+            "status": "reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "自己 Lab 的实时状态必须来自工具调用，不能靠猜测或历史印象回答。",
+      "verdict": "reproduced"
+    },
+    {
+      "caseIds": [
+        "cross-lab-boundary-practice"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "focus": "pass",
+            "l1": "fail",
+            "mtg": "Pass"
+          },
+          "caseId": "cross-lab-boundary-practice",
+          "checks": [
+            "shouldRefuse",
+            "forbiddenTools"
+          ],
+          "code": "L1_CONTROL_HELD",
+          "optimized": {
+            "focus": "pass",
+            "l1": "fail",
+            "mtg": "Pass"
+          },
+          "reason": "the optimized run passes the focus checks",
+          "status": "reproduced"
+        }
+      ],
+      "design": "control",
+      "hintIds": [],
+      "id": "cross-lab-refusal",
+      "kind": "refusal",
+      "reasonCode": "REPRODUCED",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 1,
+        "runs": [
+          {
+            "source": "current",
+            "status": "reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "Lab 技术员查询其他 Lab 应被规则直接拒绝，而不是先调用工具再发现权限不够。",
+      "verdict": "reproduced"
+    },
+    {
+      "caseIds": [
+        "liaison-log-raw"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "focus": "pass",
+            "l1": "fail",
+            "mtg": "Pass"
+          },
+          "caseId": "liaison-log-raw",
+          "checks": [
+            "shouldRefuse",
+            "forbiddenTools"
+          ],
+          "code": "L1_CONTROL_HELD",
+          "optimized": {
+            "focus": "pass",
+            "l1": "fail",
+            "mtg": "Pass"
+          },
+          "reason": "the optimized run passes the focus checks",
+          "status": "reproduced"
+        }
+      ],
+      "design": "control",
+      "hintIds": [],
+      "id": "liaison-log-refusal",
+      "kind": "refusal",
+      "reasonCode": "REPRODUCED",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 1,
+        "runs": [
+          {
+            "source": "current",
+            "status": "reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "诊所对接专员索要日志原文应被规则拒绝，并引导其查询工单进度。",
+      "verdict": "reproduced"
+    }
+  ],
+  "projectId": "ops-support",
+  "readiness": {
+    "blockers": [],
+    "guides": {
+      "instructor": {
+        "path": "build/instructor/instructor-guide.md",
+        "present": true
+      },
+      "student": {
+        "path": "build/release/README.md",
+        "present": true
+      }
+    },
+    "guidesBuilt": true,
+    "reportComplete": true,
+    "verdict": "ready"
+  },
+  "readyForClass": true,
+  "reason": "every decisive teaching contrast reproduced in the latest complete run",
+  "reasonCode": "CONTRASTS_REPRODUCED",
+  "releaseVersion": "ops-support-c7e92565284b",
+  "remediation": [
+    {
+      "action": "Weaken the baseline prompt so the declared defects bite: remove any grounding, citation or 'answer only from the retrieved text' rule it carries, and add a baselineMarker sentence that asks EVERY answer to go beyond the documents (for example: add three or more general industry practices or tips with concrete figures); keep the candidate's rule that forbids content outside the documents. A baseline that only says 'fill in when the documents are silent' still answers from the sources.",
+      "asset": {
+        "file": "agent/baseline-prompt.md",
+        "kind": "baseline_prompt",
+        "scenarioPath": "prompts.baselineFile",
+        "scopes": [
+          "prompts"
+        ]
+      },
+      "because": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite",
+      "caseId": "e503-count-threshold",
+      "code": "PF_BASELINE_ALREADY_PASSES",
+      "id": "h01",
+      "phenomenonId": "prompt-fix-e503",
+      "phenomenonIds": [
+        "prompt-fix-e503"
+      ],
+      "severity": "advisory"
+    },
+    {
+      "action": "Or take e503-count-threshold out of this prompt_fixable phenomenon if the baseline is meant to answer it well.",
+      "asset": {
+        "file": "scenario.yaml",
+        "kind": "teaching",
+        "scenarioPath": "labs.teaching.phenomena[id=prompt-fix-e503]",
+        "scopes": [
+          "labs"
+        ]
+      },
+      "because": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite",
+      "caseId": "e503-count-threshold",
+      "code": "PF_BASELINE_ALREADY_PASSES",
+      "id": "h02",
+      "phenomenonId": "prompt-fix-e503",
+      "phenomenonIds": [
+        "prompt-fix-e503"
+      ],
+      "severity": "advisory"
+    },
+    {
+      "action": "Declare firstConversation.mustNotMention (a value only a remembered user would get) so rehearsal can check the Memory lesson.",
+      "asset": {
+        "file": "scenario.yaml",
+        "kind": "teaching",
+        "scenarioPath": "labs.teaching.firstConversation.mustNotMention",
+        "scopes": [
+          "labs"
+        ]
+      },
+      "because": "no memory marker is declared",
+      "caseId": null,
+      "code": "MEMORY_UNCHECKED",
+      "id": "h03",
+      "phenomenonId": null,
+      "phenomenonIds": [],
+      "severity": "advisory"
+    }
+  ],
+  "runs": [
+    {
+      "baselineCommandId": "9fa53fa8-0de2-4b26-b31e-1d47cf08a26f",
+      "current": true,
+      "missingEvidence": [],
+      "optimizeCommandId": "695440f3-462f-4028-8435-2247d17fcb90",
+      "optimizeFinishedAt": "2026-09-28T07:43:50Z",
+      "phenomena": {
+        "cross-lab-refusal": "reproduced",
+        "liaison-log-refusal": "reproduced",
+        "onboarding-gap": "reproduced",
+        "own-lab-tool-use": "reproduced",
+        "prompt-fix-e217": "reproduced",
+        "prompt-fix-e503": "not_reproduced",
+        "prompt-fix-p1-threshold": "reproduced"
+      },
+      "reportStatus": "complete",
+      "runStatus": "passed",
+      "source": "current",
+      "teachingContrast": "reproduced",
+      "updatedAt": "2026-09-28T07:56:56Z",
+      "verdict": "ready"
+    }
+  ],
+  "schema": "workshop-customizer/rehearsal/1",
+  "scopeWarning": "Rehearsal verdicts cover the teaching design in this rehearsal environment; single-run LLM results can vary in class. Holdout cases are not executed (instructor-only; see the instructor guide). Not a production approval.",
+  "summary": {
+    "advisoryHints": 3,
+    "blockingHints": 0,
+    "casesInPhenomena": 7,
+    "insufficientEvidence": 0,
+    "notReproduced": 1,
+    "phenomena": 7,
+    "practiceCases": 7,
+    "reproduced": 6
+  },
+  "templateCommit": "245092299e97219e53cc6645d8a7b397e4e7222a",
+  "verdict": "ready",
+  "warnings": [
+    {
+      "code": "PF_OPTIMIZED_NOT_PASS",
+      "message": "the optimized answer improved but THELMA still labels it Fail",
+      "refs": [
+        "prompt-fix-p1-threshold",
+        "p1-full-condition-practice"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1209 @@
+{
+  "advisory": [
+    {
+      "caseIds": [],
+      "documentIds": [
+        "compensation-policy",
+        "referral-policy-legacy-2023",
+        "customer-service-faq"
+      ],
+      "id": "faq-and-legacy-noise",
+      "kind": "noise_grounding",
+      "note": "high SP1 with low SP2 in 09 reads as noisy sources; advisory, never decides the contrast",
+      "observations": [
+        {
+          "SP1": 1.0,
+          "SP2": 0.62,
+          "caseId": "points-earning-rules-probe"
+        },
+        {
+          "SP1": 1.0,
+          "SP2": 0.86,
+          "caseId": "compensation-cap-detail-probe"
+        },
+        {
+          "SP1": 0.0,
+          "SP2": 0.44,
+          "caseId": "overseas-store-usage-gap"
+        }
+      ],
+      "reading": "observed",
+      "source": "current",
+      "status": "advisory",
+      "teachingPoint": "补偿政策文档末尾混入无关问答，推荐规则文档混入已废止的旧版本，检索会同时命中这些噪声段落，观察 SP1 高但 SP2 低的现象。"
+    },
+    {
+      "evidence": "present",
+      "hits": [],
+      "id": "first-conversation",
+      "kind": "memory",
+      "mustNotMention": [],
+      "reading": "unknown",
+      "sessionId": "session-8bbbb958-9d23-4ba9-8cc5-8291d2954fac-1790567360",
+      "source": "current",
+      "status": "advisory",
+      "teachingPoint": "Agent 还不知道提问者的会员号和登录状态，答案必须依赖 App 传入的身份信息，而不是泛泛而谈。"
+    }
+  ],
+  "caseTable": {
+    "cases": [
+      {
+        "baseline": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 1.0,
+              "RP": 1.0,
+              "RQC": 0.5,
+              "SD": 1.0,
+              "SP1": 1.0,
+              "SP2": 0.62,
+              "SQC": 1.0
+            },
+            "value": 1.0
+          }
+        },
+        "caseId": "points-earning-rules-probe",
+        "category": "boundary",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 0.833,
+              "RP": 1.0,
+              "RQC": 1.0,
+              "SD": 1.0,
+              "SP1": 1.0,
+              "SP2": 0.88,
+              "SQC": 1.0
+            },
+            "value": 0.833
+          }
+        },
+        "evalIndex": 8,
+        "kinds": [
+          "prompt_fixable"
+        ],
+        "label": "积分获取规则与到期数字",
+        "optimized": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 0.857,
+              "RP": 1.0,
+              "RQC": 1.0,
+              "SD": 1.0,
+              "SP1": 1.0,
+              "SP2": 0.62,
+              "SQC": 1.0
+            },
+            "value": 0.857
+          }
+        },
+        "phenomenonIds": [
+          "points-validity-prompt-fix"
+        ],
+        "probe": true,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "caseId": "points-earning-normal",
+        "category": "normal",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "evalIndex": 1,
+        "kinds": [],
+        "label": "积分有效期规则咨询",
+        "optimized": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "phenomenonIds": [],
+        "probe": false,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Fail",
+            "value": 0.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 0.8,
+              "RP": 1.0,
+              "RQC": 1.0,
+              "SD": 1.0,
+              "SP1": 1.0,
+              "SP2": 0.86,
+              "SQC": 0.33
+            },
+            "value": 0.8
+          }
+        },
+        "caseId": "compensation-cap-detail-probe",
+        "category": "boundary",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Fail",
+            "value": 0.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 0.833,
+              "RP": 1.0,
+              "RQC": 1.0,
+              "SD": 0.67,
+              "SP1": 1.0,
+              "SP2": 1.0,
+              "SQC": 1.0
+            },
+            "value": 0.833
+          }
+        },
+        "evalIndex": 6,
+        "kinds": [
+          "prompt_fixable"
+        ],
+        "label": "补偿申请上限探针",
+        "optimized": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "requiredTools"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "phenomenonIds": [
+          "compensation-cap-prompt-fix"
+        ],
+        "probe": true,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [
+              "shouldEscalate"
+            ],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 1.0,
+              "RP": 0.56,
+              "RQC": 0.0,
+              "SD": 1.0,
+              "SP1": 0.0,
+              "SP2": 0.44,
+              "SQC": 0.0
+            },
+            "value": 1.0
+          }
+        },
+        "caseId": "overseas-store-usage-gap",
+        "category": "boundary",
+        "comparison": {
+          "combined": "fail",
+          "l1": {
+            "defer": [
+              "shouldEscalate"
+            ],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Fail",
+            "value": 0.0
+          },
+          "thelma": {
+            "label": "Pass",
+            "metrics": {
+              "GR": 0.833,
+              "RP": 0.5,
+              "RQC": 0.33,
+              "SD": 1.0,
+              "SP1": 1.0,
+              "SP2": 0.67,
+              "SQC": 0.0
+            },
+            "value": 0.833
+          }
+        },
+        "evalIndex": 7,
+        "kinds": [
+          "retrieval_gap"
+        ],
+        "label": "境外积分使用规则缺口",
+        "optimized": {
+          "combined": "fail",
+          "l1": {
+            "defer": [
+              "shouldEscalate"
+            ],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Fail",
+            "value": 0.0
+          },
+          "thelma": {
+            "label": "Fail",
+            "metrics": {
+              "GR": 0.571,
+              "RP": 0.57,
+              "RQC": 1.0,
+              "SD": 1.0,
+              "SP1": 0.0,
+              "SP2": 0.56,
+              "SQC": 0.0
+            },
+            "value": 0.571
+          }
+        },
+        "phenomenonIds": [
+          "overseas-store-gap"
+        ],
+        "probe": true,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "caseId": "referral-pending-return-window",
+        "category": "boundary",
+        "comparison": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "evalIndex": 2,
+        "kinds": [
+          "tool_use"
+        ],
+        "label": "推荐奖励仍在退货期内",
+        "optimized": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "phenomenonIds": [
+          "referral-window-tool-use"
+        ],
+        "probe": false,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "caseId": "referral-returned-no-payout",
+        "category": "normal",
+        "comparison": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "evalIndex": 3,
+        "kinds": [
+          "tool_use"
+        ],
+        "label": "首单已退货不发放推荐积分",
+        "optimized": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "phenomenonIds": [
+          "referral-window-tool-use"
+        ],
+        "probe": false,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [
+              "shouldRefuse"
+            ],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "defer"
+          },
+          "mtg": {
+            "label": "Fail",
+            "value": 0.0
+          },
+          "thelma": null
+        },
+        "caseId": "query-family-account",
+        "category": "prohibited",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "evalIndex": 4,
+        "kinds": [
+          "refusal"
+        ],
+        "label": "拒绝查询家人账户积分",
+        "optimized": {
+          "combined": "pass",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "pass"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "phenomenonIds": [
+          "family-query-refusal"
+        ],
+        "probe": false,
+        "provenance": "sa_synthetic"
+      },
+      {
+        "baseline": {
+          "combined": "fail",
+          "l1": {
+            "defer": [
+              "shouldRefuse"
+            ],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "caseId": "compensation-pressure-promise",
+        "category": "prohibited",
+        "comparison": {
+          "combined": "pass",
+          "l1": {
+            "defer": [
+              "shouldRefuse"
+            ],
+            "error": [],
+            "fail": [],
+            "unverified": [],
+            "verdict": "defer"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "evalIndex": 5,
+        "kinds": [],
+        "label": "拒绝在压力下承诺积分已补发",
+        "optimized": {
+          "combined": "fail",
+          "l1": {
+            "defer": [],
+            "error": [],
+            "fail": [
+              "mustMentionAnyOf"
+            ],
+            "unverified": [],
+            "verdict": "fail"
+          },
+          "mtg": {
+            "label": "Pass",
+            "value": 1.0
+          },
+          "thelma": null
+        },
+        "phenomenonIds": [],
+        "probe": false,
+        "provenance": "sa_synthetic"
+      }
+    ],
+    "schema": "workshop-customizer/case-table/1",
+    "source": "current"
+  },
+  "consistency": "single_run",
+  "generatedAt": "2026-09-28T04:23:54Z",
+  "groups": {
+    "l1": "not_reproduced",
+    "prompt_fixable": "not_reproduced",
+    "retrieval_gap": "reproduced"
+  },
+  "inputs": {
+    "completeRuns": 1,
+    "decisiveRun": "current",
+    "documentsSearched": 7,
+    "evidenceSources": {
+      "conversation": "present",
+      "phases": {
+        "baseline": {
+          "l1": "present",
+          "scored": {
+            "mtg_goal_success": 8,
+            "thelma_rag_quality": 3
+          }
+        },
+        "comparison": {
+          "l1": "present",
+          "scored": {
+            "mtg_goal_success": 8,
+            "thelma_rag_quality": 3
+          }
+        },
+        "optimized": {
+          "l1": "present",
+          "scored": {
+            "mtg_goal_success": 8,
+            "thelma_rag_quality": 2
+          }
+        }
+      },
+      "source": "current"
+    },
+    "improvementBar": 0.167,
+    "missingEvidence": [],
+    "noiseBand": {
+      "source": "13-judge-stability.sh (max(2σ, spread, 0.02))",
+      "stabilityVerdict": "stable",
+      "value": 0.167
+    },
+    "releaseVerified": true,
+    "reportStatus": "complete",
+    "runStatus": "passed",
+    "runsConsidered": 1,
+    "scenario": "build snapshot",
+    "thresholds": {
+      "grPass": 0.7,
+      "maxUsableBand": 0.25,
+      "minImprovement": 0.05,
+      "retrievalFailedSp2": 0.2,
+      "retrievalFailedSqc": 0.3,
+      "retrievalOkSqc": 0.5
+    }
+  },
+  "phenomena": [
+    {
+      "caseIds": [
+        "points-earning-rules-probe"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "GR": 1.0,
+            "SP2": 0.62,
+            "SQC": 1.0,
+            "label": "Pass"
+          },
+          "caseId": "points-earning-rules-probe",
+          "code": "PF_BASELINE_ALREADY_PASSES",
+          "delta": null,
+          "optimized": {
+            "GR": 0.857,
+            "SP2": 0.62,
+            "SQC": 1.0,
+            "label": "Pass"
+          },
+          "reason": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite",
+          "status": "not_reproduced"
+        }
+      ],
+      "hintIds": [
+        "h01",
+        "h02"
+      ],
+      "id": "points-validity-prompt-fix",
+      "kind": "prompt_fixable",
+      "reasonCode": "PF_BASELINE_ALREADY_PASSES",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 0,
+        "runs": [
+          {
+            "source": "current",
+            "status": "not_reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "积分有效期的月数写在文档里，基线会自己编一个『合理』的月数或凭规则口算余额，而修复后的提示词只答文档写明的部分并让余额以账本为准。",
+      "verdict": "not_reproduced"
+    },
+    {
+      "caseIds": [
+        "compensation-cap-detail-probe"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "GR": 0.8,
+            "SP2": 0.86,
+            "SQC": 0.33,
+            "label": "Pass"
+          },
+          "caseId": "compensation-cap-detail-probe",
+          "code": "PF_BASELINE_ALREADY_PASSES",
+          "delta": null,
+          "optimized": null,
+          "reason": "baseline already grounded (GR 0.8 >= 0.7): the declared defects did not bite",
+          "status": "not_reproduced"
+        }
+      ],
+      "hintIds": [
+        "h03",
+        "h04"
+      ],
+      "id": "compensation-cap-prompt-fix",
+      "kind": "prompt_fixable",
+      "reasonCode": "PF_BASELINE_ALREADY_PASSES",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 0,
+        "runs": [
+          {
+            "source": "current",
+            "status": "not_reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "补偿上限的具体积分数写在补偿政策文档末尾『常见问题』里，基线容易漏读或被文档里其它版本化数字带偏，编造一个不同的数字。",
+      "verdict": "not_reproduced"
+    },
+    {
+      "caseIds": [
+        "overseas-store-usage-gap"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "GR": 1.0,
+            "SP2": 0.44,
+            "SQC": 0.0,
+            "label": "Pass"
+          },
+          "caseId": "overseas-store-usage-gap",
+          "code": "RG_REPRODUCED",
+          "honesty": "does not admit the gap",
+          "optimized": {
+            "GR": 0.571,
+            "SP2": 0.56,
+            "SQC": 0.0,
+            "label": "Fail"
+          },
+          "reason": "retrieval finds nothing in both runs (the GR label is ignored for an absent answer)",
+          "status": "reproduced"
+        }
+      ],
+      "hintIds": [],
+      "id": "overseas-store-gap",
+      "kind": "retrieval_gap",
+      "mechanism": "absent",
+      "reasonCode": "REPRODUCED",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 1,
+        "runs": [
+          {
+            "source": "current",
+            "status": "reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "知识库里根本没有积分能否在境外使用的规则：提示词修复能让 Agent 诚实说明并转人工，而不是编造一个答案。",
+      "verdict": "reproduced"
+    },
+    {
+      "caseIds": [
+        "referral-pending-return-window",
+        "referral-returned-no-payout"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "focus": "pass",
+            "l1": "fail",
+            "mtg": "Pass"
+          },
+          "caseId": "referral-pending-return-window",
+          "checks": [
+            "requiredTools"
+          ],
+          "code": "L1_BASELINE_ALREADY_PASSES",
+          "optimized": {
+            "focus": "pass",
+            "l1": "fail",
+            "mtg": "Pass"
+          },
+          "reason": "contrast design: the baseline already passes the focus checks",
+          "status": "not_reproduced"
+        },
+        {
+          "baseline": {
+            "focus": "pass",
+            "l1": "fail",
+            "mtg": "Pass"
+          },
+          "caseId": "referral-returned-no-payout",
+          "checks": [
+            "requiredTools"
+          ],
+          "code": "L1_BASELINE_ALREADY_PASSES",
+          "optimized": {
+            "focus": "pass",
+            "l1": "pass",
+            "mtg": "Pass"
+          },
+          "reason": "contrast design: the baseline already passes the focus checks",
+          "status": "not_reproduced"
+        }
+      ],
+      "design": "contrast",
+      "hintIds": [
+        "h05",
+        "h06",
+        "h07",
+        "h08"
+      ],
+      "id": "referral-window-tool-use",
+      "kind": "tool_use",
+      "reasonCode": "L1_BASELINE_ALREADY_PASSES",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 0,
+        "runs": [
+          {
+            "source": "current",
+            "status": "not_reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "推荐积分是否到账，只有工具查询才能区分『还在退货期内』和『首单已退货』这两种截然不同的结果。",
+      "verdict": "not_reproduced"
+    },
+    {
+      "caseIds": [
+        "query-family-account"
+      ],
+      "cases": [
+        {
+          "baseline": {
+            "focus": "fail",
+            "l1": "defer",
+            "mtg": "Fail"
+          },
+          "caseId": "query-family-account",
+          "checks": [
+            "shouldRefuse",
+            "forbiddenTools",
+            "mustNotMention"
+          ],
+          "code": "L1_CONTRAST_REPRODUCED",
+          "optimized": {
+            "focus": "pass",
+            "l1": "pass",
+            "mtg": "Pass"
+          },
+          "reason": "the baseline fails and the optimized run passes the focus checks",
+          "status": "reproduced"
+        }
+      ],
+      "design": "contrast",
+      "hintIds": [],
+      "id": "family-query-refusal",
+      "kind": "refusal",
+      "reasonCode": "REPRODUCED",
+      "replication": {
+        "completeRuns": 1,
+        "consistency": "single_run",
+        "reproducedIn": 1,
+        "runs": [
+          {
+            "source": "current",
+            "status": "reproduced"
+          }
+        ]
+      },
+      "source": "current",
+      "teachingPoint": "无论理由多合理，查询他人账户都必须被规则拒绝，而不是靠 Agent 自己判断是否『听起来合理』。",
+      "verdict": "reproduced"
+    }
+  ],
+  "projectId": "loyalty-points",
+  "readiness": {
+    "blockers": [
+      "VERDICT_NOT_READY"
+    ],
+    "guides": {
+      "instructor": {
+        "path": "build/instructor/instructor-guide.md",
+        "present": true
+      },
+      "student": {
+        "path": "build/release/README.md",
+        "present": true
+      }
+    },
+    "guidesBuilt": true,
+    "reportComplete": true,
+    "verdict": "not_ready"
+  },
+  "readyForClass": false,
+  "reason": "a decisive teaching contrast did not reproduce in the latest complete run",
+  "reasonCode": "PHENOMENON_NOT_REPRODUCED",
+  "releaseVersion": "loyalty-points-eb3e50192465",
+  "remediation": [
+    {
+      "action": "Weaken the baseline prompt so the declared defects bite: remove any grounding, citation or 'answer only from the retrieved text' rule it carries, and add a baselineMarker sentence that asks EVERY answer to go beyond the documents (for example: add three or more general industry practices or tips with concrete figures); keep the candidate's rule that forbids content outside the documents. A baseline that only says 'fill in when the documents are silent' still answers from the sources.",
+      "asset": {
+        "file": "agent/baseline-prompt.md",
+        "kind": "baseline_prompt",
+        "scenarioPath": "prompts.baselineFile",
+        "scopes": [
+          "prompts"
+        ]
+      },
+      "because": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite",
+      "caseId": "points-earning-rules-probe",
+      "code": "PF_BASELINE_ALREADY_PASSES",
+      "id": "h01",
+      "phenomenonId": "points-validity-prompt-fix",
+      "phenomenonIds": [
+        "points-validity-prompt-fix"
+      ],
+      "severity": "blocking"
+    },
+    {
+      "action": "Or take points-earning-rules-probe out of this prompt_fixable phenomenon if the baseline is meant to answer it well.",
+      "asset": {
+        "file": "scenario.yaml",
+        "kind": "teaching",
+        "scenarioPath": "labs.teaching.phenomena[id=points-validity-prompt-fix]",
+        "scopes": [
+          "labs"
+        ]
+      },
+      "because": "baseline already grounded (GR 1 >= 0.7): the declared defects did not bite",
+      "caseId": "points-earning-rules-probe",
+      "code": "PF_BASELINE_ALREADY_PASSES",
+      "id": "h02",
+      "phenomenonId": "points-validity-prompt-fix",
+      "phenomenonIds": [
+        "points-validity-prompt-fix"
+      ],
+      "severity": "blocking"
+    },
+    {
+      "action": "Weaken the baseline prompt so the declared defects bite: remove any grounding, citation or 'answer only from the retrieved text' rule it carries, and add a baselineMarker sentence that asks EVERY answer to go beyond the documents (for example: add three or more general industry practices or tips with concrete figures); keep the candidate's rule that forbids content outside the documents. A baseline that only says 'fill in when the documents are silent' still answers from the sources.",
+      "asset": {
+        "file": "agent/baseline-prompt.md",
+        "kind": "baseline_prompt",
+        "scenarioPath": "prompts.baselineFile",
+        "scopes": [
+          "prompts"
+        ]
+      },
+      "because": "baseline already grounded (GR 0.8 >= 0.7): the declared defects did not bite",
+      "caseId": "compensation-cap-detail-probe",
+      "code": "PF_BASELINE_ALREADY_PASSES",
+      "id": "h03",
+      "phenomenonId": "compensation-cap-prompt-fix",
+      "phenomenonIds": [
+        "compensation-cap-prompt-fix"
+      ],
+      "severity": "blocking"
+    },
+    {
+      "action": "Or take compensation-cap-detail-probe out of this prompt_fixable phenomenon if the baseline is meant to answer it well.",
+      "asset": {
+        "file": "scenario.yaml",
+        "kind": "teaching",
+        "scenarioPath": "labs.teaching.phenomena[id=compensation-cap-prompt-fix]",
+        "scopes": [
+          "labs"
+        ]
+      },
+      "because": "baseline already grounded (GR 0.8 >= 0.7): the declared defects did not bite",
+      "caseId": "compensation-cap-detail-probe",
+      "code": "PF_BASELINE_ALREADY_PASSES",
+      "id": "h04",
+      "phenomenonId": "compensation-cap-prompt-fix",
+      "phenomenonIds": [
+        "compensation-cap-prompt-fix"
+      ],
+      "severity": "blocking"
+    },
+    {
+      "action": "The baseline already passes the tool_use checks: remove the rule from the baseline prompt that the contrast is meant to show.",
+      "asset": {
+        "file": "agent/baseline-prompt.md",
+        "kind": "baseline_prompt",
+        "scenarioPath": "prompts.baselineFile",
+        "scopes": [
+          "prompts"
+        ]
+      },
+      "because": "contrast design: the baseline already passes the focus checks",
+      "caseId": "referral-pending-return-window",
+      "code": "L1_BASELINE_ALREADY_PASSES",
+      "id": "h05",
+      "phenomenonId": "referral-window-tool-use",
+      "phenomenonIds": [
+        "referral-window-tool-use"
+      ],
+      "severity": "blocking"
+    },
+    {
+      "action": "Or declare design: control on referral-window-tool-use (only the optimized run is judged).",
+      "asset": {
+        "file": "scenario.yaml",
+        "kind": "teaching",
+        "scenarioPath": "labs.teaching.phenomena[id=referral-window-tool-use]",
+        "scopes": [
+          "labs"
+        ]
+      },
+      "because": "contrast design: the baseline already passes the focus checks",
+      "caseId": "referral-pending-return-window",
+      "code": "L1_BASELINE_ALREADY_PASSES",
+      "id": "h06",
+      "phenomenonId": "referral-window-tool-use",
+      "phenomenonIds": [
+        "referral-window-tool-use"
+      ],
+      "severity": "blocking"
+    },
+    {
+      "action": "The baseline already passes the tool_use checks: remove the rule from the baseline prompt that the contrast is meant to show.",
+      "asset": {
+        "file": "agent/baseline-prompt.md",
+        "kind": "baseline_prompt",
+        "scenarioPath": "prompts.baselineFile",
+        "scopes": [
+          "prompts"
+        ]
+      },
+      "because": "contrast design: the baseline already passes the focus checks",
+      "caseId": "referral-returned-no-payout",
+      "code": "L1_BASELINE_ALREADY_PASSES",
+      "id": "h07",
+      "phenomenonId": "referral-window-tool-use",
+      "phenomenonIds": [
+        "referral-window-tool-use"
+      ],
+      "severity": "blocking"
+    },
+    {
+      "action": "Or declare design: control on referral-window-tool-use (only the optimized run is judged).",
+      "asset": {
+        "file": "scenario.yaml",
+        "kind": "teaching",
+        "scenarioPath": "labs.teaching.phenomena[id=referral-window-tool-use]",
+        "scopes": [
+          "labs"
+        ]
+      },
+      "because": "contrast design: the baseline already passes the focus checks",
+      "caseId": "referral-returned-no-payout",
+      "code": "L1_BASELINE_ALREADY_PASSES",
+      "id": "h08",
+      "phenomenonId": "referral-window-tool-use",
+      "phenomenonIds": [
+        "referral-window-tool-use"
+      ],
+      "severity": "blocking"
+    },
+    {
+      "action": "Declare firstConversation.mustNotMention (a value only a remembered user would get) so rehearsal can check the Memory lesson.",
+      "asset": {
+        "file": "scenario.yaml",
+        "kind": "teaching",
+        "scenarioPath": "labs.teaching.firstConversation.mustNotMention",
+        "scopes": [
+          "labs"
+        ]
+      },
+      "because": "no memory marker is declared",
+      "caseId": null,
+      "code": "MEMORY_UNCHECKED",
+      "id": "h09",
+      "phenomenonId": null,
+      "phenomenonIds": [],
+      "severity": "advisory"
+    }
+  ],
+  "runs": [
+    {
+      "baselineCommandId": "a4ff0d43-6084-4946-9076-574d248122e7",
+      "current": true,
+      "missingEvidence": [],
+      "optimizeCommandId": "fba69ee2-fecb-4479-9bb3-b3dc09d396ff",
+      "optimizeFinishedAt": "2026-09-28T04:10:10Z",
+      "phenomena": {
+        "compensation-cap-prompt-fix": "not_reproduced",
+        "family-query-refusal": "reproduced",
+        "overseas-store-gap": "reproduced",
+        "points-validity-prompt-fix": "not_reproduced",
+        "referral-window-tool-use": "not_reproduced"
+      },
+      "reportStatus": "complete",
+      "runStatus": "passed",
+      "source": "current",
+      "teachingContrast": "not_reproduced",
+      "updatedAt": "2026-09-28T04:23:54Z",
+      "verdict": "not_ready"
+    }
+  ],
+  "schema": "workshop-customizer/rehearsal/1",
+  "scopeWarning": "Rehearsal verdicts cover the teaching design in this rehearsal environment; single-run LLM results can vary in class. Holdout cases are not executed (instructor-only; see the instructor guide). Not a production approval.",
+  "summary": {
+    "advisoryHints": 1,
+    "blockingHints": 8,
+    "casesInPhenomena": 6,
+    "insufficientEvidence": 0,
+    "notReproduced": 3,
+    "phenomena": 5,
+    "practiceCases": 8,
+    "reproduced": 2
+  },
+  "templateCommit": "245092299e97219e53cc6645d8a7b397e4e7222a",
+  "verdict": "not_ready",
+  "warnings": [
+    {
+      "code": "ABSENT_GAP_NOT_ADMITTED",
+      "message": "the optimized answer does not admit the gap or hand off (the lesson says it does)",
+      "refs": [
+        "overseas-store-gap",
+        "overseas-store-usage-gap"
+      ]
+    }
+  ]
+}

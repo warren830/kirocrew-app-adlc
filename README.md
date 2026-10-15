@@ -1,6 +1,6 @@
 # ADLC 控制台 · ADLC Platform for KiroCrew
 
-一个 KiroCrew App（`workshop-customizer`，版本 0.4.3）。装好后，KiroCrew 侧边栏里多一个「ADLC 控制台」：用 Amazon Bedrock
+一个 KiroCrew App（`workshop-customizer`，版本 0.4.4）。装好后，KiroCrew 侧边栏里多一个「ADLC 控制台」：用 Amazon Bedrock
 AgentCore 构建、评估、灰度发布 Agent，并把一份客户场景自动做成可以上课的 Workshop 场景包。
 
 ## What it does
@@ -10,7 +10,7 @@ AgentCore 构建、评估、灰度发布 Agent，并把一份客户场景自动�
 - **知识库**：托管知识库、文档上传、检索试验台。挂到 Agent 时，每个 Agent 只看得到自己的知识库。
 - **对话与 `/v1`**：多轮流式对话。对外 API 见下面的 Public API 一节。
 - **评估**：契约多轮验证（带噪声带）、在线评估、批量评估、自定义裁判、AgentCore 优化建议。
-- **A/B 与发布**：Harness 和代码 Runtime 都有 5 → 25 → 50 % 灰度。晋升要同时满足三条：验证稳定、A/B 不劣于噪声带、期间 Agent 没改过。
+- **A/B 与发布**：Harness 和代码 Runtime 都能按 5 → 25 → 50 % 走金丝雀。发布要同时满足三条：验证稳定、A/B 不比对照差到噪声带之外、期间比较的版本没改过。
 - **Registry 与治理**：Agent Registry，Cedar 策略，以及限流和决策日志。
 - **Skill Lab**：在真实 Agent 上有/无技能各跑一遍，测出提升，再训练并发布。
 - **观测**：指标、会话和追踪，按需打分。
@@ -18,6 +18,7 @@ AgentCore 构建、评估、灰度发布 Agent，并把一份客户场景自动�
 
 **工作坊（Workshop Customizer）**
 - Kiro 把客户场景写成场景包，确定性引擎校验并渲染，彩排后同步到 Workshop。
+- 场景包改了、要同步进已经建好的 Workshop 环境时（彩排循环），先在 Workshop EC2 上运行 `./99-cleanup.sh --scenario-only`：只删这个场景的资源（Agent、Gateway、知识库、工具 Lambda、SSM 参数、评估记录），保留 `workshop-infra` 和附加组件；或者换一个新的 Workshop 环境。控制台不会替你执行删除。
 
 ## Requirements
 
