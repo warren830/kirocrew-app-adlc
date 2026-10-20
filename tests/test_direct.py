@@ -424,6 +424,14 @@ def test_direct_rounds_are_distinct_runs_of_one_release_and_the_rehearsal_counts
     assert f"| {pid} | not_reproduced | reproduced | 1/2 |" in text
 
 
+def test_the_stage_times_of_a_run_add_up_over_its_rounds():
+    """Live 2026-10-15: 3 rounds took 1075 s, and direct.timings had the deploy and the last round only (403 s)."""
+    rounds = [{"timings": {"ask": 127.3, "settle": 75.3, "judge": 172.5}}, {"timings": {"ask": 65.3, "settle": 73.8, "judge": 158.0}},
+              {"timings": {"ask": 66.8, "settle": 73.3, "judge": 228.1}}]
+    assert run.run_timings(34.8, rounds) == {"provision": 34.8, "ask": 259.4, "settle": 222.4, "judge": 558.6}
+    assert run.run_timings(34.2, rounds[:1]) == {"provision": 34.2, "ask": 127.3, "settle": 75.3, "judge": 172.5}
+
+
 def test_old_skills_are_left_out_as_the_class_got_them_and_a_missing_13_is_incomplete_not_a_crash(release, tmp_path):
     import shutil as sh
 

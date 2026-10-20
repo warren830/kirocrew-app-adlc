@@ -596,6 +596,29 @@ def test_direct_mode_is_a_fast_rehearsal_never_a_class_verdict():
 
 
 @pytest.mark.skipif(NODE is None, reason="node not installed")
+def test_a_quick_rehearsals_time_adds_up_over_its_rounds():
+    """Live 2026-10-15: 3 rounds took 17.9 minutes, and the brackets showed the deploy and the last round (about 7)."""
+    import json
+    import sys
+
+    sys.path.insert(0, str(REPO_ROOT / "engine"))
+    from workshop_customizer.direct import run
+
+    names = ("listOf", "fmtSeconds", "DIRECT_TIMING", "directTimeText")
+    rounds = [{"round": 1, "timings": {"ask": 127.3, "settle": 75.3, "judge": 172.5}},
+              {"round": 2, "timings": {"ask": 65.3, "settle": 73.8, "judge": 158.0}},
+              {"round": 3, "timings": {"ask": 66.8, "settle": 73.3, "judge": 228.1}}]
+    before = {"seconds": 1075.4, "timings": {"provision": 34.8, **rounds[-1]["timings"]}, "rounds": rounds}  # the airline record
+    now = {**before, "timings": run.run_timings(34.8, rounds)}
+    one = {"seconds": 451.6, "timings": {"provision": 34.2, "ask": 60, "settle": 70, "judge": 287.4}}
+    got = _js(names, f"[{', '.join(f'directTimeText({json.dumps(d)})' for d in (before, now, one, {}))}]")
+    assert got[0] == got[1] == "用时 17 分 55 秒（部署 35 秒；3 轮合计：提问 4 分 19 秒 · 等 trace 3 分 42 秒 · 打分 9 分 19 秒）"
+    assert got[2] == "用时 7 分 32 秒（部署 34 秒 · 提问 1 分 00 秒 · 等 trace 1 分 10 秒 · 打分 4 分 47 秒）"
+    assert got[3] == "用时 —"
+    assert "directTimeText(d)" in _function_body("DirectVerdict")
+
+
+@pytest.mark.skipif(NODE is None, reason="node not installed")
 def test_readiness_survives_a_waiting_result_before_the_validation_loads():
     """Live 2026-10-13: a Kiro result that loaded before the validation crashed the whole page (`vv.fresh` of nothing)."""
     prelude = ("const CATEGORY_LABEL = {}; const DIRECT_VERDICT = {}; const GEN_MODE = { draft: '起草', repair: '修复' }; "

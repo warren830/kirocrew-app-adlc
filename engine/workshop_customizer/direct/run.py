@@ -330,7 +330,7 @@ class DirectRun:
                                         release_verified=False)
         doc["generatedAt"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         doc["direct"] = {"names": self.names.__dict__, "harness": harness, "knowledgeBaseId": kb_id, "skippedSkills": list(prov.skipped_skills),
-                         "timings": {"provision": provisioned, **final["timings"]},
+                         "timings": run_timings(provisioned, rounds),
                          "sweep": [sweep_summary(entry, self.model, final["state"]["steps"]) for entry in final["sweep"]],
                          "seconds": round(time.monotonic() - started, 1), "invokeErrors": final["invokeErrors"]}
         if self.repeat > 1:
@@ -451,6 +451,16 @@ class DirectRun:
                 "invokeErrors": [{"phase": p, "caseId": r.case_id, "error": r.error}
                                  for p, rs in (("conversation", conversation), ("baseline", baseline_rows), ("optimized", optimized_rows))
                                  for r in rs if r.error]}
+
+
+def run_timings(provisioned: float, rounds: Sequence[Mapping[str, Any]]) -> dict[str, float]:
+    """``direct.timings``: the deploy once, then each stage over every round, so they add up to ``seconds`` (before 0.4.6
+    they were the last round's only, and 3 rounds of 17.9 minutes read as 7)."""
+    out = {"provision": provisioned}
+    for r in rounds:
+        for stage, seconds in r["timings"].items():
+            out[stage] = round(out.get(stage, 0.0) + seconds, 1)
+    return out
 
 
 def robust(doc: dict[str, Any], rounds: Sequence[Mapping[str, Any]]) -> None:

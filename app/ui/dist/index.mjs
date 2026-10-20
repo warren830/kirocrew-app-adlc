@@ -3063,13 +3063,30 @@ function DirectRunCard() {
   h(DirectCleanup))
 }
 
+// A quick rehearsal's time, said so the parts add up: the deploy once, then each stage over every round. Records before
+// 0.4.6 keep only the last round's stages in direct.timings, so the rounds' own are added here.
+function directTimeText(d) {
+  const rounds = listOf(d.rounds).filter((r) => r && r.timings)
+  const spent = { ...(d.timings || {}) }
+  const stages = Object.keys(DIRECT_TIMING).filter((k) => k !== 'provision')
+  if (rounds.length > 1) {
+    for (const k of stages) {
+      const seen = rounds.filter((r) => typeof r.timings[k] === 'number')
+      if (seen.length) spent[k] = seen.reduce((n, r) => n + r.timings[k], 0)
+    }
+  }
+  const part = (k) => (typeof spent[k] === 'number' ? `${DIRECT_TIMING[k]} ${fmtSeconds(spent[k])}` : null)
+  const each = stages.map(part).filter(Boolean).join(' · ')
+  const parts = [part('provision'), each && rounds.length > 1 ? `${rounds.length} 轮合计：${each}` : each].filter(Boolean)
+  return `用时 ${d.seconds ? fmtSeconds(d.seconds) : '—'}${parts.length ? `（${parts.join(rounds.length > 1 ? '；' : ' · ')}）` : ''}`
+}
+
 function DirectVerdict({ r }) {
   const d = r.direct || {}
-  const timings = Object.keys(DIRECT_TIMING).filter((k) => d.timings && typeof d.timings[k] === 'number').map((k) => `${DIRECT_TIMING[k]} ${Math.round(d.timings[k])}s`).join(' · ')
   return h(Fragment, null,
     h('div', { className: 'wc-rf wc-mt' },
       h('span', { className: 'wc-fx' }, h(ToneChip, { map: DIRECT_VERDICT, value: r.verdict }), h(Chip, null, '不是上课结论')),
-      h('span', { className: 'wc-xs wc-mut' }, `${fmtTime(r.generatedAt)} · 用时 ${d.seconds ? fmtNum(d.seconds / 60, 1) : '—'} 分钟${timings ? `（${timings}）` : ''}`)),
+      h('span', { className: 'wc-xs wc-mut' }, `${fmtTime(r.generatedAt)} · ${directTimeText(d)}`)),
     h('div', { className: 'wc-sm wc-mt1', title: englishTwin(r.reason, r.reasonEn) }, h('span', { className: 'wc-mono wc-xs' }, r.reasonCode), ' ', r.reason),
     h('div', { className: 'wc-mt1' }, h(PhenomenonVerdicts, { phenomena: listOf(r.phenomena) })),
     listOf(d.sweep).length ? h(DirectSweep, { sweep: d.sweep }) : null,
