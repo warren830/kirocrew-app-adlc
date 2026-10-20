@@ -358,6 +358,19 @@ def test_advisory_memory_and_noise_readings_never_change_the_verdict():
     assert given["asset"]["scenarioPath"] == "labs.teaching.firstConversation.mustNotMention"
     assert "check_device_warranty" in given["because"] and doc["verdict"] == "insufficient_evidence"
 
+    # The value is in a knowledge document (airline-rebooking, live 2026-10-15: the cabin 'B' of the cabin classes):
+    # a generic answer retrieves it, so it is the marker to change, not the actorId.
+    documents = _documents("it-2026-09-13")
+    did = next(iter(documents))
+    documents[did] += "\nAsset tags look like NWR-4471.\n"
+    doc = rehearsal.build_rehearsal(_state("it-2026-09-13", steps), tr.scenario("it-2026-09-13"), documents=documents)
+    assert not _hints(doc, "MEMORY_PERSONALIZED")
+    [given] = _hints(doc, "MEMORY_TERM_GIVEN")
+    memory = next(a for a in doc["advisory"] if a["kind"] == "memory")
+    assert [h["given"] for h in memory["hits"]] == [f"document:{did}"]
+    file = next(d["file"] for d in tr.scenario("it-2026-09-13")["knowledge"]["documents"] if d["id"] == did)
+    assert f"the knowledge document {file}" in given["because"] and "knowledge document" in given["action"]
+
     steps = copy.deepcopy(tr.load_steps("hr-reproduced"))
     for row in steps["baseline"]["outputs"]["scores"]:
         if row["evaluator"] == "thelma_rag_quality":

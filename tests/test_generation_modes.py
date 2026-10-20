@@ -307,6 +307,24 @@ def test_a_repair_round_covers_the_scopes_of_live_learned_warnings_too(tmp_path)
     assert repair["allowedScopes"] == ["tools", "golden"] and record["scope"] == ["tools", "golden"]
 
 
+def test_an_explicit_scope_sends_only_the_findings_it_can_fix(tmp_path):
+    """Live 2026-10-15: Autopilot's pre-rehearsal repair (tools, prompts, golden) also got the labs warning on the memory
+    marker 'B'; Kiro edited labs, the scope mask dropped the edit, and the change list still said 'B' was replaced."""
+    data = tmp_path / "data"
+    pdir, _draft = _applied_draft(data)
+    labs = {"code": "teaching.first_term_generic", "severity": "warning", "scopes": ["labs"],
+            "path": "labs.teaching.firstConversation.mustNotMention"}
+    _validation(pdir, [GOLDEN_FINDING, labs])
+    record, task = gen.prepare_generation(data, {"projectId": PID, "mode": "repair", "scope": ["tools", "prompts", "golden"]},
+                                          runner="kiro-cli")
+    repair = _repair_input(task)
+    assert [f["code"] for f in repair["findings"]] == ["golden.category_minimum"]
+    assert record["validationRef"]["findingIds"] == ["F1"] and repair["allowedScopes"] == ["tools", "prompts", "golden"]
+    gen.fail_generation(data, record, "test")
+    _record, task = gen.prepare_generation(data, {"projectId": PID, "mode": "repair"}, runner="kiro-cli")
+    assert [f["code"] for f in _repair_input(task)["findings"]] == ["golden.category_minimum", "teaching.first_term_generic"]
+
+
 def _repair_round(data: Path, pdir: Path, *, scope: list[str] | None = None, finding: dict = GOLDEN_FINDING, mode: str = "repair"):
     _validation(pdir, [finding])
     body = {"projectId": PID, "mode": mode}
@@ -725,4 +743,4 @@ def test_agent_prompt_matches_forced_provenance_origin_and_modes():
                    "FULL scenario plus only new or changed files", "changes[]", "Replace personal names from materials with roles"):
         assert needle in prompt, needle
     # The version bump makes KiroCrew re-materialize the changed agent and skill.
-    assert json.loads((REPO / "app" / "app.json").read_text(encoding="utf-8"))["version"] == "0.4.6"
+    assert json.loads((REPO / "app" / "app.json").read_text(encoding="utf-8"))["version"] == "0.4.7"

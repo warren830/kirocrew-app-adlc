@@ -476,6 +476,18 @@ def test_the_evaluation_check_runs_the_engines_teaching_rules():
     assert any(p.startswith("teaching.first_term_in_tool_spec:") for p in problems)
 
 
+def test_the_evaluation_check_finds_a_memory_marker_in_the_facts_of_a_document():
+    """Live 2026-10-15: mustNotMention 'B' was a cabin class the rules document states; the knowledge stage writes the
+    documents later, so the facts written into them are read instead (a fact's source names its file)."""
+    first, second = _stage_outputs()
+    doc = first["scenario"]["knowledge"]["documents"][0]
+    first["scenario"]["facts"].append({"id": "fact-cabins", "statement": "Economy has the cabins Y, B and S.",
+                                       "source": f"{doc['file']} (cabins)"})
+    second["scenario"]["labs"]["teaching"]["firstConversation"]["mustNotMention"] = ["B"]
+    problems = gen.check_stage("evaluation", second, stage={}, outputs={"structure": first})
+    assert any(p.startswith("teaching.first_term_in_kb:") and doc["file"] in p for p in problems)
+
+
 def test_a_short_document_is_asked_again():
     first, second = _stage_outputs()
     path = first["scenario"]["knowledge"]["documents"][0]["file"]

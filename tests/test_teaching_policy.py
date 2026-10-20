@@ -460,7 +460,23 @@ FILES = [
      "teaching.bait_weak", "warning"),
     ("hr-default", None, lambda d: _phenomenon(d, "dirty-faq-tails").update(documentIds=["it-issue-report"]),
      "teaching.noise_not_coretrieved", "warning"),
+    ("maintenance", lambda r: _append(r, "knowledge-base/docs/preventive_maintenance.md", "\nLine FL-100-2 is greased weekly.\n"), None,
+     "teaching.first_term_in_kb", "warning"),
 ]
+
+
+def test_a_memory_marker_the_knowledge_base_states_is_found_before_the_documents_are_written():
+    """Live 2026-10-15 (airline-rebooking): mustNotMention 'B' was a cabin class of the rules document, so the generic
+    first answer said it and rehearsal advised a fresh actorId. A staged draft's evaluation stage passes the facts."""
+    data = _data("maintenance")
+    data["labs"]["teaching"]["firstConversation"]["mustNotMention"] = ["B"]
+    texts = {"preventive-maintenance": "Economy has three cabins: Y (full fare), B (discount) and S (special)."}
+    [finding] = [f for f in teaching_policy.check_teaching(data, texts=texts).findings if f.code.startswith("teaching.first_")]
+    assert finding.code == "teaching.first_term_in_kb" and finding.severity == "warning"
+    assert "knowledge-base/docs/preventive_maintenance.md" in finding.message
+    assert finding.path == "labs.teaching.firstConversation.mustNotMention"
+    # Without the texts it is only a short term (the generic-answer warning).
+    assert "teaching.first_term_generic" in _codes(data) and "teaching.first_term_in_kb" not in _codes(data)
 
 
 @pytest.mark.parametrize("pack,edit_files,edit_data,code,severity", FILES, ids=[f[3] for f in FILES])

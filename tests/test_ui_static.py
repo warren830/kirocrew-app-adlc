@@ -596,6 +596,20 @@ def test_direct_mode_is_a_fast_rehearsal_never_a_class_verdict():
 
 
 @pytest.mark.skipif(NODE is None, reason="node not installed")
+def test_a_change_kiro_describes_outside_the_rounds_scopes_says_it_did_not_happen():
+    """Live 2026-10-15: the change list said mustNotMention was now ["YQ-6620481","1860"]; the scope mask had dropped
+    labs.teaching, and the pack still had 'B'."""
+    ignored = '[{ target: "facts" }, { target: "labs.teaching" }, { target: "agent/x.md" }]'
+    got = _js(("listOf", "ignoredBy"), f"['labs.teaching.firstConversation.mustNotMention', 'labs.teachingNotes', 'facts[f1]',"
+                                       f" 'agent/x.md', 'agent/x.md.bak', 'agent/optimization-candidate.md', '', null]"
+                                       f".map((t) => !!ignoredBy(t, {ignored}))")
+    assert got == [True, False, True, True, False, False, False, False]
+    table = _function_body("ChangesTable")
+    assert "ignoredBy(c.target, g.ignoredChanges)" in table and "没有生效：超出这次的修复范围" in table
+    assert "listOf(f.scopes).some((s) => scope.includes(s))" in _function_body("RepairLauncher")
+
+
+@pytest.mark.skipif(NODE is None, reason="node not installed")
 def test_a_quick_rehearsals_time_adds_up_over_its_rounds():
     """Live 2026-10-15: 3 rounds took 17.9 minutes, and the brackets showed the deploy and the last round (about 7)."""
     import json

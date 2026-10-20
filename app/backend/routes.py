@@ -2505,11 +2505,12 @@ REPAIR_WARNING_CODES = frozenset({"residue.prose"})
 #: sends every teaching.* warning, and a repair round's scopes include these warnings' scopes). hr-default control
 #: run 2026-09-27: the first three; lease-contract and freight-claims 2026-09-29: the role rules and the gap question
 #: on a documented topic (a local pre-rehearsal measured the lease refusal breaking in 2 of 5 runs with the role
-#: argument and 0 of 5 without it).
+#: argument and 0 of 5 without it); airline-rebooking 2026-10-15: a memory marker the knowledge base states.
 LIVE_LEARNED_WARNING_CODES = frozenset({"teaching.buried_gap_unreliable", "teaching.defect_marker_absent",
                                         "teaching.tool_arg_not_in_query", "teaching.role_not_in_query",
                                         "teaching.refusal_rule_names_no_role", "teaching.gated_tool_role_argument",
-                                        "teaching.gap_topic_documented", "teaching.first_term_in_tool_spec"})
+                                        "teaching.gap_topic_documented", "teaching.first_term_in_tool_spec",
+                                        "teaching.first_term_in_kb"})
 
 
 def stored_brief(pdir: Path) -> str:
@@ -2804,6 +2805,10 @@ def prepare_generation(data_dir: Path | str, body: Any, *, runner: str = "kirocr
                     validation = None  # regenerate does not need a validation; it uses one when fresh
             if validation is not None:
                 findings = _selected_findings(validation, include_warnings)
+                if scope is not None:  # as the rehearsal's below: one the scope cannot fix only has its fix masked away
+                    # (live 2026-10-15: a tools/prompts/golden round got the labs warning on 'B'; Kiro edited labs, the
+                    # mask dropped it, and the round's change list still said the marker was replaced)
+                    findings = [f for f in findings if not f.get("scopes") or set(f["scopes"]) & set(scope)]
                 validation_ref = {"at": validation.get("at"), "scenarioSha256": validation.get("scenarioSha256"),
                                   "packDigest": validation.get("packDigest"), "findingIds": [f.get("id") for f in findings]}
             # A rehearsal of the current release is the live evidence about the pack: its blocking
@@ -3575,13 +3580,27 @@ def _engine_schema_problems(raw: dict[str, Any], base: str, *, project_id: str, 
     return problems
 
 
+def _fact_texts(scenario: dict[str, Any]) -> dict[str, str]:
+    """Knowledge document id → the statements of the facts written into it (a fact's source names its file): the
+    documents' words before the knowledge stage writes them."""
+    facts = _stage_items(scenario.get("facts"))
+    out: dict[str, str] = {}
+    for doc in _stage_items((scenario.get("knowledge") or {}).get("documents")):
+        file = str(doc.get("file") or "")
+        said = [str(f.get("statement") or "") for f in facts if file and str(f.get("source") or "").startswith(file)]
+        if doc.get("id") and said:
+            out[str(doc["id"])] = "\n".join(said)
+    return out
+
+
 def _engine_teaching_problems(scenario: dict[str, Any]) -> list[str]:
-    """The engine's structure-only teaching rules on the structure plus the golden set (no files yet)."""
+    """The engine's structure-only teaching rules on the structure plus the golden set (no files yet; the facts stand
+    in for the documents where a memory marker would also be found)."""
     policy = _teaching_policy()
     if policy is None:
         return []
     try:
-        report = policy.check_teaching(scenario)
+        report = policy.check_teaching(scenario, texts=_fact_texts(scenario))
     except Exception:  # noqa: BLE001 - an odd draft shape is the final validation's to report
         return []
     return list(dict.fromkeys(f"{f.code}: {f.message}" for f in report.findings

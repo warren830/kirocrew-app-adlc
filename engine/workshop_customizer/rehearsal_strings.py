@@ -39,6 +39,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "run.optimized": "optimized",
         "retrieval_tool": "the retrieval tool",
         "because.join": "{reason}; {note}",
+        "given.query": "the question itself",
+        "given.tool": "tool {name}'s description",
+        "given.document": "the knowledge document {file}",
         # -- case verdict reasons (teaching_contrast; also report.teachingContrast) ------------------
         "case.NOISE_BAND_MISSING": "no judge noise band (evaluation.noiseBand or 13-judge-stability.sh)",
         "case.JUDGE_TOO_NOISY": "judge noise band {band} > {max}: THELMA cannot separate the runs",
@@ -169,7 +172,8 @@ STRINGS: dict[str, dict[str, str]] = {
                                               "redeploy the add-ons RunStep document and rerun the conversation step."),
         "fix.MEMORY_PERSONALIZED": ("The first conversation already knows the "
                                     "user: use a fresh firstConversation.actorId (or clear that actor's memory) before class."),
-        "fix.MEMORY_TERM_GIVEN": ("The first answer repeats a value the agent was given (the question or a tool description), "
+        "fix.MEMORY_TERM_GIVEN": ("The first answer repeats a value the agent reads elsewhere (the question, a tool description "
+                                  "or a knowledge document), "
                                   "not a memory: make firstConversation.mustNotMention a value only the asker's record holds, "
                                   "and describe tool formats without fixture values."),
         "fix.MEMORY_UNCHECKED": ("Declare firstConversation.mustNotMention (a value only a remembered user would get) so rehearsal can check "
@@ -239,6 +243,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "run.optimized": "优化",
         "retrieval_tool": "检索工具",
         "because.join": "{reason}；{note}",
+        "given.query": "问题本身",
+        "given.tool": "工具 {name} 的描述",
+        "given.document": "知识库文档（{file}）",
         # -- case verdict reasons (teaching_contrast; also report.teachingContrast) ------------------
         "case.NOISE_BAND_MISSING": "没有裁判噪声带（evaluation.noiseBand 或 13-judge-stability.sh）",
         "case.JUDGE_TOO_NOISY": "裁判噪声带 {band} > {max}：THELMA 区分不了两轮结果",
@@ -336,7 +343,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "fix.PHENOMENON_DECLARATION": "修正教学现象的声明：只能列练习题，类型只能取固定词表。",
         "fix.CONVERSATION_EVIDENCE_MISSING": "06 没有留下对话摘录（outputs.conversation）：重新部署附加栈的 RunStep 文档，再重跑“第一次对话”这一步。",
         "fix.MEMORY_PERSONALIZED": "第一次对话已经认识这个用户：课前换一个新的 firstConversation.actorId（或清掉这个 actor 的记忆）。",
-        "fix.MEMORY_TERM_GIVEN": "第一次的回答复述的是 Agent 本来就能看到的值（问题本身或工具描述里的），不是记忆：把 firstConversation.mustNotMention 换成只有提问者自己的记录里才有的值，工具描述写格式、不写 fixture 里的值。",
+        "fix.MEMORY_TERM_GIVEN": "第一次的回答复述的是 Agent 本来就能看到的值（问题本身、工具描述或知识库文档里的），不是记忆：把 firstConversation.mustNotMention 换成只有提问者自己的记录里才有的值，工具描述写格式、不写 fixture 里的值。",
         "fix.MEMORY_UNCHECKED": "声明 firstConversation.mustNotMention（只有被记住的用户才会得到的值），彩排才能检查 Memory 这一课。",
         "fix.NOISE_NOT_OBSERVED": "把无关的 FAQ 行留在答案段落旁边，让带噪声的 chunk 和答案一起被检索出来。",
         "fix.ABSENT_GAP_EMPTY_ANSWER": ("在候选提示词里限制检索：每个问题最多调用 {tool} {cap} 次，然后{rule}；如果提示词里已经有这条上限，"
@@ -360,7 +367,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "why.no_absent_doc": "没有知识库文档写到 absentTerm，也没有文档带 baitTerm",
         "why.CONVERSATION_EVIDENCE_MISSING": "没有第一次的回答，就检查不了 Memory 这一课",
         "why.MEMORY_PERSONALIZED": "06 的回答提到了 {terms}",
-        "why.MEMORY_TERM_GIVEN": "06 的回答提到了 {terms}，而 Agent 在 {where} 里本来就能看到它",
+        "why.MEMORY_TERM_GIVEN": "06 的回答提到了 {terms}，而 Agent 在{where}里本来就能看到它",
         "why.MEMORY_UNCHECKED": "没有声明记忆标记",
         "why.EMPTY_REPLY": "{run}轮的 Agent 对 {case} 回了一个空回答（L1 response: fail）",
         "why.EMPTY_REPLY.calls": "{run}轮的 Agent 在 {case} 上至少调用了 {count} 次 {tool}，最后回了一个空回答（L1 response: fail）",

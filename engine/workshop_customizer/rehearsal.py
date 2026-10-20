@@ -941,6 +941,31 @@ def _case_hints(hints: _Hints, assets: _Assets, phenomenon: Mapping[str, Any], c
     return ids
 
 
+def _memory_sources(item: dict[str, Any], assets: _Assets) -> dict[str, Any]:
+    """A memory reading whose hits a knowledge document also states get ``given: document:<id>``: a generic answer
+    retrieves them (airline-rebooking, live 2026-10-15: the cabin 'B' of "经济舱分 Y、B、S 三类舱位"), so they are not
+    memory, and a fresh actorId changes nothing."""
+    if item.get("kind") != "memory" or not assets.documents:
+        return item
+    order = [did for did in assets.doc_files if did in assets.documents] or list(assets.documents)
+
+    def source(term: str) -> str | None:
+        did = next((d for d in order if contains(assets.documents[d], term)[0]), None)
+        return f"document:{did}" if did else None
+    item["hits"] = [h if h.get("given") else {**h, "given": source(str(h.get("term") or ""))} for h in item.get("hits") or []]
+    return item
+
+
+def _given_text(given: str, assets: _Assets) -> Msg:
+    """Where the agent reads a memory term besides memory (:func:`_memory_view`, :func:`_memory_sources`)."""
+    kind, _, name = given.partition(":")
+    if kind == "tool":
+        return Msg("given.tool", name=name)
+    if kind == "document":
+        return Msg("given.document", file=assets.doc_files.get(name) or name)
+    return Msg("given.query")
+
+
 def _advisory_hints(hints: _Hints, assets: _Assets, advisory: Sequence[Mapping[str, Any]], *, conversation_ran: bool = True) -> None:
     for item in advisory:
         if item.get("kind") == "memory":
@@ -952,14 +977,15 @@ def _advisory_hints(hints: _Hints, assets: _Assets, advisory: Sequence[Mapping[s
                           Msg("why.CONVERSATION_EVIDENCE_MISSING"), severity="advisory")
             elif item.get("reading") == "personalized":
                 hits = item.get("hits") or []
-                terms = Join(h.get("term", "") for h in hits)
-                if all(h.get("given") for h in hits):
+                unexplained = [h for h in hits if not h.get("given")]
+                if not unexplained:
                     hints.add("MEMORY_TERM_GIVEN", assets.teaching(path + ".mustNotMention"), Msg("fix.MEMORY_TERM_GIVEN"),
-                              Msg("why.MEMORY_TERM_GIVEN", terms=terms,
-                                  where=Join(sorted({str(h["given"]).replace("tool:", "") for h in hits}))), severity="advisory")
-                else:
+                              Msg("why.MEMORY_TERM_GIVEN", terms=Join(h.get("term", "") for h in hits),
+                                  where=Join(_given_text(g, assets) for g in sorted({str(h["given"]) for h in hits}))),
+                              severity="advisory")
+                else:  # only the terms nothing else explains point at memory
                     hints.add("MEMORY_PERSONALIZED", assets.teaching(path + ".actorId"), Msg("fix.MEMORY_PERSONALIZED"),
-                              Msg("why.MEMORY_PERSONALIZED", terms=terms), severity="advisory")
+                              Msg("why.MEMORY_PERSONALIZED", terms=Join(h.get("term", "") for h in unexplained)), severity="advisory")
             elif item.get("reading") == "unknown" and not item.get("mustNotMention"):
                 hints.add("MEMORY_UNCHECKED", assets.teaching(path + ".mustNotMention"), Msg("fix.MEMORY_UNCHECKED"),
                           Msg("why.MEMORY_UNCHECKED"), severity="advisory")
@@ -1144,7 +1170,7 @@ def build_rehearsal(
     if not release_verified:
         hints.add("RELEASE_NOT_VERIFIED", _asset("run"), Msg("fix.RELEASE_NOT_VERIFIED"),
                   Msg("why.RELEASE_NOT_VERIFIED", release=str(state.get("releaseVersion"))))
-    advisory = [dict(a) for a in contrast.get("advisory") or []]
+    advisory = [_memory_sources(dict(a), assets) for a in contrast.get("advisory") or []]
     _advisory_hints(hints, assets, advisory, conversation_ran=_step(evidence["state"], "conversation").get("status") == "passed")
     for item in advisory:
         item["source"] = evidence["source"]

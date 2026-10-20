@@ -85,6 +85,7 @@ const STAGE_REASONS = [
   [/^K3.*lacks/, '文档缺少练习题要用的答案词'], [/^K3.*absentTerms/, '文档写进了本该缺失的内容'],
   [/^S1/, '题目数量或留出题比例不够'], [/^S[23]/, '题目引用了不存在的规则、角色或工具'], [/^T\d/, '教学设计和题目对不上'],
   [/gated_tool_role_argument/, '工具带了“角色”参数（Agent 会先调工具再拒绝）'], [/first_term_in_tool_spec/, '记忆探针的值写进了工具说明'],
+  [/first_term_in_kb/, '记忆探针的值知识库里也有（不靠记忆也会说出来）'],
   [/tool_arg_not_in_query/, '练习题没写出工具必需的参数'], [/role_not_in_query/, '拒绝题没写出提问者的角色'],
   [/too_many_practice/, '练习题太多（上课要逐题跑）'], [/defect_marker_absent/, '弱基线缺少让它答偏的那句话'],
   [/plan\.absentTerms/, '“本该缺失”的关键词不合格（每个至少 2 个字，单字会误伤别的词）'],
@@ -1636,11 +1637,19 @@ function NeedsInputForm({ g }) {
     h('div', null, h(Button, { kind: 'primary', icon: Wand2, disabled: !filled.length || !!wsMaterialsBlock(ws, false), busy: ws.busy === 'generate', onClick: () => ws.startDraft(filled) }, `带着 ${filled.length} 条回答重新起草`)))
 }
 
+// The ignored change (routes: outside the round's scopes) that covers a change Kiro describes: then it did not happen.
+function ignoredBy(target, ignored) {
+  return listOf(ignored).find((r) => r && r.target && target && (target === r.target
+    || (!String(r.target).includes('/') && (String(target).startsWith(`${r.target}.`) || String(target).startsWith(`${r.target}[`)))))
+}
+
 function ChangesTable({ g }) {
   const changes = listOf(g.changes)
   if (!changes.length) return null
-  return h(Details, { summary: `Kiro 说明的改动（${changes.length}）`, open: true },
-    h(Table, { head: ['针对', '位置', '做了什么'], rows: changes.map((c) => [h('span', { className: 'wc-mono wc-xs' }, c.finding || '—'), h('span', { className: 'wc-mono wc-xs wc-break' }, c.target || '—'), c.action || '—']) }))
+  const dropped = changes.filter((c) => ignoredBy(c.target, g.ignoredChanges)).length
+  return h(Details, { summary: `Kiro 说明的改动（${changes.length}${dropped ? `，其中 ${dropped} 处超出范围、没有生效` : ''}）`, open: true },
+    h(Table, { head: ['针对', '位置', '做了什么'], rows: changes.map((c) => [h('span', { className: 'wc-mono wc-xs' }, c.finding || '—'), h('span', { className: 'wc-mono wc-xs wc-break' }, c.target || '—'),
+      ignoredBy(c.target, g.ignoredChanges) ? h('span', null, h(Chip, { tone: 'warn' }, '没有生效：超出这次的修复范围'), ' ', h('span', { className: 'wc-mut' }, c.action || '—')) : c.action || '—']) }))
 }
 
 function DiffSummary({ g }) {
@@ -2015,7 +2024,9 @@ function RepairLauncher({ v, fresh }) {
   const [scope, setScope] = useState([])
   const [more, setMore] = useState(false)
   const repairable = listOf(v && v.repair && v.repair.repairable)
-  const selected = repairable.filter((f) => repairSelected(f, includeWarnings))
+  // With a chosen scope the route leaves out the findings that scope cannot fix, as it does the rehearsal's.
+  const selected = repairable.filter((f) => repairSelected(f, includeWarnings)
+    && (!scope.length || !listOf(f.scopes).length || listOf(f.scopes).some((s) => scope.includes(s))))
   const nErrors = selected.filter((f) => f.severity === 'error').length
   const nHints = selected.filter((f) => f.severity !== 'error' && repairSelected(f, false)).length
   const nOther = selected.length - nErrors - nHints

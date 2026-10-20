@@ -22,7 +22,8 @@ Rule groups (designs[0] §C, with the reviews[0] corrections):
   conversation, teachingPoints — names the holdout set or a holdout case id or label).
 * **Files** (only with ``root``; every production caller passes it) — :data:`FILE_RULE_CODES`:
   the baseline/candidate prompt checks and the lexical knowledge-base checks (answers present,
-  bait present and apart from answers, absent facts really absent, noise next to answers).
+  bait present and apart from answers, absent facts really absent, noise next to answers, the first
+  conversation's memory markers not in the knowledge base).
 
 Probe actors are not policed: the runtime asks every practice case as its own fresh actor
 (``<actorId>-<RUN_TAG>-q<i>``), so sharing an authored ``actorId`` cannot leak Memory
@@ -37,7 +38,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from . import teaching
 from .teaching import contains_term, count_term, norm
@@ -116,6 +117,7 @@ FILE_RULE_CODES = frozenset({
     "teaching.gap_topic_documented",
     "teaching.refusal_rule_names_no_role",
     "teaching.noise_not_coretrieved",
+    "teaching.first_term_in_kb",
 })
 
 MISSING_MESSAGE = (
@@ -253,10 +255,12 @@ def _marker_rules(data: dict[str, Any], out: _Report) -> None:
 # ---------------------------------------------------------------------------
 
 
-def check_teaching(data: dict[str, Any], root: Path | str | None = None) -> ValidationReport:
+def check_teaching(data: dict[str, Any], root: Path | str | None = None, *, texts: Mapping[str, str] | None = None) -> ValidationReport:
     """Every ``teaching.*`` / ``tools.retrieval_marker_collision`` finding for ``data``.
 
-    Structure rules always run; file rules (:data:`FILE_RULE_CODES`) run only with ``root``.
+    Structure rules always run; file rules (:data:`FILE_RULE_CODES`) run only with ``root``. Without it, ``texts``
+    (document id → text) stands in for documents not written yet, for the memory-marker rule only: a staged draft's
+    evaluation stage passes the facts each document is written from.
     """
     out = _Report()
     _marker_rules(data, out)
@@ -265,6 +269,10 @@ def check_teaching(data: dict[str, Any], root: Path | str | None = None) -> Vali
         out.error("teaching.missing", MISSING_MESSAGE, "labs.teaching", ("golden", "knowledge", "prompts", "labs"))
         return out.report
     ctx = _Context(data, block)
+    if root is not None:
+        ctx.texts = teaching.document_texts(data, Path(root))
+    elif texts is not None:
+        ctx.texts = dict(texts)
     _structure_rules(ctx, out)
     if root is not None:
         _file_rules(ctx, Path(root), out)
@@ -295,6 +303,8 @@ class _Context:
         self.documents = [d for d in (data.get("knowledge") or {}).get("documents") or [] if isinstance(d, dict) and "id" in d]
         self.docs_by_id = {d["id"]: d for d in self.documents}
         self.noise_ids = [d["id"] for d in self.documents if d.get("noise") is True]
+        #: Knowledge document id → text: read under the scenario root, or given (check_teaching).
+        self.texts: dict[str, str] | None = None
 
     def _practice_ids_of(self, kind: str) -> list[str]:
         """Practice case ids listed by ``kind`` phenomena, in goldenSet order."""
@@ -670,6 +680,8 @@ def _first_conversation_rules(ctx: _Context, out: _Report) -> None:
         spec = next((t["name"] for t in ctx.tools.values()
                      if contains_term(json.dumps({"description": t.get("description"), "inputSchema": t.get("inputSchema")},
                                                  ensure_ascii=False), term)), None)
+        docs = (teaching.documents_containing(ctx.texts, term, order=[d["id"] for d in ctx.documents])
+                if ctx.texts is not None else ())
         if spec is not None:
             out.warning(
                 "teaching.first_term_in_tool_spec",
@@ -678,6 +690,15 @@ def _first_conversation_rules(ctx: _Context, out: _Report) -> None:
                 "\"运单号通常格式如 yt-7730021\"), and rehearsal reads that as already knowing the asker; describe the "
                 "format without a fixture value",
                 f"tools.{spec}", ("tools", "labs"),
+            )
+        elif docs:
+            where = ", ".join(str(ctx.docs_by_id[did].get("file") or did) for did in docs)
+            out.warning(
+                "teaching.first_term_in_kb",
+                f"firstConversation.mustNotMention '{term}' appears in {where}: a generic answer retrieves it and says it "
+                "too (airline-rebooking, live 2026-10-15: the cabin 'B' of \"经济舱分 Y、B、S 三类舱位\"), and rehearsal "
+                "reads that as already knowing the asker; name a value only the asker's record holds",
+                path + ".mustNotMention", _S_LABS,
             )
         elif len(norm(term)) <= 3:
             out.warning(
@@ -901,7 +922,7 @@ def _paragraphs(text: str) -> list[str]:
 
 def _file_rules(ctx: _Context, root: Path, out: _Report) -> None:
     _prompt_rules(ctx, root, out)
-    texts = teaching.document_texts(ctx.data, root)
+    texts = teaching.document_texts(ctx.data, root) if ctx.texts is None else ctx.texts
     order = [d["id"] for d in ctx.documents]
     files = {d["id"]: d.get("file") for d in ctx.documents}
 
