@@ -84,6 +84,49 @@ class FakeLogs:
         return Paginator()
 
 
+def test_a_logs_read_outlasts_a_network_outage_and_an_aws_error_is_not_read_again():
+    """Live 2026-10-15: CloudWatch did not answer for minutes (ReadTimeoutError after the client's own retries) and
+    that ended a two-hour Autopilot run in its last direct round. A read is tried again after a pause."""
+    from botocore.exceptions import ClientError, EndpointConnectionError, ReadTimeoutError
+
+    class Flaky(FakeLogs):
+        def __init__(self, groups, errors):
+            super().__init__(groups)
+            self.errors = list(errors)
+
+        def get_paginator(self, name):
+            if self.errors:
+                raise self.errors.pop(0)
+            return super().get_paginator(name)
+
+    span = {"traceId": "t1", "spanId": "s1", "attributes": {"session.id": "sess-1"}}
+    slept, said = [], []
+    down = [ReadTimeoutError(endpoint_url="https://logs"), EndpointConnectionError(endpoint_url="https://logs")]
+    store = traces.TraceStore(Flaky({"aws/spans": [span]}, down), "/rt", 0, pause=0, sleep=slept.append, log=said.append)
+    assert [s["spanId"] for s in store.session_spans("sess-1")] == ["s1"]
+    assert slept == [traces.OUTAGE_PAUSE] * 2 and len(said) == 2 and "ReadTimeoutError" in said[0] and "(1/3)" in said[0]
+    store = traces.TraceStore(Flaky({}, [ReadTimeoutError(endpoint_url="https://logs")] * traces.OUTAGE_ATTEMPTS), "/rt", 0, pause=0,
+                              sleep=lambda s: None)
+    with pytest.raises(ReadTimeoutError):
+        store.session_spans("sess-1")
+    refused = ClientError({"Error": {"Code": "ResourceNotFoundException", "Message": "no group"}}, "FilterLogEvents")
+    store = traces.TraceStore(Flaky({}, [refused]), "/rt", 0, pause=0, sleep=slept.append)
+    with pytest.raises(ClientError):
+        store.session_spans("sess-1")
+    assert len(slept) == 2  # an answer from AWS is not an outage
+
+    class Source:
+        calls = 0
+
+        def query(self, needle):
+            Source.calls += 1
+            if Source.calls == 1:
+                raise ReadTimeoutError(endpoint_url="https://logs")
+            return [{"needle": needle}]
+
+    assert traces.PatientSpanSource(Source(), sleep=lambda s: None).query("x") == [{"needle": "x"}] and Source.calls == 2
+
+
 def test_session_spans_carry_their_events_and_wait_until_the_answer_is_there():
     span = {"traceId": "t1", "spanId": "s1", "name": "chat", "startTimeUnixNano": "2", "attributes": {"session.id": "sess-1"}}
     tool = {"traceId": "t1", "spanId": "s2", "name": "execute_tool hrtools___retrieve_hr_policy", "startTimeUnixNano": "1", "attributes": {}}

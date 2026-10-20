@@ -135,14 +135,16 @@ const scanBrief = (scan, ended) => {
 
 // -- a job's stages and log ----------------------------------------------------------------------------------------
 
-// A stage still marked running in a job that ended (a console restart marks only the job): it did not finish.
+// A job that ended (unreadable is not: it may still run); a stage still marked running in one did not finish (a console
+// restart marks only the job)
+const ENDED = ['succeeded', 'failed', 'interrupted']
 const stageCell = (s, job) => (s.status !== 'running' ? h(Chip, { tone: STAGE_TONE[s.status] }, STAGE_TEXT[s.status] || s.status)
-  : job.status === 'running' ? h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), STAGE_TEXT.running) : h(Chip, { tone: 'warn' }, '没跑完'))
+  : !ENDED.includes(job.status) ? h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), STAGE_TEXT.running) : h(Chip, { tone: 'warn' }, '没跑完'))
 
 function Stages({ job }) {
   const stages = listOf(job.progress && job.progress.stages)
   const labels = LABELS[job.kind] || {}
-  if (!stages.length) return h(Empty, null, job.status === 'running' ? '准备中…' : '这个任务没有记下阶段。')
+  if (!stages.length) return h(Empty, null, ENDED.includes(job.status) ? '这个任务没有记下阶段。' : '准备中…')
   return h(Table, { head: ['阶段', '状态', '耗时', '说明'], rows: stages.map((s) => ({ key: s.name, cells: [
     h('b', null, labels[s.name] || s.name),
     stageCell(s, job),
@@ -162,7 +164,7 @@ function JobPanel({ id, onDone, go, setSelected }) {
     job.status === 'succeeded' && job.kind === 'deploy' && result.runtimeId ? h(Button, { onClick: chat }, '和它对话') : null,
     h(Chip, { tone: JOB_TONE[job.status] }, JOB_LABEL[job.status] || job.status)) },
   h(Stages, { job }),
-  h(ScanSummary, { scan: (job.progress || {}).scan, ended: job.status !== 'running' }),
+  h(ScanSummary, { scan: (job.progress || {}).scan, ended: ENDED.includes(job.status) }),
   smoke ? h(Note, { tone: 'ok' }, h('b', null, `冒烟调用（${smoke.qualifier}，${secs(smoke.seconds)}）回复：`), smoke.answer) : null,
   result.runtimeId && job.kind === 'deploy' ? h('div', { className: 'cs-mut cs-mono' }, `${result.runtimeId} · 版本 ${result.version || '—'}${result.image ? ` · ${result.image}` : ''}`) : null,
   options.sessionStorage || options.lifecycle || options.network === 'VPC' ? h('div', { className: 'cs-mut' }, [
@@ -476,7 +478,7 @@ function Jobs({ refresh, openJob }) {
   const [jobs, load, error] = useList(wid, '/deployments/jobs', 'jobs', [refresh])
   return h(Card, { title: '部署记录', extra: h(Button, { onClick: load }, '刷新') }, loaded(jobs, error, (all) => h(Table, { head: ['名称', '操作', '状态', '阶段', '镜像扫描', '开始', ''],
     rows: all.map((j) => ({ key: j.id, onClick: () => openJob(j.id), cells: [h('b', null, (j.params || {}).name || '—'), jobKind(j),
-      h(Chip, { tone: JOB_TONE[j.status] }, JOB_LABEL[j.status] || j.status), (LABELS[j.kind] || {})[(j.progress || {}).stage] || '—', scanBrief((j.progress || {}).scan, j.status !== 'running'),
+      h(Chip, { tone: JOB_TONE[j.status] }, JOB_LABEL[j.status] || j.status), (LABELS[j.kind] || {})[(j.progress || {}).stage] || '—', scanBrief((j.progress || {}).scan, ENDED.includes(j.status)),
       h(At, { iso: j.createdAt }), h(Button, null, '查看')] })), empty: '还没有部署任务。' })))
 }
 

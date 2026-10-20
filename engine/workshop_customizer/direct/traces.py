@@ -14,11 +14,50 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence, TypeVar
 
 from ..l1 import _attrs
 
 SPAN_LOG_GROUP = "aws/spans"
+#: A read of CloudWatch Logs is tried this many times, ``OUTAGE_PAUSE`` seconds apart, while AWS does not answer: the
+#: client's own retries (aws.RETRIES) cover a few minutes, and live 2026-10-15 a longer outage on the way to
+#: CloudWatch ended a two-hour Autopilot run in its last direct round.
+OUTAGE_ATTEMPTS, OUTAGE_PAUSE = 4, 60.0
+T = TypeVar("T")
+
+
+def network_error(exc: BaseException) -> bool:
+    """botocore's no-answer errors (connection refused or reset, TLS, proxy, timeouts), not an error AWS returned."""
+    try:
+        from botocore.exceptions import ConnectionError as NoConnection, HTTPClientError
+    except ImportError:  # pragma: no cover - botocore is there whenever AWS is read
+        return False
+    return isinstance(exc, (NoConnection, HTTPClientError))
+
+
+def patiently(read: Callable[[], T], *, sleep: Callable[[float], None] = time.sleep, log: Callable[[str], None] | None = None) -> T:
+    """``read()``, again after a pause while AWS does not answer (:data:`OUTAGE_ATTEMPTS`); a read is idempotent."""
+    for attempt in range(1, OUTAGE_ATTEMPTS + 1):
+        try:
+            return read()
+        except Exception as exc:  # noqa: BLE001 - only the network errors are tried again
+            if attempt == OUTAGE_ATTEMPTS or not network_error(exc):
+                raise
+            if log:
+                log(f"    CloudWatch Logs did not answer ({type(exc).__name__}): reading again in {OUTAGE_PAUSE:.0f} s "
+                    f"({attempt}/{OUTAGE_ATTEMPTS - 1})")
+            sleep(OUTAGE_PAUSE)
+    raise AssertionError("unreachable")
+
+
+class PatientSpanSource:
+    """An L1 span source (``query(needle)``) whose reads outlast an outage (:func:`patiently`)."""
+
+    def __init__(self, source: Any, *, sleep: Callable[[float], None] = time.sleep, log: Callable[[str], None] | None = None):
+        self.source, self.sleep, self.log = source, sleep, log
+
+    def query(self, needle: str) -> list[dict[str, Any]]:
+        return patiently(lambda: self.source.query(needle), sleep=self.sleep, log=self.log)
 
 
 def _body(record: Mapping[str, Any]) -> Any:
@@ -45,11 +84,16 @@ def answer_marker(text: str, length: int = 16) -> str:
 class TraceStore:
     """Spans (aws/spans) and their events (the runtime log group), fetched per session and per trace."""
 
-    def __init__(self, logs: Any, runtime_log_group: str, since_ms: int, *, pause: float = 0.2, sleep: Callable[[float], None] = time.sleep):
+    def __init__(self, logs: Any, runtime_log_group: str, since_ms: int, *, pause: float = 0.2, sleep: Callable[[float], None] = time.sleep,
+                 log: Callable[[str], None] | None = None):
         self.logs, self.runtime_log_group, self.since_ms, self.pause, self.sleep = logs, runtime_log_group, int(since_ms), pause, sleep
+        self.log = log
         self._records: dict[str, list[dict[str, Any]]] = {}
 
     def _events(self, group: str, needle: str) -> list[dict[str, Any]]:
+        return patiently(lambda: self._read(group, needle), sleep=self.sleep, log=self.log)
+
+    def _read(self, group: str, needle: str) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         paginator = self.logs.get_paginator("filter_log_events")
         for page in paginator.paginate(logGroupName=group, startTime=self.since_ms, filterPattern=f'"{needle}"'):

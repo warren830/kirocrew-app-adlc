@@ -595,12 +595,12 @@ const heldWhat = (what) => String(what).replace(/^the runtime (\S+) \(a canary's
 // what is wrong with a Skill Lab task's input files (skills_lab._task_files)
 function taskFileText(said) {
   const rules = [[/^a list of \{"path", "asset"\}$/, () => '要写成 [{"path", "asset"}] 这样的列表'], [/^at most (\d+) a task$/, (m) => `每道题最多 ${m[1]} 个`],
-    [/^(\S+) is text written inline/, (m) => `${m[1]} 是直接写在题里的文字：先在「Skill Lab → 输入文件」把它上传成文件，再在这里写它的名字`],
+    [/^(.+?) is text written inline/, (m) => `${m[1]} 是直接写在题里的文字：先在「Skill Lab → 输入文件」把它上传成文件，再在这里写它的名字`],
     [/^each one \{"path", "asset"/, () => '每一项都要是 {"path", "asset": "sha256:…"}'],
     [/^(.+?) needs its asset/, (m) => `${m[1] === 'a file' ? '有一个文件' : `${m[1]} `}缺 asset：填上传它时返回的 sha256:…`],
     [/^(sha256:\S+) is not a file uploaded to this workspace/, (m) => `${m[1]} 不是这个工作区上传过的文件：先上传`],
-    [/^(\S+) must end in the file's own extension \(it is a (\S+) file\)$/, (m) => `${m[1]} 的扩展名要和文件本身一致（它是 ${m[2]} 文件）`],
-    [/^(\S+) twice$/, (m) => `${m[1]} 写了两次`], [/^at most (\d+) MiB a task$/, (m) => `每道题的文件加起来最多 ${m[1]} MiB`],
+    [/^(.+?) must end in the file's own extension \(it is a (\S+) file\)$/, (m) => `${m[1]} 的扩展名要和文件本身一致（它是 ${m[2]} 文件）`],
+    [/^(.+) twice$/, (m) => `${m[1]} 写了两次`], [/^at most (\d+) MiB a task$/, (m) => `每道题的文件加起来最多 ${m[1]} MiB`],
     [/^'(.*)' is not a plain relative path/, (m) => `「${m[1]}」不是普通的相对路径（最多 4 层目录，不能有 ..，不能是隐藏文件）`]]
   const hit = rules.find(([re]) => re.test(said))
   return hit ? hit[1](said.match(hit[0])) : said
@@ -706,7 +706,9 @@ const STAGE_DETAILS = [
 // ECR scan states that end without results (describe_image_scan_findings), said plainly; AWS's own description adds nothing
 const SCAN_ENDED = { UNSUPPORTED_IMAGE: 'ECR 扫描不支持这个镜像（它的操作系统或包管理器不在支持范围里）',
   SCAN_ELIGIBILITY_EXPIRED: '这个镜像过了 ECR 持续扫描的期限（增强扫描只持续扫描近期推送或拉取过的镜像）',
-  FINDINGS_UNAVAILABLE: 'ECR 的扫描结果读不到（镜像可能已删除，或扫描数据已过期）', FAILED: 'ECR 扫描失败了' }
+  FINDINGS_UNAVAILABLE: 'ECR 的扫描结果读不到（镜像可能已删除，或扫描数据已过期）',
+  LIMIT_EXCEEDED: '这个镜像的扫描次数超了 ECR 的限额（同一个镜像 24 小时内只能做一次基础扫描）', IMAGE_ARCHIVED: '镜像已归档，ECR 不扫描归档的镜像',
+  UNKNOWN: '读不到 ECR 的扫描状态' }
 export function unscannedText(why) {
   let m = /^no scan of the image appeared within (\d+) s/.exec(why)
   if (m) return `${m[1]} 秒内没有出现这个镜像的扫描（镜像也许比仓库开「推送时扫描」更早）`
@@ -714,7 +716,7 @@ export function unscannedText(why) {
   m = /^the scan is still (\w+) after (\d+) s/.exec(why)
   if (m) return `等了 ${m[2]} 秒，扫描还是「${statusText(m[1])}」`
   m = /^the scan is (\w+)(?:: (.*))?$/s.exec(why)
-  if (m) return SCAN_ENDED[m[1]] || `扫描「${statusText(m[1])}」${m[2] ? `：${m[2]}` : ''}`
+  if (m) return m[1] === 'FAILED' ? `ECR 扫描失败了${m[2] ? `（${m[2]}）` : ''}` : SCAN_ENDED[m[1]] || `扫描「${statusText(m[1])}」${m[2] ? `：${m[2]}` : ''}`
   return consoleText(why) || why
 }
 // The deploy's facts and options, phrase by phrase (they come joined with " · ").

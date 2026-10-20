@@ -28,7 +28,7 @@ from .. import l1
 from .aws import client
 from .panel import STABILITY_RUNS, Panel, band as panel_band
 from .run import Asked, SETTLE_TIMEOUT, ask_rows, new_session_id, out_text
-from .traces import TraceStore
+from .traces import PatientSpanSource, TraceStore
 
 EXPECTED_KEYS = frozenset({"mustMention", "mustMentionAnyOf", "mustNotMention", "requiredTools", "forbiddenTools",
                            "shouldRefuse", "shouldEscalate"})
@@ -216,10 +216,10 @@ class Verify:
                                                   encoding="utf-8")
             for r in asked:
                 (run_dir / f"q{r.index}.out").write_text(out_text(r), encoding="utf-8")
-            store = TraceStore(logs, group, since)
+            store = TraceStore(logs, group, since, log=self.log)
             store.wait_complete({r.session_id: r.text for r in asked}, timeout=self.settle_timeout, progress=self.log)
             doc = l1.evaluate_run(pack=self.pack, cases=self.cases, run_dir=run_dir, phase=f"round{number}", since_ms=since,
-                                  source=l1.LogsSpanSource(logs, since))
+                                  source=PatientSpanSource(l1.LogsSpanSource(logs, since), log=self.log))
             (run_dir / "l1.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
             results = {c["caseId"]: c for c in doc["cases"]}
             rounds.append({"round": number, "cases": {

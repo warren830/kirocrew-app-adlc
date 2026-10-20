@@ -486,9 +486,10 @@ function JobView({ job }) {
   return h(Fragment, null,
     stages.length ? h(Table, { head: ['阶段', '状态', '耗时', '说明'], rows: stages.map((s) => ({ key: s.name, cells: [h('b', null, STAGE_LABEL[s.name] || s.name),
       s.status !== 'running' ? h(Chip, { tone: STAGE_TONE[s.status] }, STAGE_TEXT[s.status] || s.status)
-        : job.status === 'running' ? h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), STAGE_TEXT.running) : h(Chip, { tone: 'warn' }, '没跑完'),
+        : !['succeeded', 'failed', 'interrupted'].includes(job.status) ? h('span', { className: 'cs-row' }, h('span', { className: 'cs-spin' }), STAGE_TEXT.running)
+          : h(Chip, { tone: 'warn' }, '没跑完'),
       secs(s.seconds), s.detail ? h('span', { className: s.status === 'failed' ? 'cs-err' : 'cs-mut', title: s.detail }, stageText(s.status, s.detail)) : '—'] })) })
-      : h(Empty, null, '准备中…'),
+      : h(Empty, null, ['succeeded', 'failed', 'interrupted'].includes(job.status) ? '这个任务没有记下阶段。' : '准备中…'),
     smoke ? h(Note, { tone: 'ok' }, h('b', null, `冒烟调用（${secs(smoke.seconds)}）：`), smoke.answer) : null,
     h(JobError, { error: job.error }),
     h('pre', { className: 'cs-pre', style: { maxHeight: 220, overflow: 'auto' } }, logLines(job.log, 14) || (job.status === 'unreadable' ? '（读不到这个任务的日志）' : '…')))

@@ -29,7 +29,7 @@ from .aws import Provisioner, client as aws_client
 from .panel import STABILITY_RUNS as PANEL_STABILITY_RUNS, Panel, band as panel_band, matrix as panel_matrix
 from .panel import recommend as panel_recommend, references as panel_references, render_markdown as panel_markdown, unseen as panel_unseen
 from .names import DirectNames
-from .traces import TraceStore, retrieval_trace
+from .traces import PatientSpanSource, TraceStore, retrieval_trace
 
 #: 13-judge-stability.sh: three re-scores of one trace, then ✅ std ≤ 0.03 / ⚠️ ≤ 0.08 / ❌ above.
 STABILITY_RUNS = 3
@@ -257,7 +257,7 @@ class DirectRun:
     def l1_compact(self, phase: str, run_dir: Path, since_ms: int, baseline: Mapping[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
         logs = aws_client(self.session, "logs", self.region)
         doc = l1.evaluate_run(pack=self.pack, cases=self.practice, run_dir=run_dir, phase=phase, since_ms=since_ms,
-                              source=l1.LogsSpanSource(logs, since_ms), release_version=str(self.manifest["version"]), baseline=baseline)
+                              source=PatientSpanSource(l1.LogsSpanSource(logs, since_ms), log=self.log), release_version=str(self.manifest["version"]), baseline=baseline)
         (run_dir / "l1.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
         return doc, l1.compact(doc)
 
@@ -378,7 +378,7 @@ class DirectRun:
         mark = time.monotonic()
         self.on_stage("settle")
         runtime_group = f"/aws/bedrock-agentcore/runtimes/{harness['runtimeId']}-DEFAULT"
-        store = TraceStore(aws_client(self.session, "logs", self.region), runtime_group, since_ms)
+        store = TraceStore(aws_client(self.session, "logs", self.region), runtime_group, since_ms, log=self.log)
         everything = {r.session_id: r.text for r in baseline_rows + optimized_rows + [r for rows in sweep_rows.values() for r in rows]}
         spans = store.wait_complete(everything, timeout=self.settle_timeout, progress=self.log)
         timings["settle"] = round(time.monotonic() - mark, 1)
