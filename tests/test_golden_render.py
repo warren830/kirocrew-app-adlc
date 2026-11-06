@@ -43,10 +43,12 @@ UPDATE = os.environ.get("WSC_UPDATE_GOLDENS") == "1"
 # carry the labs.teaching derived order (student-safe teaching object; instructor/teaching.json).
 # P4 (SPEC D12): RELEASE.json records provenancePolicy and the instructor provenance report gains the
 # policy, class and origin columns; release versions (the hashed file set) are unchanged.
+# kb-nonfilterable-metadata: create_kb.py also marks AMAZON_BEDROCK_METADATA non-filterable (S3 Vectors' 2 KB
+# filterable-metadata cap failed every zh-CN chunk); the pack digests are unchanged.
 PINNED = {
-    "hr-default": ("hr-default-85c5a2d70b64", "7f29def6c178235da1498a873e50b2b5fa51433de9c4dddfaeabe546c709b535"),
-    "it-helpdesk": ("it-helpdesk-c6181abdde98", "07f73954af5d96b3f936ef5bc36a1e820062a5508d9ef8c0564f80c0cdd1422a"),
-    "maintenance": ("maintenance-c8acba8ebcac", "210ef2c600a8a3d1ae8ae8f2a53e0b59b58bee7923fce5c2469b06d7a245fa4b"),
+    "hr-default": ("hr-default-6eb7d55da932", "7f29def6c178235da1498a873e50b2b5fa51433de9c4dddfaeabe546c709b535"),
+    "it-helpdesk": ("it-helpdesk-c0bead3c408c", "07f73954af5d96b3f936ef5bc36a1e820062a5508d9ef8c0564f80c0cdd1422a"),
+    "maintenance": ("maintenance-e2cee3669e41", "210ef2c600a8a3d1ae8ae8f2a53e0b59b58bee7923fce5c2469b06d7a245fa4b"),
 }
 
 _RENDERED: dict[str, tuple] = {}

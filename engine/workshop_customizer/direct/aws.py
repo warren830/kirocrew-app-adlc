@@ -210,10 +210,26 @@ class Provisioner:
         if done.returncode != 0 or line is None:
             raise ProvisionError(f"knowledge base: {(done.stderr or done.stdout).strip()[-600:]}")
         found = json.loads(line[len("DIRECT_KB "):])
+        self.check_ingestion(found["id"], found["dataSource"])
         self.state["knowledgeBase"] = {**found, "name": self.names.knowledge_base, "docsDigest": digest}
         self.save()
         self.log(f"  knowledge base {found['id']} ingested ({len(list(docs.glob('*')))} documents)")
         return str(found["id"])
+
+    def check_ingestion(self, kb_id: str, data_source_id: str) -> None:
+        """create_kb.py's sync returns once the job ends, COMPLETE or FAILED; a failed or partly failed ingestion
+        leaves a knowledge base that retrieves nothing, so it must stop the round (and not be cached as done)."""
+        agent = client(self.session, "bedrock-agent", self.region)
+        jobs = agent.list_ingestion_jobs(knowledgeBaseId=kb_id, dataSourceId=data_source_id, maxResults=1,
+                                         sortBy={"attribute": "STARTED_AT", "order": "DESCENDING"})["ingestionJobSummaries"]
+        if not jobs:
+            return
+        job = agent.get_ingestion_job(knowledgeBaseId=kb_id, dataSourceId=data_source_id,
+                                      ingestionJobId=jobs[0]["ingestionJobId"])["ingestionJob"]
+        failed = (job.get("statistics") or {}).get("numberOfDocumentsFailed") or 0
+        if job["status"] != "COMPLETE" or failed:
+            reasons = "; ".join(job.get("failureReasons") or [])[:600]
+            raise ProvisionError(f"knowledge base {kb_id}: ingestion {job['status']}, {failed} document(s) failed: {reasons}")
 
     # ------------------------------------------------------------------ roles
     def _ensure_role(self, name: str, trust: dict, policy_name: str, policy: dict, managed: Iterable[str] = ()) -> str:

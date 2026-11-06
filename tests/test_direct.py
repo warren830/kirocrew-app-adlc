@@ -184,6 +184,42 @@ def test_the_tools_package_and_the_role_mirror_the_workshop(release):
     assert config["environmentVariables"] == {"UNIFIED_TRACES_DESTINATION_ENABLED": "false"}  # split telemetry, as the render sets
 
 
+def test_the_vector_index_keeps_both_bedrock_keys_out_of_the_filterable_metadata(release):
+    # S3 Vectors caps filterable metadata at 2 KB per vector; live 2026-11-05 every chunk of a zh-CN pack failed
+    # ingestion while only AMAZON_BEDROCK_TEXT was non-filterable.
+    text = (release / "knowledge-base" / "create_kb.py").read_text(encoding="utf-8")
+    keys = text.split('"nonFilterableMetadataKeys": [', 1)[1].split("]", 1)[0]
+    assert '"AMAZON_BEDROCK_TEXT"' in keys and '"AMAZON_BEDROCK_METADATA"' in keys
+
+
+def test_a_failed_or_partly_failed_ingestion_stops_the_round(monkeypatch):
+    class FakeAgent:
+        def __init__(self, job):
+            self.job = job
+
+        def list_ingestion_jobs(self, **kwargs):
+            assert kwargs["sortBy"] == {"attribute": "STARTED_AT", "order": "DESCENDING"}
+            return {"ingestionJobSummaries": [{"ingestionJobId": "j1"}] if self.job else []}
+
+        def get_ingestion_job(self, **kwargs):
+            return {"ingestionJob": self.job}
+
+    prov = aws.Provisioner.__new__(aws.Provisioner)
+    prov.session, prov.region = object(), "us-west-2"
+
+    def check(job):
+        monkeypatch.setattr(aws, "client", lambda _session, name, _region=None: FakeAgent(job))
+        prov.check_ingestion("KB1", "DS1")
+
+    check({"status": "COMPLETE", "statistics": {"numberOfDocumentsFailed": 0}})
+    check(None)  # no ingestion job yet: nothing to judge
+    with pytest.raises(aws.ProvisionError, match="ingestion FAILED, 4 document"):
+        check({"status": "FAILED", "statistics": {"numberOfDocumentsFailed": 4},
+               "failureReasons": ["Filterable metadata must have at most 2048 bytes"]})
+    with pytest.raises(aws.ProvisionError, match="ingestion COMPLETE, 1 document"):
+        check({"status": "COMPLETE", "statistics": {"numberOfDocumentsFailed": 1}})
+
+
 def test_a_direct_report_is_complete_without_a_model_comparison():
     import teaching_run as tr
 

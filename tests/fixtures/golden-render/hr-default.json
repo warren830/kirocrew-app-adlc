@@ -58,7 +58,7 @@
   "evaluators/thelma_eval/span_adapter.py": "e37147608195253e211f5a0b859a9f2c8ce664ee72af8556c2f574be69d96764",
   "gateway/create_gateway.py": "b21fac64372c849d36a9ac892b2f5ab45afdc2650e17cd0a12440b6978b29fad",
   "gateway/hr-tools-schema.json": "f4477f556f5ee8b35d71b3e37f2ac6964e8bd9cd0ad004d27320bbde19bbefae",
-  "knowledge-base/create_kb.py": "7c6473fb662e7bb5370bf63061d2cf2222fb8f453429728a10ef37a1c296cfd2",
+  "knowledge-base/create_kb.py": "4f50ab0be440338da97dfd30fc2de690c4722a72e87bb40a5316946d5a2ed2d0",
   "l1_eval.py": "823f24ad9366979e929ee86a3c855324707476d7ccac5e1e1fc5521c6a7c1d60",
   "lambda/fixtures.json": "29bdc2c967f67d09a5cd0fd490600e1227210b029fb3238399b94a782334ac1d",
   "lambda/scenario_tools_handler.py": "8df515926af7f17bb272348c9e5bc702302c80dfced11f03b54dbca9a948a247",
@@ -103,7 +103,7 @@
   "trace_metrics.py": "f07bf8eaa4b01d3bdab14bcb2ccc74bff65002bc7979968df6d1d3197635a7c5",
   "trace_session.py": "14f2e8477dd73156db423c82fca549ea8047931cb3d8c33185787f0df652db91"
  },
- "manifestSha256": "14b10de50816bd8e58ca86c841d63a963f0d85e825c57b6134f8771f9e4a2005",
+ "manifestSha256": "fcbda69a122f2c073d79f2eb5cdb5c3af75ad86eaee7ff76e3713e61c5f7e850",
  "packId": "hr-default",
  "patches": [
   [
@@ -119,6 +119,11 @@
   [
    "knowledge-base/create_kb.py",
    "kb-prune-stale-documents",
+   1
+  ],
+  [
+   "knowledge-base/create_kb.py",
+   "kb-nonfilterable-metadata",
    1
   ],
   [
@@ -867,5 +872,5 @@
    1
   ]
  ],
- "version": "hr-default-85c5a2d70b64"
+ "version": "hr-default-6eb7d55da932"
 }

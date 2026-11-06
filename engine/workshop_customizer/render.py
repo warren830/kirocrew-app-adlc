@@ -1151,6 +1151,19 @@ def get_data_bucket_from_cfn(''',
             expect=1, flags=0, name="kb-prune-stale-documents", file="knowledge-base/create_kb.py", records=records,
         ),
     )
+    # create_kb.py: S3 Vectors allows at most 2 KB of filterable metadata per vector, and Bedrock writes both the
+    # chunk text (AMAZON_BEDROCK_TEXT) and its metadata blob (AMAZON_BEDROCK_METADATA) on every vector. Upstream
+    # marks only the text non-filterable, so multi-byte (zh-CN) chunks fail ingestion with "Filterable metadata
+    # must have at most 2048 bytes" while English packs stay under the limit.
+    edit(
+        "knowledge-base/create_kb.py",
+        lambda t: _apply(
+            t, re.escape('"nonFilterableMetadataKeys": [\n                        "AMAZON_BEDROCK_TEXT",\n'),
+            lambda _m: '"nonFilterableMetadataKeys": [\n                        "AMAZON_BEDROCK_TEXT",\n'
+                       '                        "AMAZON_BEDROCK_METADATA",\n',
+            expect=1, flags=0, name="kb-nonfilterable-metadata", file="knowledge-base/create_kb.py", records=records,
+        ),
+    )
 
     # 02: the Lambda zip carries the generic handler plus its fixtures.
     edit(
