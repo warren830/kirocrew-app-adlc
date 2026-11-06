@@ -7,7 +7,7 @@
   "01-create-kb.sh": "90eacd8c98bb164cf24d9b730bae6cd94182ab2add9f2bbb4dd93f0c4076af28",
   "02-create-gateway.sh": "d603fa056b96fe91e037940b95d4b119757f035bda3cd6f79d31d578aee5358c",
   "03-configure-skills.sh": "4b67d6ea1057a8ccb065b3928620100109c1a7e4b3c117a315c220b621ecd002",
-  "04-deploy.sh": "bb9457b63faf517d9eaf3da4e6c6bd70e50ca926ff8cfa5e522b2f9807fdf9d4",
+  "04-deploy.sh": "2184750c3424f1f85962f2e4ed709f8be109d6ef39dfb3ba2d5a73fce7ddbe16",
   "05-setup-memory.sh": "f868c7ad5a437952a486b5204c1bfd46bbef0f1edaf2cb96fc590a6caf1051de",
   "06-test-conversation.sh": "989f19876405032cebc0274cc5a55d963b01795202b0d81e7d848cdf1b2308bb",
   "07-setup-eval-env.sh": "8b18b8b05b5427fe690605b45166853c1b5b1c14d20f1ada02e3b9bfb32538d0",
@@ -98,7 +98,7 @@
   "trace_metrics.py": "f07bf8eaa4b01d3bdab14bcb2ccc74bff65002bc7979968df6d1d3197635a7c5",
   "trace_session.py": "14f2e8477dd73156db423c82fca549ea8047931cb3d8c33185787f0df652db91"
  },
- "manifestSha256": "c76c648df2ab6fba43160643c9d3a71b1adb9074a64a33d7d1e15bb8622813c1",
+ "manifestSha256": "9269b71bc6d2cba04a8e35d2d2b053f28ada6ca4b2211d67cece199131201313",
  "packId": "maintenance",
  "patches": [
   [
@@ -159,6 +159,11 @@
   [
    "04-deploy.sh",
    "skills-list-from-pack",
+   1
+  ],
+  [
+   "04-deploy.sh",
+   "explicit-harness-image",
    1
   ],
   [
@@ -867,5 +872,5 @@
    1
   ]
  ],
- "version": "maintenance-e2cee3669e41"
+ "version": "maintenance-568bf8d51ed7"
 }

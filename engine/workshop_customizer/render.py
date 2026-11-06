@@ -1241,6 +1241,23 @@ def get_data_bucket_from_cfn(''',
             lambda _m: "jq '.skills = [" + skills_json.replace('\\"', '"') + "]'",
             expect=1, flags=0, name="skills-list-from-pack", file="04-deploy.sh", records=records,
         )
+        # A Harness is now created only once its execution role can pull its image (CREATE_FAILED "The execution
+        # role can't pull the container image", live 2026-11-06), and a VPC Harness gets the private AgentCore
+        # image. The pinned CDK grants private ECR pull only for an explicit containerUri; without one the role
+        # has public-ECR access only and runtime_permissions.py (which grants the pull after a deploy) never runs.
+        t = _apply(
+            t,
+            r"^# ---- Step 8: Configure deployment target ----\n",
+            lambda m: '# ---- Harness image (workshop-customizer: explicit-harness-image) ----\n'
+            'if [ "$(jq -r \'.networkMode // empty\' app/hrassistant/harness.json)" = "VPC" ] && \\\n'
+            '   ! jq -e \'.containerUri\' app/hrassistant/harness.json >/dev/null 2>&1; then\n'
+            '  HARNESS_IMAGE="${WORKSHOP_HARNESS_IMAGE:-796669927364.dkr.ecr.$REGION.amazonaws.com/harness-$REGION:latest}"\n'
+            '  jq --arg uri "$HARNESS_IMAGE" \'.containerUri = $uri\' app/hrassistant/harness.json > tmp.json && \\\n'
+            '    mv tmp.json app/hrassistant/harness.json\n'
+            '  echo "🧱 Harness image: $HARNESS_IMAGE (explicit, so the execution role can pull it at create)"\n'
+            'fi\n\n' + m.group(0),
+            expect=1, flags=re.M, name="explicit-harness-image", file="04-deploy.sh", records=records,
+        )
         return t
 
     edit("04-deploy.sh", patch_04)

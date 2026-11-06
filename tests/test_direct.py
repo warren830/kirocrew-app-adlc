@@ -192,6 +192,22 @@ def test_the_vector_index_keeps_both_bedrock_keys_out_of_the_filterable_metadata
     assert '"AMAZON_BEDROCK_TEXT"' in keys and '"AMAZON_BEDROCK_METADATA"' in keys
 
 
+def test_a_vpc_harness_names_its_image_so_its_role_can_pull_it_at_create(release, tmp_path):
+    # Live 2026-11-06 the Guided Run's 04 failed: CREATE_FAILED "The execution role can't pull the container image".
+    script = (release / "04-deploy.sh").read_text(encoding="utf-8")
+    block = script.split("# ---- Harness image (workshop-customizer: explicit-harness-image) ----\n", 1)[1].split("\n\n", 1)[0]
+    assert script.index("explicit-harness-image") < script.index("npx agentcore deploy --yes")
+    harness = tmp_path / "app" / "hrassistant" / "harness.json"
+    harness.parent.mkdir(parents=True)
+    for config, expected in (({"networkMode": "VPC"}, "796669927364.dkr.ecr.us-west-2.amazonaws.com/harness-us-west-2:latest"),
+                             ({"networkMode": "PUBLIC"}, None),
+                             ({"networkMode": "VPC", "containerUri": "111122223333.dkr.ecr.us-west-2.amazonaws.com/x:1"},
+                              "111122223333.dkr.ecr.us-west-2.amazonaws.com/x:1")):
+        harness.write_text(json.dumps(config))
+        subprocess.run(["bash", "-c", "set -e\nREGION=us-west-2\n" + block], cwd=tmp_path, check=True, capture_output=True)
+        assert json.loads(harness.read_text()).get("containerUri") == expected
+
+
 def test_a_failed_or_partly_failed_ingestion_stops_the_round(monkeypatch):
     class FakeAgent:
         def __init__(self, job):
