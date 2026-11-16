@@ -208,32 +208,86 @@ def test_a_vpc_harness_names_its_image_so_its_role_can_pull_it_at_create(release
         assert json.loads(harness.read_text()).get("containerUri") == expected
 
 
-def test_a_failed_or_partly_failed_ingestion_stops_the_round(monkeypatch):
+def _create_kb_module(release, monkeypatch):
+    import importlib.util
+
+    monkeypatch.syspath_prepend(str(REPO / "engine" / "vendor"))  # retrying, as aws.with_vendor gives the subprocess
+    spec = importlib.util.spec_from_file_location("rendered_create_kb", release / "knowledge-base" / "create_kb.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "interactive_sleep", lambda _s: None)
+    return module
+
+
+def test_the_release_sync_raises_unless_every_document_ingested(release, monkeypatch):
+    # Live 2026-11-05 a zh-CN pack's ingestion FAILED 4 of 4 documents; upstream's sync printed it and returned,
+    # so 01 exited 0 (and direct mode cached the empty knowledge base). A STOPPED job never left the wait loop.
+    m = _create_kb_module(release, monkeypatch)
+
     class FakeAgent:
-        def __init__(self, job):
-            self.job = job
+        def __init__(self, final, docs=()):
+            self.final, self.docs = final, list(docs)
 
-        def list_ingestion_jobs(self, **kwargs):
-            assert kwargs["sortBy"] == {"attribute": "STARTED_AT", "order": "DESCENDING"}
-            return {"ingestionJobSummaries": [{"ingestionJobId": "j1"}] if self.job else []}
+        def get_knowledge_base(self, **_kw):
+            return {"knowledgeBase": {"status": "ACTIVE"}}
 
-        def get_ingestion_job(self, **kwargs):
-            return {"ingestionJob": self.job}
+        def start_ingestion_job(self, **_kw):
+            return {"ingestionJob": {"ingestionJobId": "j1", "status": "STARTING"}}
 
-    prov = aws.Provisioner.__new__(aws.Provisioner)
-    prov.session, prov.region = object(), "us-west-2"
+        def get_ingestion_job(self, **_kw):
+            return {"ingestionJob": self.final}
 
-    def check(job):
-        monkeypatch.setattr(aws, "client", lambda _session, name, _region=None: FakeAgent(job))
-        prov.check_ingestion("KB1", "DS1")
+        def list_knowledge_base_documents(self, **kw):
+            assert kw["knowledgeBaseId"] == "KB1" and kw["dataSourceId"] == "DS1"
+            return {"documentDetails": self.docs}
 
-    check({"status": "COMPLETE", "statistics": {"numberOfDocumentsFailed": 0}})
-    check(None)  # no ingestion job yet: nothing to judge
-    with pytest.raises(aws.ProvisionError, match="ingestion FAILED, 4 document"):
-        check({"status": "FAILED", "statistics": {"numberOfDocumentsFailed": 4},
-               "failureReasons": ["Filterable metadata must have at most 2048 bytes"]})
-    with pytest.raises(aws.ProvisionError, match="ingestion COMPLETE, 1 document"):
-        check({"status": "COMPLETE", "statistics": {"numberOfDocumentsFailed": 1}})
+    def sync(final, docs=()):
+        kb = m.KnowledgeBasesForAmazonBedrock.__new__(m.KnowledgeBasesForAmazonBedrock)
+        kb.bedrock_agent_client = FakeAgent(final, docs)
+        kb.synchronize_data("KB1", "DS1")
+
+    sync({"ingestionJobId": "j1", "status": "COMPLETE", "statistics": {"numberOfDocumentsFailed": 0}})
+    with pytest.raises(RuntimeError, match=r"Ingestion FAILED \(4 document\(s\) failed\): Filterable metadata must have at most 2048 bytes"):
+        sync({"ingestionJobId": "j1", "status": "FAILED", "statistics": {"numberOfDocumentsFailed": 4},
+              "failureReasons": ["Filterable metadata must have at most 2048 bytes"]})
+    with pytest.raises(RuntimeError, match=r"Ingestion COMPLETE \(1 document\(s\) failed\): too large"):
+        sync({"ingestionJobId": "j1", "status": "COMPLETE", "statistics": {"numberOfDocumentsFailed": 1}},
+             [{"status": "INDEXED"}, {"status": "FAILED", "statusReason": "too large"}])
+    with pytest.raises(RuntimeError, match="Ingestion STOPPED"):
+        sync({"ingestionJobId": "j1", "status": "STOPPED", "statistics": {}})
+
+
+def test_the_direct_knowledge_base_is_cached_only_after_a_verified_ingestion(release, tmp_path, monkeypatch):
+    monkeypatch.setattr(aws, "client", lambda *_a, **_k: object())
+    names = DirectNames.of(NAMESPACE, account="111122223333", region="us-west-2")
+    state = tmp_path / "resources.json"
+    digest = aws.docs_digest(release / "pack" / "knowledge-base" / "docs")
+    runs = []
+
+    def fake_run(argv, **_kw):
+        runs.append(argv)
+        return outcome
+
+    monkeypatch.setattr(aws.subprocess, "run", fake_run)
+
+    def provisioner():
+        return aws.Provisioner(object(), names, release_dir=release, pack={}, account="111122223333", region="us-west-2",
+                               state_path=state, log=lambda _l: None)
+
+    ok = subprocess.CompletedProcess([], 0, stdout='DIRECT_KB {"id": "KB2", "dataSource": "DS2"}\n', stderr="")
+    stale = subprocess.CompletedProcess([], 1, stdout="", stderr="RuntimeError: Ingestion FAILED (4 document(s) failed): "
+                                                               "Filterable metadata must have at most 2048 bytes")
+    # 0.4.7 cached the knowledge base whose ingestion silently failed: same docs, no ingestion record.
+    state.write_text(json.dumps({"knowledgeBase": {"id": "KB1", "dataSource": "DS1", "docsDigest": digest}}))
+    outcome = stale
+    with pytest.raises(aws.ProvisionError, match="predates 0.4.8: clean up the direct-mode resources"):
+        provisioner().ensure_kb(profile=None)
+    assert len(runs) == 1 and "knowledgeBase" not in json.loads(state.read_text())
+
+    outcome = ok
+    assert provisioner().ensure_kb(profile=None) == "KB2"
+    assert json.loads(state.read_text())["knowledgeBase"]["ingestion"] == "COMPLETE"
+    assert provisioner().ensure_kb(profile=None) == "KB2" and len(runs) == 2  # verified and unchanged: not re-ingested
 
 
 def test_a_direct_report_is_complete_without_a_model_comparison():

@@ -58,7 +58,7 @@
   "evaluators/thelma_eval/span_adapter.py": "28a9fda2f1ade00f1cc2522acd83462a19ca3296f42048c25cd783757474035e",
   "gateway/create_gateway.py": "630b6f25ce1084293aee36324dbfad90e0e0b776d6493850f4f3f0f3bbe9fc0f",
   "gateway/it-tools-schema.json": "6aa0560fbcf231e7fd42f10ac1866b00125c14711b4d3208c50df029179f5db1",
-  "knowledge-base/create_kb.py": "0bdf3f95e3f5164ae6dfbe48ee2092cc0c0ef2f49ed79e5cc4d2a38b2de8eaf7",
+  "knowledge-base/create_kb.py": "a09c9e759bdca5b13ed0560b8a08a7f1ae5f81152c7abe2bcc49c4d5f7cb19e2",
   "l1_eval.py": "823f24ad9366979e929ee86a3c855324707476d7ccac5e1e1fc5521c6a7c1d60",
   "lambda/fixtures.json": "b53cf0b0a55c91655c0fc4c41376478e24403fa6aa77a57d8b14811a8be580fa",
   "lambda/scenario_tools_handler.py": "8df515926af7f17bb272348c9e5bc702302c80dfced11f03b54dbca9a948a247",
@@ -98,7 +98,7 @@
   "trace_metrics.py": "f07bf8eaa4b01d3bdab14bcb2ccc74bff65002bc7979968df6d1d3197635a7c5",
   "trace_session.py": "14f2e8477dd73156db423c82fca549ea8047931cb3d8c33185787f0df652db91"
  },
- "manifestSha256": "9e365a5101269be4fdd9bef274e462f6f2a7413d1afd859d556b54229419b8d9",
+ "manifestSha256": "6478b71fb49774d75e67171af2c28b5a59d0d4fa03b0421e4f08a03865c321f2",
  "packId": "it-helpdesk",
  "patches": [
   [
@@ -119,6 +119,16 @@
   [
    "knowledge-base/create_kb.py",
    "kb-nonfilterable-metadata",
+   1
+  ],
+  [
+   "knowledge-base/create_kb.py",
+   "kb-ingestion-terminal-states",
+   1
+  ],
+  [
+   "knowledge-base/create_kb.py",
+   "kb-ingestion-must-complete",
    1
   ],
   [
@@ -872,5 +882,5 @@
    1
   ]
  ],
- "version": "it-helpdesk-39421b91c179"
+ "version": "it-helpdesk-aef27a001513"
 }

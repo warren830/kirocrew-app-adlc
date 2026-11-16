@@ -183,12 +183,16 @@ class Provisioner:
     # ------------------------------------------------------------------ knowledge base
     def ensure_kb(self, *, profile: str | None) -> str:
         """01's knowledge base, through the release's own create_kb.py (run in its own process: it keeps
-        module globals and a default boto3 session); documents are re-ingested only when they changed."""
+        module globals and a default boto3 session); documents are re-ingested only when they changed.
+        The release's sync raises unless every document ingested, so the state records only a verified
+        ingestion; an entry from before that check (no ``ingestion``) is not trusted."""
         docs = self.release_dir / "pack" / "knowledge-base" / "docs"
         digest = docs_digest(docs)
         kb = self.state.get("knowledgeBase") or {}
-        if kb.get("id") and kb.get("docsDigest") == digest:
+        if kb.get("id") and kb.get("docsDigest") == digest and kb.get("ingestion") == "COMPLETE":
             return str(kb["id"])
+        if self.state.pop("knowledgeBase", None) is not None:
+            self.save()  # the prune and upload below change the KB, so the old entry no longer describes it
         script = (
             "import importlib.util, json, sys\n"
             "spec = importlib.util.spec_from_file_location('create_kb', sys.argv[1]); m = importlib.util.module_from_spec(spec)\n"
@@ -208,28 +212,17 @@ class Provisioner:
                                self.names.bucket, self.names.kb_prefix, str(docs)], capture_output=True, text=True, env=env, timeout=1800)
         line = next((ln for ln in reversed(done.stdout.splitlines()) if ln.startswith("DIRECT_KB ")), None)
         if done.returncode != 0 or line is None:
-            raise ProvisionError(f"knowledge base: {(done.stderr or done.stdout).strip()[-600:]}")
+            detail = (done.stderr or done.stdout).strip()
+            # A vector index made before 0.4.8 keeps AMAZON_BEDROCK_METADATA filterable, and an index's metadata
+            # keys cannot change: only a new knowledge base ingests a zh-CN pack.
+            hint = (" (this knowledge base predates 0.4.8: clean up the direct-mode resources, then run again)"
+                    if "Filterable metadata must have at most" in detail else "")
+            raise ProvisionError(f"knowledge base: {detail[-600:]}{hint}")
         found = json.loads(line[len("DIRECT_KB "):])
-        self.check_ingestion(found["id"], found["dataSource"])
-        self.state["knowledgeBase"] = {**found, "name": self.names.knowledge_base, "docsDigest": digest}
+        self.state["knowledgeBase"] = {**found, "name": self.names.knowledge_base, "docsDigest": digest, "ingestion": "COMPLETE"}
         self.save()
         self.log(f"  knowledge base {found['id']} ingested ({len(list(docs.glob('*')))} documents)")
         return str(found["id"])
-
-    def check_ingestion(self, kb_id: str, data_source_id: str) -> None:
-        """create_kb.py's sync returns once the job ends, COMPLETE or FAILED; a failed or partly failed ingestion
-        leaves a knowledge base that retrieves nothing, so it must stop the round (and not be cached as done)."""
-        agent = client(self.session, "bedrock-agent", self.region)
-        jobs = agent.list_ingestion_jobs(knowledgeBaseId=kb_id, dataSourceId=data_source_id, maxResults=1,
-                                         sortBy={"attribute": "STARTED_AT", "order": "DESCENDING"})["ingestionJobSummaries"]
-        if not jobs:
-            return
-        job = agent.get_ingestion_job(knowledgeBaseId=kb_id, dataSourceId=data_source_id,
-                                      ingestionJobId=jobs[0]["ingestionJobId"])["ingestionJob"]
-        failed = (job.get("statistics") or {}).get("numberOfDocumentsFailed") or 0
-        if job["status"] != "COMPLETE" or failed:
-            reasons = "; ".join(job.get("failureReasons") or [])[:600]
-            raise ProvisionError(f"knowledge base {kb_id}: ingestion {job['status']}, {failed} document(s) failed: {reasons}")
 
     # ------------------------------------------------------------------ roles
     def _ensure_role(self, name: str, trust: dict, policy_name: str, policy: dict, managed: Iterable[str] = ()) -> str:

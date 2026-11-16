@@ -43,3 +43,21 @@ def test_failed_rebuild_keeps_previous_release_and_build_record(tmp_path, monkey
     second = svc.build("atomic-build")
     assert second["version"] == first["version"] and json.loads((out / "build.json").read_text())["releaseDir"] == first["releaseDir"]
     assert not [p.name for p in out.iterdir() if p.name.startswith((".staging-", ".retired-"))]
+
+
+def test_a_release_an_older_app_rendered_is_rebuilt_not_reused(tmp_path):
+    # 0.4.9's render patches never reached a project built by 0.4.7: its sources were unchanged, so the
+    # release counted as current and one-click reused it (VPC Harness CREATE_FAILED again).
+    srv, svc = server_mod.create_server(tmp_path / "data", home=REPO_ROOT)
+    srv.server_close()
+    svc.create_project({"id": "stale-engine", "template": "it-helpdesk", "packKind": "reference"})
+    first = svc.build("stale-engine")
+    assert svc.release_info("stale-engine")["build"]["version"] == first["version"]
+    path = Path(first["releaseDir"]).parent / "build.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    for stale in ({k: v for k, v in record.items() if k != "engine"}, {**record, "engine": "0" * 64}):
+        path.write_text(json.dumps(stale), encoding="utf-8")
+        with pytest.raises(server_mod.HttpError, match="rendered by another version of the app; rebuild"):
+            svc.release_info("stale-engine")
+    svc.build("stale-engine")
+    assert svc.release_info("stale-engine")["build"]["engine"] == svc.engine_hash

@@ -131,6 +131,18 @@ def load_engine(home: Path):
             "render": render, "scenario": scenario, "sync": sync, "validator": validator}
 
 
+def engine_fingerprint(home: Path) -> str:
+    """Digest of the renderer: the engine package and the template lock. A release an older engine rendered
+    is stale even when the project's sources are unchanged (its render patches are missing)."""
+    h = hashlib.sha256()
+    package = home / "engine" / "workshop_customizer"
+    files = [home / "template-lock.json",
+             *sorted(p for p in package.rglob("*") if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc")]
+    for path in files:
+        h.update(path.relative_to(home).as_posix().encode() + b"\0" + path.read_bytes() + b"\0")
+    return h.hexdigest()
+
+
 def _jsonable(obj: Any) -> Any:
     if is_dataclass(obj) and not isinstance(obj, type):
         return _jsonable(asdict(obj))
@@ -562,10 +574,12 @@ class Service:
         self.store = Store(data_dir)
         self.home = home or resolve_home(data_dir)
         self.engine = None
+        self.engine_hash = ""
         self.engine_error = "" if self.home else "checkout not found (WORKSHOP_CUSTOMIZER_HOME / data/config.json homeDir)"
         if self.home:
             try:
                 self.engine = load_engine(self.home)
+                self.engine_hash = engine_fingerprint(self.home)
             except ImportError as exc:  # gateway interpreter without pyyaml/jsonschema/boto3
                 self.engine_error = f"engine dependency missing in {sys.executable}: {exc}"
         self._clients_factory = clients_factory
@@ -630,6 +644,8 @@ class Service:
         if (summary.get("sourceHash") != self._source_hash(project_id)
                 or summary.get("version") != meta["lastBuild"].get("version")):
             raise HttpError(409, "source files changed after the last build; rebuild the release")
+        if summary.get("engine") != self.engine_hash:
+            raise HttpError(409, "this release was rendered by another version of the app; rebuild the release")
         return summary
 
     # -- projects ----------------------------------------------------------
@@ -1806,6 +1822,7 @@ class Service:
             "files": len(manifest.get("files", {})),
             "contentHash": manifest.get("contentHash"),
             "sourceHash": self._source_hash(project_id),
+            "engine": self.engine_hash,
             "patches": len(getattr(release, "patches", []) or []),
         }
         self.store.write_json(out / "build.json", summary)

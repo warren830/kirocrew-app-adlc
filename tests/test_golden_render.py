@@ -46,10 +46,12 @@ UPDATE = os.environ.get("WSC_UPDATE_GOLDENS") == "1"
 # kb-nonfilterable-metadata: create_kb.py also marks AMAZON_BEDROCK_METADATA non-filterable (S3 Vectors' 2 KB
 # filterable-metadata cap failed every zh-CN chunk); the pack digests are unchanged.
 # explicit-harness-image: 04 names the VPC Harness's private AgentCore image, so the CDK role can pull it at create.
+# kb-ingestion-terminal-states / kb-ingestion-must-complete: create_kb.py's sync raises unless every document
+# ingested (a FAILED ingestion no longer passes 01); the pack digests are unchanged.
 PINNED = {
-    "hr-default": ("hr-default-9c6a857beadb", "7f29def6c178235da1498a873e50b2b5fa51433de9c4dddfaeabe546c709b535"),
-    "it-helpdesk": ("it-helpdesk-39421b91c179", "07f73954af5d96b3f936ef5bc36a1e820062a5508d9ef8c0564f80c0cdd1422a"),
-    "maintenance": ("maintenance-568bf8d51ed7", "210ef2c600a8a3d1ae8ae8f2a53e0b59b58bee7923fce5c2469b06d7a245fa4b"),
+    "hr-default": ("hr-default-624832652d40", "7f29def6c178235da1498a873e50b2b5fa51433de9c4dddfaeabe546c709b535"),
+    "it-helpdesk": ("it-helpdesk-aef27a001513", "07f73954af5d96b3f936ef5bc36a1e820062a5508d9ef8c0564f80c0cdd1422a"),
+    "maintenance": ("maintenance-a4a90ab7946f", "210ef2c600a8a3d1ae8ae8f2a53e0b59b58bee7923fce5c2469b06d7a245fa4b"),
 }
 
 _RENDERED: dict[str, tuple] = {}

@@ -1164,6 +1164,33 @@ def get_data_bucket_from_cfn(''',
             expect=1, flags=0, name="kb-nonfilterable-metadata", file="knowledge-base/create_kb.py", records=records,
         ),
     )
+    # create_kb.py: upstream's sync prints a FAILED ingestion and returns, so 01 (and direct mode, and a fast
+    # re-rehearsal's 01) went on over an empty knowledge base; a STOPPED job never left its wait loop. The sync
+    # now raises unless every document ingested, naming the per-document reasons a partial failure carries.
+    edit(
+        "knowledge-base/create_kb.py",
+        lambda t: _apply(
+            _apply(
+                t, re.escape('while job["status"] != "COMPLETE" and job["status"] != "FAILED":'),
+                lambda _m: 'while job["status"] not in ("COMPLETE", "FAILED", "STOPPED"):',
+                expect=1, flags=0, name="kb-ingestion-terminal-states", file="knowledge-base/create_kb.py", records=records,
+            ),
+            re.escape("""            f"{stats.get('numberOfDocumentsFailed', 0)} failed"\n        )\n"""),
+            lambda m: m.group(0) + (
+                "        failed = stats.get('numberOfDocumentsFailed', 0)\n"
+                "        if job['status'] != 'COMPLETE' or failed:\n"
+                "            reasons = list(job.get('failureReasons') or [])\n"
+                "            docs = self.bedrock_agent_client.list_knowledge_base_documents(\n"
+                "                knowledgeBaseId=kb_id, dataSourceId=ds_id, maxResults=100\n"
+                "            ).get('documentDetails', [])\n"
+                "            reasons += sorted({d['statusReason'] for d in docs if d.get('status') == 'FAILED' and d.get('statusReason')})\n"
+                "            raise RuntimeError(\n"
+                "                f\"Ingestion {job['status']} ({failed} document(s) failed): \" + '; '.join(reasons)[:600]\n"
+                "            )\n"
+            ),
+            expect=1, flags=0, name="kb-ingestion-must-complete", file="knowledge-base/create_kb.py", records=records,
+        ),
+    )
 
     # 02: the Lambda zip carries the generic handler plus its fixtures.
     edit(
