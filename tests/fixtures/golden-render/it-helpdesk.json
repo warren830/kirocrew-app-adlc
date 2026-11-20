@@ -3,23 +3,23 @@
  "files": {
   "00-config.sh": "c79d24382a28ad3b546af9e8cb6d76a68167cb4c1eb3936e06dc7be77691656c",
   "00-deploy-infra.sh": "f471893051f39efd8201a876b817fbe362315a8f24114420cb4fc38ed76928d6",
-  "00-setup.sh": "5d9f0df2ab65ceb07ee502b0e188ae202ca31d7447a5a14b6ba8535a89258055",
-  "01-create-kb.sh": "6457baef80e9b63ab20308135e8c1ea6bc932f5d7a137ef28a2619ce5a7eb5da",
-  "02-create-gateway.sh": "77204ffc4fe0606d5c0056d1bd0814e26ae121eeeec0dc000f1e01cde84027f6",
+  "00-setup.sh": "8e947df56a6e1cf3e86875b77ce002f0f9e2c2b0f67917da42aaf0b7719e5ec5",
+  "01-create-kb.sh": "5f8a0838dd8d082e903833d0fa3399b7033d6697f6a8fd9a449bf090a66a7157",
+  "02-create-gateway.sh": "c42080ef2524dda46e324e599e76d8e4d2e7797122ee8f879ed92e5dc194ad88",
   "03-configure-skills.sh": "1a46855bf14e62e5325451fe02b47e0be8ab40695b9b5ec8fcd664f34c8808fb",
   "04-deploy.sh": "c796f475cc3cb63323b480321d218ffea8c902868ea5b14a1769f939f9f4f559",
-  "05-setup-memory.sh": "800b83e8788506df5d3b8765a5a14f133f4c96e0c247e40b716edbc50beeb985",
+  "05-setup-memory.sh": "6d438d6ad95531bcb515ec0e589ccf9741c80f25082b0b0d0dbaef6bbc18ded1",
   "06-test-conversation.sh": "7aaede4e6a6b375e58420b7d671de4e71266f928db95047ae9fb8156adf40e25",
-  "07-setup-eval-env.sh": "8b18b8b05b5427fe690605b45166853c1b5b1c14d20f1ada02e3b9bfb32538d0",
+  "07-setup-eval-env.sh": "fd5fc768e057c25924f0d9a30c79ffbce77ff37893b051383bbdbe36f4b0a5be",
   "08-create-evaluators.sh": "cb6ecd40bf3eb8c4cf403f4ba02de66eb65d6573e80bc501512a32a71fd030b5",
-  "09-run-eval.sh": "16aeac314f38636fe529cf00062287001529dc0cf401571b082b144584659771",
-  "10-optimize-prompt.sh": "7b9f67d26181c3c09485ceec145c17eda86491d0662f45deab91ddae2fc83214",
-  "11-cost-latency.sh": "b63bd0529a8bdabeb313760f8e80965d58f42dda2f6cd04a9f3e60806851ca46",
+  "09-run-eval.sh": "5ef9b92f1489ebb0ef75bb15ba516c7fa9677d38df83d88637f7fb8f5470e38a",
+  "10-optimize-prompt.sh": "53c10f52a3daf5736572d2c753edb93cf9684033b27bf494be6d96bb42f2c5a7",
+  "11-cost-latency.sh": "49ddd3e58179770c4b989218009cfbc2bc38c6005ff3c8e5277c04ac90d740e7",
   "12-compare-models.sh": "28a11129faa63cf53de1881660bf7f94ac3782ff6d6ab729774a27f48aece8dc",
-  "13-judge-stability.sh": "45079b260d28d7ba229c5d464773cf428521aa6530b1846beea43a45f1f53cfe",
-  "99-cleanup.sh": "c43e7747d5647ce73da93dc796d342f05f6f25a6e22003425c66567f83c1e618",
+  "13-judge-stability.sh": "db31cfcd7b06fffc20f7bda1467bb62f21a86a8cd5f62d7deac73db2782e8785",
+  "99-cleanup.sh": "7c4def466c9f701466e72a0bb7c4e30dc2dd699647170c8ea6964d6d14136c22",
   "LICENSE": "7cb750713252efd1d578837ba8785b61319109906f0c10b87adab7cf4badfc42",
-  "README.md": "485b24e42aebb0546dc04a8da370cab953bc6b97e04807502fae84cb331037cf",
+  "README.md": "d1814296141ea1847f3c692d45e793c492a44ef4c36bc431966434e1560ee852",
   "cfn/workshop-infra.yaml": "1f20f1b030aee354839b2fe34e900512698cc75712e82dc8ee41fae15874be0c",
   "evaluation_ready.py": "62587e33f56ba1339fae9a03dd4c0960a1e840c96cb3ee047853b9d844ec89e5",
   "evaluators/README.md": "5ed0463e9eb383c5ccc08a53a40eed52ff63b99a8f24ff9ef427de1b5b136a13",
@@ -56,7 +56,7 @@
   "evaluators/thelma_eval/shared/models.py": "0a458240e8b0dce471db33f336f977ab8bb12acbda5a161786b3b89cd35320d2",
   "evaluators/thelma_eval/shared/serialization.py": "e2292a27a96848efc099979b33f2361e0d0f3dac436a7d9e278d6c60955c44cc",
   "evaluators/thelma_eval/span_adapter.py": "28a9fda2f1ade00f1cc2522acd83462a19ca3296f42048c25cd783757474035e",
-  "gateway/create_gateway.py": "630b6f25ce1084293aee36324dbfad90e0e0b776d6493850f4f3f0f3bbe9fc0f",
+  "gateway/create_gateway.py": "74f8129e8e4c66bd123eafdd33783f0dc02a8d36a6ea21589e2fbd739222bb23",
   "gateway/it-tools-schema.json": "6aa0560fbcf231e7fd42f10ac1866b00125c14711b4d3208c50df029179f5db1",
   "knowledge-base/create_kb.py": "a09c9e759bdca5b13ed0560b8a08a7f1ae5f81152c7abe2bcc49c4d5f7cb19e2",
   "l1_eval.py": "823f24ad9366979e929ee86a3c855324707476d7ccac5e1e1fc5521c6a7c1d60",
@@ -69,7 +69,7 @@
   "pack/knowledge-base/docs/security_incidents.md": "7706518e2205623c2b29f54b8dedce8b2e8c0cc1381fd258b30e297bf32c6805",
   "pack/knowledge-base/docs/software_requests.md": "eb52d5fb4360483e3d4ed4d87605ea72254d5b318fe37ec592b7080c4ab3efd2",
   "pack/knowledge-base/docs/vpn_access.md": "19aefaa4d058af002f2974d7ec3326c8e41679236bf98ddbd5f9f4d17faa8873",
-  "pack/labs/student-guide.md": "485b24e42aebb0546dc04a8da370cab953bc6b97e04807502fae84cb331037cf",
+  "pack/labs/student-guide.md": "d1814296141ea1847f3c692d45e793c492a44ef4c36bc431966434e1560ee852",
   "pack/pack.env": "bfc3f776316c1bd8ed3940c11d5f8fe73664a7ba826be4f084542c7a7faa7210",
   "pack/pack.json": "2f75667a777031731b7735e664e4611b19ff3809295d48a23a4693c9672a9022",
   "pack/prompts/baseline.md": "88326360fa4ba2e6d91502d2cb08aac17a1939274db3bde847853131f9fc4e24",
@@ -98,7 +98,7 @@
   "trace_metrics.py": "f07bf8eaa4b01d3bdab14bcb2ccc74bff65002bc7979968df6d1d3197635a7c5",
   "trace_session.py": "14f2e8477dd73156db423c82fca549ea8047931cb3d8c33185787f0df652db91"
  },
- "manifestSha256": "6478b71fb49774d75e67171af2c28b5a59d0d4fa03b0421e4f08a03865c321f2",
+ "manifestSha256": "7aebc40d5ca08533d7b44109132c57d0d8206bd14dbd76b660b03923fc35ae07",
  "packId": "it-helpdesk",
  "patches": [
   [
@@ -792,6 +792,11 @@
    1
   ],
   [
+   "00-setup.sh",
+   "python-3.12-check",
+   1
+  ],
+  [
    "cfn/workshop-infra.yaml",
    "userdata-skill-dirs",
    1
@@ -880,7 +885,57 @@
    "10-optimize-prompt.sh",
    "optimize-prompt-comment-neutral",
    1
+  ],
+  [
+   "01-create-kb.sh",
+   "python-3.12",
+   3
+  ],
+  [
+   "02-create-gateway.sh",
+   "python-3.12",
+   4
+  ],
+  [
+   "05-setup-memory.sh",
+   "python-3.12",
+   11
+  ],
+  [
+   "07-setup-eval-env.sh",
+   "python-3.12",
+   2
+  ],
+  [
+   "09-run-eval.sh",
+   "python-3.12",
+   7
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "python-3.12",
+   1
+  ],
+  [
+   "11-cost-latency.sh",
+   "python-3.12",
+   3
+  ],
+  [
+   "13-judge-stability.sh",
+   "python-3.12",
+   4
+  ],
+  [
+   "99-cleanup.sh",
+   "python-3.12",
+   4
+  ],
+  [
+   "gateway/create_gateway.py",
+   "python-3.12",
+   1
   ]
  ],
- "version": "it-helpdesk-aef27a001513"
+ "version": "it-helpdesk-6b077907be8b"
 }

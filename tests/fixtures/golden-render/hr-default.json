@@ -3,23 +3,23 @@
  "files": {
   "00-config.sh": "c79d24382a28ad3b546af9e8cb6d76a68167cb4c1eb3936e06dc7be77691656c",
   "00-deploy-infra.sh": "f471893051f39efd8201a876b817fbe362315a8f24114420cb4fc38ed76928d6",
-  "00-setup.sh": "4f6a27605f746e2b9ffd06099a13c48efcf2740ccf97c83ab76b1ce9ef5bbade",
-  "01-create-kb.sh": "6b5d480665ef037faabce7a3d05078de39ff2183cc0a9225f000929f1b9f7180",
-  "02-create-gateway.sh": "c628a9dc2947f4a955609e48f7e678ea8bc90a768c0d82a7ae90d677e14869d6",
+  "00-setup.sh": "084f63aa2dbadb8c968bf621053da86d1f428a7a99f306982dc2d725238117fa",
+  "01-create-kb.sh": "0d961105dca2c20836c92a1ee26fbb6c049396dbe3cc17bc219198c45d2ae292",
+  "02-create-gateway.sh": "748144ca87dae2c54f18ed176783206842a7dc2ab2abff36e161ab9061585f7b",
   "03-configure-skills.sh": "e7836cfc49c45612792bd94220327e0ac6a6143a01f503afe1265248bf018649",
   "04-deploy.sh": "a29bf9f9f71dde8129c0f23886e9f87bff2f5dc2d1abee11b99c071932673899",
-  "05-setup-memory.sh": "a1dceb1b321e49653259805e590255b1a2b58383ff8c6d4147719cf45339b3fc",
+  "05-setup-memory.sh": "5d5937ff2bdb0fb1ca8d5bd94c80807c9aa64ae8aa750907d8ccb099e6f39150",
   "06-test-conversation.sh": "766d0f7b529d1d47df53ab2730e3d6cf944610335559be49823c999f8a9434eb",
-  "07-setup-eval-env.sh": "8b18b8b05b5427fe690605b45166853c1b5b1c14d20f1ada02e3b9bfb32538d0",
+  "07-setup-eval-env.sh": "fd5fc768e057c25924f0d9a30c79ffbce77ff37893b051383bbdbe36f4b0a5be",
   "08-create-evaluators.sh": "2c42fb31cc7448e6e628e260c973d8264a94423f504c1ef6030249a81d1b470f",
-  "09-run-eval.sh": "c5c749e9be4dc19e08884b86a322dcf23281ea099d23fcc48b54b3bfb7325644",
-  "10-optimize-prompt.sh": "bd9b33fd7e6a3655ceedf11955d63bce0c98fc86d2f1d442bddb5f8b75cb8096",
-  "11-cost-latency.sh": "9b2d5b3c9fb927f07d8f2fcf242c9f7734ecc2166ffcb77ad0128e336b651bf3",
+  "09-run-eval.sh": "989f0f7d900291629d712a3812d719f86934829d562501fc40983541d3ef74ab",
+  "10-optimize-prompt.sh": "618b37e43fc0e0fd76441eb601e72c06151c977e22ac704cea24a711c8177e59",
+  "11-cost-latency.sh": "276b858ad246fbf789996fa04544982d095379ee1ff43b64171181c8f3de1a31",
   "12-compare-models.sh": "7a979f857c743da15618fe13aa2aa956a18a8525f9aa123b076ef155dd40d97d",
-  "13-judge-stability.sh": "0faf0013e088509d722396567c579021c317fb65942ffd40c5f3d2b096821a28",
-  "99-cleanup.sh": "dbd0022cb8c70735e63b68a29fa9546f07dd9a4fd4d7b183b02d6941f9c3db46",
+  "13-judge-stability.sh": "a6d69cbfda5676edaa5cf954f37b06ed3a22245ebdfef05ca510e46f128d813a",
+  "99-cleanup.sh": "6ea2328b2cbaf6bc1598f17322d2011f6c571864702cfc360d57b27bd351832e",
   "LICENSE": "7cb750713252efd1d578837ba8785b61319109906f0c10b87adab7cf4badfc42",
-  "README.md": "2330019e8933b9c50b62ca1d8446d9f36a0af8ec1488de70fe1c5946b2e92265",
+  "README.md": "a589a1bd12f5f69163b184c8e448859f6822552aacdd556f93188ccc3c8d8c2c",
   "cfn/workshop-infra.yaml": "29c42168024b9f9ef1527f793f60d03283dcabbf07fa802e8795a7cd88a2ffd4",
   "evaluation_ready.py": "62587e33f56ba1339fae9a03dd4c0960a1e840c96cb3ee047853b9d844ec89e5",
   "evaluators/README.md": "5ed0463e9eb383c5ccc08a53a40eed52ff63b99a8f24ff9ef427de1b5b136a13",
@@ -56,7 +56,7 @@
   "evaluators/thelma_eval/shared/models.py": "0a458240e8b0dce471db33f336f977ab8bb12acbda5a161786b3b89cd35320d2",
   "evaluators/thelma_eval/shared/serialization.py": "e2292a27a96848efc099979b33f2361e0d0f3dac436a7d9e278d6c60955c44cc",
   "evaluators/thelma_eval/span_adapter.py": "e37147608195253e211f5a0b859a9f2c8ce664ee72af8556c2f574be69d96764",
-  "gateway/create_gateway.py": "b21fac64372c849d36a9ac892b2f5ab45afdc2650e17cd0a12440b6978b29fad",
+  "gateway/create_gateway.py": "fbcfb9106c0e714d0af07dd18aa994de09596ea356f5383b6212ee07e9996a02",
   "gateway/hr-tools-schema.json": "f4477f556f5ee8b35d71b3e37f2ac6964e8bd9cd0ad004d27320bbde19bbefae",
   "knowledge-base/create_kb.py": "3bf6e53b7fcce751e02e35ba685ec39e8b950ccccb5a21601936a04d88bd8107",
   "l1_eval.py": "823f24ad9366979e929ee86a3c855324707476d7ccac5e1e1fc5521c6a7c1d60",
@@ -74,7 +74,7 @@
   "pack/knowledge-base/docs/safety_incident_report.md": "87f26530bdf89d95b54f3220c5bf7b023a54a65b92548215904c7df05480b823",
   "pack/knowledge-base/docs/time_off_report.md": "7e12582e669dee338cef0b80a93c3f07af7c122a1c4bbdedda39dccd9f7c0e8b",
   "pack/knowledge-base/docs/training_request.md": "41ae2b62e9bca1780dde1ab33aa7f8839a9b25071c5e47687abaf64dfea1b0fd",
-  "pack/labs/student-guide.md": "2330019e8933b9c50b62ca1d8446d9f36a0af8ec1488de70fe1c5946b2e92265",
+  "pack/labs/student-guide.md": "a589a1bd12f5f69163b184c8e448859f6822552aacdd556f93188ccc3c8d8c2c",
   "pack/pack.env": "7a82845daa3a1bea960fdd90f1b95a385261c5673fc90eb38ccc9dac03a23050",
   "pack/pack.json": "2735c60fea3e9f0b2428f3a279a36ea05f8acdcc3503ecaded0981af96e85786",
   "pack/prompts/baseline.md": "5619ee67d072c1e6ed16b9e950d2634d7b77761396fa99f11d63b1bf73e6c572",
@@ -103,7 +103,7 @@
   "trace_metrics.py": "f07bf8eaa4b01d3bdab14bcb2ccc74bff65002bc7979968df6d1d3197635a7c5",
   "trace_session.py": "14f2e8477dd73156db423c82fca549ea8047931cb3d8c33185787f0df652db91"
  },
- "manifestSha256": "cfdd537ce9a18c98de207b33dc40224de2c13e655b242ccfbcf34d87367d9d08",
+ "manifestSha256": "84a3ce53c4e100b6958bd826e6068b9f715dcdfeb946d4a733c807fe64d1140b",
  "packId": "hr-default",
  "patches": [
   [
@@ -797,6 +797,11 @@
    1
   ],
   [
+   "00-setup.sh",
+   "python-3.12-check",
+   1
+  ],
+  [
    "cfn/workshop-infra.yaml",
    "userdata-skill-dirs",
    1
@@ -885,7 +890,57 @@
    "10-optimize-prompt.sh",
    "optimize-prompt-comment-neutral",
    1
+  ],
+  [
+   "01-create-kb.sh",
+   "python-3.12",
+   3
+  ],
+  [
+   "02-create-gateway.sh",
+   "python-3.12",
+   4
+  ],
+  [
+   "05-setup-memory.sh",
+   "python-3.12",
+   11
+  ],
+  [
+   "07-setup-eval-env.sh",
+   "python-3.12",
+   2
+  ],
+  [
+   "09-run-eval.sh",
+   "python-3.12",
+   7
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "python-3.12",
+   1
+  ],
+  [
+   "11-cost-latency.sh",
+   "python-3.12",
+   3
+  ],
+  [
+   "13-judge-stability.sh",
+   "python-3.12",
+   4
+  ],
+  [
+   "99-cleanup.sh",
+   "python-3.12",
+   4
+  ],
+  [
+   "gateway/create_gateway.py",
+   "python-3.12",
+   1
   ]
  ],
- "version": "hr-default-624832652d40"
+ "version": "hr-default-2bacc4118cdf"
 }

@@ -166,7 +166,7 @@ def test_a_release_cleanup_run_from_its_own_directory_cleans_only_its_namespace(
     fakebin = tmp_path / "bin"
     fakebin.mkdir()
     (fakebin / "aws").write_text(FAKE_AWS, encoding="utf-8")
-    (fakebin / "python3").write_text('#!/bin/bash\necho "python3 $*" >> "$FAKE_AWS_LOG"\n', encoding="utf-8")  # no helper reaches AWS
+    (fakebin / "python3.12").write_text('#!/bin/bash\necho "python3.12 $*" >> "$FAKE_AWS_LOG"\n', encoding="utf-8")  # no helper reaches AWS
     for stub in fakebin.iterdir():
         stub.chmod(0o755)
     log = tmp_path / "calls.log"
@@ -177,8 +177,8 @@ def test_a_release_cleanup_run_from_its_own_directory_cleans_only_its_namespace(
     calls = log.read_text(encoding="utf-8")
     assert f"starts_with(harnessName,'{hr['agentName']}_')" in calls
     assert f"--stack-name AgentCore-{hr['agentName']}-default " in calls
-    assert f"python3 {hr_release}/gateway/create_gateway.py delete --name {hr['gatewayName']}" in calls
-    assert f"python3 {hr_release}/knowledge-base/create_kb.py --mode delete" in calls
+    assert f"python3.12 {hr_release}/gateway/create_gateway.py delete --name {hr['gatewayName']}" in calls
+    assert f"python3.12 {hr_release}/knowledge-base/create_kb.py --mode delete" in calls
     assert f"ssm get-parameters-by-path --path {hr['ssmParameterPrefix']} " in calls
     for key in ("agentName", "gatewayName", "knowledgeBaseName", "lambdaFunctionName", "ssmParameterPrefix", "toolTargetName"):
         assert it[key] not in calls, key

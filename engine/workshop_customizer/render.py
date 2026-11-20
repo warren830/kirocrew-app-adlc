@@ -1727,7 +1727,12 @@ echo "🗑️  Removing Customizer add-ons before base infrastructure..."''',
     mkdirs = "".join(f"mkdir -p ~/workshop/skills/{name}\n" for name in skills) or "mkdir -p ~/workshop/skills\n"
     edit(
         "00-setup.sh",
-        lambda t: _apply(t, r"(?:^mkdir -p ~/workshop/skills/[a-z-]+\n)+", lambda _m: mkdirs, expect=1, flags=re.M, name="skill-dirs", file="00-setup.sh", records=records),
+        lambda t: _apply(
+            _apply(t, r"(?:^mkdir -p ~/workshop/skills/[a-z-]+\n)+", lambda _m: mkdirs, expect=1, flags=re.M, name="skill-dirs", file="00-setup.sh", records=records),
+            r'^aws --version \|\| \{ echo "❌ AWS CLI not found"; exit 1; \}\n',
+            lambda m: m.group(0) + PYTHON_CHECK,
+            expect=1, flags=re.M, name="python-3.12-check", file="00-setup.sh", records=records,
+        ),
     )
 
     # CFN: EC2 UserData no longer bakes HR skill files; it only pre-creates pack skill directories.
@@ -1804,6 +1809,34 @@ echo "🗑️  Removing Customizer add-ons before base infrastructure..."''',
     return records
 
 
+#: The one interpreter the release supports. Every script names it, so a host whose ``python3`` is
+#: another version (Amazon Linux 2023: 3.9, without boto3) runs the same Python as the Guided Run.
+PYTHON = "python3.12"
+PYTHON_CHECK = (
+    f'{PYTHON} --version || {{ echo "❌ Python 3.12 not found. Run: sudo dnf install -y python3.12 python3.12-pip"; exit 1; }}\n'
+    f'{PYTHON} -m pip --version >/dev/null || {{ echo "❌ pip for Python 3.12 not found. Run: sudo dnf install -y python3.12-pip"; exit 1; }}\n'
+)
+_BARE_PYTHON = re.compile(r"(?<![\w./-])python3(?![\w.])")
+_BARE_PIP = re.compile(r"(?<![\w./-])pip3(?![\w.])")
+
+
+def _pin_python(release: Path, records: list[PatchRecord]) -> None:
+    """Point every shell script and Python shebang at ``PYTHON`` (patch ``python-3.12``)."""
+    for path in sorted(release.rglob("*")):
+        rel = path.relative_to(release).as_posix()
+        if not path.is_file() or rel.startswith(f"{PACK_DIR}/") or path.suffix not in (".sh", ".py"):
+            continue
+        text = path.read_text(encoding="utf-8")
+        if path.suffix == ".py":
+            pinned = re.sub(r"\A#!/usr/bin/env python3\n", f"#!/usr/bin/env {PYTHON}\n", text)
+        else:
+            pinned = _BARE_PIP.sub(f"{PYTHON} -m pip", _BARE_PYTHON.sub(PYTHON, text))
+        if pinned != text:
+            count = len(_BARE_PYTHON.findall(text)) + len(_BARE_PIP.findall(text)) if path.suffix == ".sh" else 1
+            records.append(PatchRecord(file=rel, name="python-3.12", matches=count))
+            path.write_text(pinned, encoding="utf-8")
+
+
 def _replace_tokens(release: Path, data: dict[str, Any]) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = {}
     mapping = token_map(data)
@@ -1868,6 +1901,7 @@ def render_release(pack: CompiledPack, upstream: Path, release_dir: Path, *, tem
     # The single L1 implementation, byte for byte (after the token pass: it carries no template
     # identifier, and the release copy must equal engine/workshop_customizer/l1.py).
     shutil.copyfile(L1_SOURCE, release_dir / L1_RELEASE_NAME)
+    _pin_python(release_dir, patches)
 
     # The public Guide starts with `cd static/scripts`. Preserve the release's
     # existing root entry points for SSM and also ship that copy/paste layout.

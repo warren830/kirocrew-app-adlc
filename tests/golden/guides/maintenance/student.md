@@ -272,7 +272,7 @@ If any of these is missing, stop and ask your facilitator — do not deploy the 
 | AWS account | The account of the prepared Workshop environment, with the EC2 instance in **`us-west-2`** to run from |
 | AWS CLI | Configured with credentials (`aws sts get-caller-identity` must succeed) |
 | Node.js | v20+ |
-| Python | 3.10+ (with `pip`) |
+| Python | 3.12 (`python3.12` with `pip`; `00-setup.sh` checks it) |
 | AgentCore CLI | `npm i -g @aws/agentcore@preview` |
 
 ### IAM permissions

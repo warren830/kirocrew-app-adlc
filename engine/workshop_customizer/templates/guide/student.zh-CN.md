@@ -185,7 +185,7 @@ Agent 以 VPC 模式跑在一个 AgentCore **Harness** 里。每次调用都会�
 | AWS 账号 | 准备好的 Workshop 环境所在的账号，并在 **`us-west-2`** 有那台用于运行的 EC2 实例 |
 | AWS CLI | 已配置好凭证（`aws sts get-caller-identity` 要能成功） |
 | Node.js | v20+ |
-| Python | 3.10+（带 `pip`） |
+| Python | 3.12（`python3.12`，带 `pip`；`00-setup.sh` 会检查） |
 | AgentCore CLI | `npm i -g @aws/agentcore@preview` |
 
 ### IAM 权限

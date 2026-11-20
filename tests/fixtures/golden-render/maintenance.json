@@ -3,23 +3,23 @@
  "files": {
   "00-config.sh": "c79d24382a28ad3b546af9e8cb6d76a68167cb4c1eb3936e06dc7be77691656c",
   "00-deploy-infra.sh": "f471893051f39efd8201a876b817fbe362315a8f24114420cb4fc38ed76928d6",
-  "00-setup.sh": "eb5971496cf0bd9e82aeb7632e6af5f1d79446c5a7c4d3a299adf87a795d94b3",
-  "01-create-kb.sh": "90eacd8c98bb164cf24d9b730bae6cd94182ab2add9f2bbb4dd93f0c4076af28",
-  "02-create-gateway.sh": "d603fa056b96fe91e037940b95d4b119757f035bda3cd6f79d31d578aee5358c",
+  "00-setup.sh": "340a29d1b5b5a310cafea533f20046219615bd63475fc7e633cf9725361d977d",
+  "01-create-kb.sh": "3ccbd75c5e7b8a837d83bb54e284b343cbd04803d0f2a6c94edc0e1c1b0a8bbd",
+  "02-create-gateway.sh": "09ce18e3cafb5f0556ac58386823464d2465b6ed7912f17a400530fd07684df7",
   "03-configure-skills.sh": "4b67d6ea1057a8ccb065b3928620100109c1a7e4b3c117a315c220b621ecd002",
   "04-deploy.sh": "2184750c3424f1f85962f2e4ed709f8be109d6ef39dfb3ba2d5a73fce7ddbe16",
-  "05-setup-memory.sh": "f868c7ad5a437952a486b5204c1bfd46bbef0f1edaf2cb96fc590a6caf1051de",
+  "05-setup-memory.sh": "528af9e4bbd24f3fe45490aa6bb1d67a4703aa379bbff5079c978e16b2b925d1",
   "06-test-conversation.sh": "989f19876405032cebc0274cc5a55d963b01795202b0d81e7d848cdf1b2308bb",
-  "07-setup-eval-env.sh": "8b18b8b05b5427fe690605b45166853c1b5b1c14d20f1ada02e3b9bfb32538d0",
+  "07-setup-eval-env.sh": "fd5fc768e057c25924f0d9a30c79ffbce77ff37893b051383bbdbe36f4b0a5be",
   "08-create-evaluators.sh": "d262108d3ebabb2636b524e93545196a02214cd8edfc6b0564889c3b653399e3",
-  "09-run-eval.sh": "041c8297341ffb48de3e7ee9b022076e1793f59e9f1aedcdf86aeeab890a79cc",
-  "10-optimize-prompt.sh": "da47e0e29e969f3a348947846de13f02d30af7444e83b189036ea88a59edd36d",
-  "11-cost-latency.sh": "b65c22c8af1481820edb34d770310c8b67485e9d0e5c9db5be4a8f899508db4f",
+  "09-run-eval.sh": "4252b7826e244f6e10c43921b71c4d176b4afe00c7b1aa96d775725931d40c71",
+  "10-optimize-prompt.sh": "3a15af1125208a6b0d76f940776efc4cc006639df3a20e59c2ed2f40e1dcf66f",
+  "11-cost-latency.sh": "76116b85c1f297b580003d3c320c28050395b4cadf9c5b390eebe7a78d7a9037",
   "12-compare-models.sh": "cb9d641660dd04ef7cecce33169320a05a85923ef7717a3b251c471698210844",
-  "13-judge-stability.sh": "6ba7cd774857eccf807a2392d4c05e94111576b59b0bd26f51aa0dda428fe8cf",
-  "99-cleanup.sh": "58de61478fe1d09a61e649c1e1d594c28d84a1067bef0c8f4ed7e8bea274d7d2",
+  "13-judge-stability.sh": "ac844c55b528911c1b70a8c0ee526e25ede7b60db2d31a461da9171fddcb44a9",
+  "99-cleanup.sh": "22391996bc448ac75097cb0b6385fe4927a9351949f2feccd406a66c91b259a7",
   "LICENSE": "7cb750713252efd1d578837ba8785b61319109906f0c10b87adab7cf4badfc42",
-  "README.md": "0149cbe46e6ec3a9be1c1339a1d44cf57e3088e6e956ce10986c7cfa52804a8d",
+  "README.md": "aea42b64c79aa354833ff247ad86fdfb51a128ec8b728398e11fb6a14aea58c7",
   "cfn/workshop-infra.yaml": "538e4092a25ddbaca03dac92962308ba88753f18e13bf078a72f4865e11a6e6c",
   "evaluation_ready.py": "62587e33f56ba1339fae9a03dd4c0960a1e840c96cb3ee047853b9d844ec89e5",
   "evaluators/README.md": "5ed0463e9eb383c5ccc08a53a40eed52ff63b99a8f24ff9ef427de1b5b136a13",
@@ -56,7 +56,7 @@
   "evaluators/thelma_eval/shared/models.py": "0a458240e8b0dce471db33f336f977ab8bb12acbda5a161786b3b89cd35320d2",
   "evaluators/thelma_eval/shared/serialization.py": "e2292a27a96848efc099979b33f2361e0d0f3dac436a7d9e278d6c60955c44cc",
   "evaluators/thelma_eval/span_adapter.py": "27bf5514dc4cca88f90ad75e840bcb35df11a7d86f85fd4cf3d084099ad723a9",
-  "gateway/create_gateway.py": "ce81e7f9fa10b16c162898c8166af4af0866d16704c7c4af1541a1d7f20b71ce",
+  "gateway/create_gateway.py": "ff013af3829a8c7ba3b64333d2d0413ed35026ea8839fb11580b93445b278802",
   "gateway/maint-tools-schema.json": "fc78f48991f8784c6dfc681b7fab5e6d6f48f1ec80b13f6ced30135c93b6131f",
   "knowledge-base/create_kb.py": "6087f474542d45d053fec7882e6d9acae556bb13a577a35f0f44e9e9297bba18",
   "l1_eval.py": "823f24ad9366979e929ee86a3c855324707476d7ccac5e1e1fc5521c6a7c1d60",
@@ -69,7 +69,7 @@
   "pack/knowledge-base/docs/preventive_maintenance.md": "140255dcbe13957d6db62e3d9da2d5bcf8e93f626f524ad19361c7115d8cc18c",
   "pack/knowledge-base/docs/spare_parts.md": "6c181361880f780d5ba6f1c3ad778670f5167910920fe8ac1e23df3dab15ea42",
   "pack/knowledge-base/docs/work_orders.md": "3af5c9669069296f4dea9e1e61779497c1b704408f03f369775e2349f5daaa4b",
-  "pack/labs/student-guide.md": "0149cbe46e6ec3a9be1c1339a1d44cf57e3088e6e956ce10986c7cfa52804a8d",
+  "pack/labs/student-guide.md": "aea42b64c79aa354833ff247ad86fdfb51a128ec8b728398e11fb6a14aea58c7",
   "pack/pack.env": "2b9a8bacc4517308568c495e87210877fd5d4bda2a50fbe1361654f03f378f71",
   "pack/pack.json": "fe5edf5cf73541b217e9b79b734e5ed53ddbfda7819b66f421b721547e87628c",
   "pack/prompts/baseline.md": "5e58eaf1042fa2a7c7909357209033211f550df8678007454b24c54129bb2e14",
@@ -98,7 +98,7 @@
   "trace_metrics.py": "f07bf8eaa4b01d3bdab14bcb2ccc74bff65002bc7979968df6d1d3197635a7c5",
   "trace_session.py": "14f2e8477dd73156db423c82fca549ea8047931cb3d8c33185787f0df652db91"
  },
- "manifestSha256": "c1c96c9bd9c11bced0bf5a6388ead3f71aff89290c351b519051fe6e72694cf8",
+ "manifestSha256": "3f42a7304179758f4a2fabab86eeb45686836796f33325af270de4336b4d2435",
  "packId": "maintenance",
  "patches": [
   [
@@ -792,6 +792,11 @@
    1
   ],
   [
+   "00-setup.sh",
+   "python-3.12-check",
+   1
+  ],
+  [
    "cfn/workshop-infra.yaml",
    "userdata-skill-dirs",
    1
@@ -880,7 +885,57 @@
    "10-optimize-prompt.sh",
    "optimize-prompt-comment-neutral",
    1
+  ],
+  [
+   "01-create-kb.sh",
+   "python-3.12",
+   3
+  ],
+  [
+   "02-create-gateway.sh",
+   "python-3.12",
+   4
+  ],
+  [
+   "05-setup-memory.sh",
+   "python-3.12",
+   11
+  ],
+  [
+   "07-setup-eval-env.sh",
+   "python-3.12",
+   2
+  ],
+  [
+   "09-run-eval.sh",
+   "python-3.12",
+   7
+  ],
+  [
+   "10-optimize-prompt.sh",
+   "python-3.12",
+   1
+  ],
+  [
+   "11-cost-latency.sh",
+   "python-3.12",
+   3
+  ],
+  [
+   "13-judge-stability.sh",
+   "python-3.12",
+   4
+  ],
+  [
+   "99-cleanup.sh",
+   "python-3.12",
+   4
+  ],
+  [
+   "gateway/create_gateway.py",
+   "python-3.12",
+   1
   ]
  ],
- "version": "maintenance-a4a90ab7946f"
+ "version": "maintenance-7ec79083af4f"
 }
